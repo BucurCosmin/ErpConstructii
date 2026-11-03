@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
+    <ProjectReference Include="..\ErpConstructii.Parteneri\ErpConstructii.Parteneri.csproj" />
+    <!-- Contractul public al modulului Identitate (permisiuni); NU infrastructura lui. -->
+    <ProjectReference Include="..\..\Identitate\ErpConstructii.Identitate\ErpConstructii.Identitate.csproj" />
+  </ItemGroup>
+</Project>

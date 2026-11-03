@@ -1,3 +1,4 @@
+using ErpConstructii.SharedKernel;
 using ErpConstructii.Identitate;
 
 namespace ErpConstructii.Teste.Unitare.Identitate;
@@ -95,4 +96,50 @@ public class AccesFirmeTeste
         auditor.Dezactiveaza();
         Assert.False(AccesFirme.PoateIntra(auditor, Azi));
     }
+}
+
+public class DateFirmaTeste
+{
+    private static DateFirma Date(string? cui = "RO 18547290", params ContBancar[] conturi) => new(
+        "Construct Exemplu SRL", cui, "j13/1234/2010",
+        new Adresa("str. Exemplu 1", "Constanța", "CT", "900001"),
+        "0241 000 000", null, "Office@Exemplu.ro", null, conturi);
+
+    [Fact]
+    public void Datele_valide_se_salveaza_normalizate()
+    {
+        var firma = new Firma("Vechi", null);
+        var r = firma.ModificaDate(Date(conturi: ContBancarTest("Banca Exemplu", "ro49 aaaa 1b31 0075 9384 0000", true)));
+
+        Assert.True(r.Succes);
+        Assert.Equal("RO 18547290".ToUpperInvariant(), firma.Cui);
+        Assert.Equal("J13/1234/2010", firma.NrRegCom);
+        Assert.Equal("office@exemplu.ro", firma.Email);
+        Assert.Null(firma.Fax);
+        Assert.Equal("RO49AAAA1B31007593840000", Assert.Single(firma.ConturiBancare).Iban);
+    }
+
+    [Fact]
+    public void Datele_invalide_nu_modifica_firma()
+    {
+        var firma = new Firma("Vechi", null);
+        var r = firma.ModificaDate(Date(cui: "18547291"));
+
+        Assert.False(r.Succes);
+        Assert.Contains("CUI", r.Eroare.Mesaj);
+        Assert.Equal("Vechi", firma.Denumire);
+    }
+
+    [Fact]
+    public void Emailul_invalid_nu_se_salva()
+    {
+        var firma = new Firma("Vechi", null);
+        var r = firma.ModificaDate(Date() with { Email = "adresa-invalida" });
+
+        Assert.False(r.Succes);
+        Assert.Contains("email", r.Eroare.Mesaj);
+        Assert.Equal("Vechi", firma.Denumire);
+    }
+
+    private static ContBancar ContBancarTest(string banca, string iban, bool principal) => new(banca, iban, Principal: principal);
 }

@@ -1,0 +1,43 @@
+@baseUrl = http://localhost:5080
+@proiectId = 00000000-0000-0000-0000-000000000001
+@notaId = 00000000-0000-0000-0000-000000000002
+
+### Listă note și statusuri pentru un proiect
+GET {{baseUrl}}/api/aprovizionare/proiecte/{{proiectId}}/note-comanda
+
+### Emite notă (numărul, data și lucrarea sunt completate de sistem)
+POST {{baseUrl}}/api/aprovizionare/proiecte/{{proiectId}}/note-comanda
+Content-Type: application/json
+
+{
+  "compartimentSantier": "Șantier central",
+  "linii": [
+    {
+      "denumire": "Ciment",
+      "unitateMasura": "sac",
+      "cantitate": 25,
+      "observatii": "Livrare la șantier",
+      "articolDevizId": null
+    }
+  ]
+}
+
+### Detalii notă
+GET {{baseUrl}}/api/aprovizionare/proiecte/{{proiectId}}/note-comanda/{{notaId}}
+
+### Aprobă notă (necesită aprovizionare.aprobare)
+POST {{baseUrl}}/api/aprovizionare/proiecte/{{proiectId}}/note-comanda/{{notaId}}/aprobare
+Content-Type: application/json
+
+{}
+
+### Respinge notă (necesită aprovizionare.aprobare)
+POST {{baseUrl}}/api/aprovizionare/proiecte/{{proiectId}}/note-comanda/{{notaId}}/respingere
+Content-Type: application/json
+
+{
+  "motiv": "Cantitatea trebuie verificată."
+}
+
+### Descarcă documentul Word după aprobare
+GET {{baseUrl}}/api/aprovizionare/proiecte/{{proiectId}}/note-comanda/{{notaId}}/document.docx

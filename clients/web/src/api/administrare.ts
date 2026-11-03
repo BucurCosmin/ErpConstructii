@@ -3,6 +3,7 @@ import { api } from './client'
 import type {
   CatalogPermisiuni,
   CreeazaUtilizator,
+  DateFirma,
   Firma,
   FirmaAdmin,
   RolFirma,
@@ -39,7 +40,7 @@ export const useUtilizator = (id: string | null) =>
 
 export const useRoluri = () => useQuery({ queryKey: cheiAdmin.roluri, queryFn: () => api.get<RolFirma[]>(`${baza}/roluri`) })
 
-export const useFirmaActiva = () => useQuery({ queryKey: cheiAdmin.firma, queryFn: () => api.get<Firma>(`${baza}/firma`) })
+export const useFirmaActiva = () => useQuery({ queryKey: cheiAdmin.firma, queryFn: () => api.get<DateFirma>(`${baza}/firma`) })
 
 export const useFirme = (activ: boolean) =>
   useQuery({ queryKey: cheiAdmin.firme, queryFn: () => api.get<FirmaAdmin[]>(`${baza}/firme`), enabled: activ })
@@ -88,7 +89,7 @@ export const useRestaureazaRol = () => useModificare((id: string) => api.post<vo
 export const useStergeRol = () => useModificare((id: string) => api.delete<void>(`${baza}/roluri/${id}`))
 
 export const useModificaFirma = () =>
-  useModificare((c: { denumire: string; cui: string | null }) => api.put<void>(`${baza}/firma`, c))
+  useModificare((date: Omit<DateFirma, 'id'>) => api.put<void>(`${baza}/firma`, date))
 
 export const useCreeazaFirma = () =>
   useModificare((c: { denumire: string; cui: string | null }) => api.post<Firma>(`${baza}/firme`, c))

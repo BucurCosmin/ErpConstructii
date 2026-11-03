@@ -1,12 +1,14 @@
 using System.Text.Json.Serialization;
 using ErpConstructii.Api.Autentificare;
 using ErpConstructii.Api.Dezvoltare;
+using ErpConstructii.Aprovizionare.Infrastructure;
 using ErpConstructii.Devize.Import.WinDoc;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Formulare.Infrastructure;
 using ErpConstructii.Identitate.Infrastructure;
 using ErpConstructii.Identitate.Infrastructure.Autentificare;
 using ErpConstructii.Infrastructure;
+using ErpConstructii.Parteneri.Infrastructure;
 using ErpConstructii.Proiecte.Infrastructure;
 using ErpConstructii.SharedKernel;
 using Microsoft.AspNetCore.Authentication;
@@ -24,6 +26,8 @@ IModul[] module =
     new ModulProiecte(),
     new ModulDevize(),
     new ModulFormulare(),
+    new ModulParteneri(),
+    new ModulAprovizionare(),
 ];
 
 // Context de cerere: firma și utilizatorul curent, citite din token.

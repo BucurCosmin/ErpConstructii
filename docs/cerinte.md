@@ -85,6 +85,16 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-SNT-04 | Ore de funcționare utilaje, consum de combustibil. | 2 | ⬜ |
 | REQ-SNT-05 | Funcționare offline, sincronizare la reconectare. | 2 | ⬜ |
 
+## APV — Aprovizionare
+
+| ID | Cerință | Faza | Stare |
+|---|---|---|---|
+| REQ-APV-01 | Notele de comandă sunt emise pe proiect, fără furnizor; numărul și data se generează automat, lucrarea se preia din proiect, iar compartimentul / șantierul se introduce manual. | 1 | ✅ |
+| REQ-APV-02 | Notele emise au status și intră în lista de aprobare; aprobarea cere permisiunea `aprovizionare.aprobare`, emitentul nu își poate aproba propria notă, iar aprobatorul și momentul aprobării se înregistrează. | 1 | ✅ |
+| REQ-APV-03 | Nota se poate genera în Word pentru arhivare indiferent de status, folosind versiunea șablonului de la emitere și numele emitentului capturat la emitere. | 1 | ✅ |
+| REQ-APV-04 | Notele din proiectele accesibile se pot filtra după proiect/lucrare, material, interval de dată, status, număr, emitent și aprobator. | 1 | ✅ |
+| REQ-APV-05 | Șablonul „Necesar materiale” acceptă placeholderele documentate și le mapează la controalele Word ale aplicației. | 1 | ✅ |
+
 ## FCT — Facturi
 
 | ID | Cerință | Faza | Stare |
@@ -109,15 +119,17 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-FRM-01 | Catalogul de formulare din document (comandă furnizor, referat, NIR, bon de consum, aviz, PV-uri, dispoziție de șantier, foaie utilaj etc.). | 1 | 🟡 |
 | REQ-FRM-02 | Catalog extensibil: un tip nou = schemă de câmpuri + șablon, fără cod nou. | 1 | ✅ |
 | REQ-FRM-03 | Generare .docx din șabloanele firmei (controale de conținut etichetate, rânduri de tabel repetate), fără Word pe server. | 1 | ✅ |
-| REQ-FRM-04 | Șabloane încărcate de administratorul firmei, verificate (câmpuri obligatorii) și versionate. | 1 | 🟡 |
+| REQ-FRM-04 | Șabloane încărcate de administratorul firmei, verificate (câmpuri obligatorii) și versionate. | 1 | ✅ |
 | REQ-FRM-05 | Proprietăți ascunse în fișierul generat: tip formular, versiune șablon, ID document, număr rezervat. | 1 | ✅ |
 | REQ-FRM-06 | PDF gratuit: LibreOffice headless prin Gotenberg, serviciu separat. | 1 | ✅ |
 | REQ-FRM-07 | Arhivare imuabilă cu SHA-256; corecție = versiune nouă; varianta semnată atașată lângă cea generată. | 1 | ⬜ |
 | REQ-FRM-08 | Import al formularelor completate manual: recunoaștere tip/versiune, citirea câmpurilor, validare. | 1 | ✅ |
 | REQ-FRM-09 | Potrivire la import: furnizor după CUI, proiect după cod, materiale după cod/denumire, cu propuneri. | 2 | ⬜ |
-| REQ-FRM-10 | Documentul importat intră ca ciornă „de verificat” și trece prin același flux de aprobare; originalul se arhivează. | 2 | ⬜ |
-| REQ-FRM-11 | Documentele fără șablon: atașate ca fișier + introducere manuală. | 1 | ⬜ |
+| REQ-FRM-10 | Documentul importat intră ca ciornă „de verificat” și trece prin același flux de aprobare; originalul se arhivează. | 2 | 🟡 |
+| REQ-FRM-11 | Documentele fără șablon: atașate ca fișier + introducere manuală. | 1 | 🟡 |
 | REQ-FRM-12 | Numerotare pe serii (firmă, tip, an); numere rezervate pentru formulare goale, anulate la expirare. | 1 | 🟡 |
+
+În implementarea curentă, notele de comandă folosesc șabloane Word versionate pe firmă și sunt păstrate cu status de aprobare; numărul, data și lucrarea sunt completate de sistem, iar compartimentul / șantierul se introduce manual. Șablonul „Necesar materiale” este normalizat la încărcare, iar facturile primite se importă ca ciorne „De verificat”, cu originalul păstrat și datele introduse manual; potrivirea automată și aprobarea facturilor rămân de completat.
 
 ## RPT — Rapoarte
 

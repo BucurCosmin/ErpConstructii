@@ -7,12 +7,10 @@ public class ValidatorDateFormularTeste
 {
     private static Dictionary<string, string> CampuriValide() => new()
     {
-        ["numar"] = "CMD-2026-0001",
+        ["numar"] = "NC/2026/0001",
         ["data"] = "03.11.2026",
-        ["proiect_cod"] = "P-001",
-        ["furnizor_denumire"] = "Beton SRL",
-        ["furnizor_cui"] = "RO123456",
-        ["total_fara_tva"] = "1.234,56",
+        ["lucrare"] = "Reabilitare",
+        ["compartiment_santier"] = "Șantier central",
     };
 
     private static IReadOnlyDictionary<string, string> LinieValida() => new Dictionary<string, string>
@@ -20,7 +18,7 @@ public class ValidatorDateFormularTeste
         ["denumire"] = "Beton C16/20",
         ["um"] = "mc",
         ["cantitate"] = "12,5",
-        ["articol_deviz"] = "CA01A",
+        ["observatii"] = "Livrare la șantier",
     };
 
     private static DateFormular Date(Dictionary<string, string> campuri, params IReadOnlyDictionary<string, string>[] linii) =>
@@ -37,7 +35,7 @@ public class ValidatorDateFormularTeste
     public void Campurile_obligatorii_lipsa_si_tabelul_gol_sunt_erori()
     {
         var campuri = CampuriValide();
-        campuri.Remove("furnizor_cui");
+        campuri.Remove("lucrare");
 
         var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.ComandaFurnizor, Date(campuri));
 
@@ -49,9 +47,10 @@ public class ValidatorDateFormularTeste
     {
         var campuri = CampuriValide();
         campuri["data"] = "31.02.2026";
-        campuri["total_fara_tva"] = "o mie";
+        var linie = LinieValida().ToDictionary(p => p.Key, p => p.Value);
+        linie["cantitate"] = "o mie";
 
-        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.ComandaFurnizor, Date(campuri, LinieValida()));
+        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.ComandaFurnizor, Date(campuri, linie));
 
         Assert.Equal(2, probleme.Count);
     }

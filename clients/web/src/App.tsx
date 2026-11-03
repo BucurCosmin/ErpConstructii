@@ -17,6 +17,9 @@ import { Administrare } from './pagini/administrare/Administrare'
 import { DetaliiDeviz } from './pagini/devize/DetaliiDeviz'
 import { DetaliiProiect } from './pagini/proiecte/DetaliiProiect'
 import { ListaProiecte } from './pagini/proiecte/ListaProiecte'
+import { Furnizori } from './pagini/furnizori/Furnizori'
+import { Formulare } from './pagini/formulare/Formulare'
+import { Aprovizionare } from './pagini/aprovizionare/Aprovizionare'
 import { tema } from './tema'
 
 dayjs.locale('ro')
@@ -41,8 +44,13 @@ const router = createBrowserRouter([
       { path: 'proiecte/:proiectId', element: <DetaliiProiect /> },
       { path: 'proiecte/:proiectId/devize/:versiuneId', element: <DetaliiDeviz /> },
       { path: 'ofertare', element: <Ofertare /> },
+      { path: 'furnizori', element: <Furnizori /> },
+      { path: 'formulare', element: <Formulare /> },
+      { path: 'aprovizionare', element: <Aprovizionare /> },
       { path: 'administrare/:tab?', element: <Administrare /> },
-      ...module.filter((m) => !m.implementat).map((m) => ({ path: m.cale.slice(1), element: <ModulInDezvoltare modul={m} /> })),
+      ...module
+        .filter((m) => !m.implementat && !['aprovizionare', 'formulare'].includes(m.cheie))
+        .map((m) => ({ path: m.cale.slice(1), element: <ModulInDezvoltare modul={m} /> })),
       {
         path: '*',
         element: <Result status="404" title="Pagina nu există" extra={<Link to="/">Înapoi la tabloul de bord</Link>} />,

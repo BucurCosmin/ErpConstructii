@@ -75,12 +75,13 @@ public sealed class GeneratorWord : IGeneratorFormular
             return;
         }
 
-        IReadOnlyList<IReadOnlyDictionary<string, string>> linii = date.Tabele.TryGetValue(tabel.Nume, out var l) && l.Count > 0
-            ? l
-            : Enumerable.Range(0, randuriGoale).Select(_ => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>()).ToList();
-
-        foreach (var linie in linii)
+        var linii = date.Tabele.TryGetValue(tabel.Nume, out var existente) ? existente : [];
+        var numarRanduri = Math.Max(linii.Count, randuriGoale);
+        for (var index = 0; index < numarRanduri; index++)
         {
+            var linie = index < linii.Count
+                ? linii[index]
+                : new Dictionary<string, string>();
             var rand = (TableRow)randSablon.CloneNode(true);
 
             // Id-urile controalelor trebuie să fie unice în document; la clonare le eliminăm (sunt opționale).
@@ -98,7 +99,10 @@ public sealed class GeneratorWord : IGeneratorFormular
                 }
 
                 var coloana = eticheta[prefix.Length..];
-                OpenXmlUtil.SeteazaText(sdt, linie.TryGetValue(coloana, out var v) ? v : string.Empty);
+                var valoare = coloana == "numar_crt"
+                    ? (index + 1).ToString(CultureInfo.InvariantCulture)
+                    : linie.GetValueOrDefault(coloana) ?? string.Empty;
+                OpenXmlUtil.SeteazaText(sdt, valoare);
             }
 
             parinte.InsertBefore(rand, randSablon);

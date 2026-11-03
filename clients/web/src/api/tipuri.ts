@@ -37,6 +37,34 @@ export interface Firma {
   cui: string | null
 }
 
+export interface Adresa {
+  strada: string
+  localitate: string
+  judet: string | null
+  codPostal: string | null
+  tara: string
+}
+
+export interface ContBancar {
+  banca: string
+  iban: string
+  moneda: string
+  principal: boolean
+}
+
+export interface DateFirma {
+  id: string
+  denumire: string
+  cui: string | null
+  nrRegCom: string | null
+  adresa: Adresa
+  telefon: string | null
+  fax: string | null
+  email: string | null
+  website: string | null
+  conturiBancare: ContBancar[]
+}
+
 export interface Profil {
   id: string
   email: string
@@ -46,6 +74,27 @@ export interface Profil {
   firme: Firma[]
   mfaActivat: boolean
 }
+
+export interface Partener {
+  id: string
+  denumire: string
+  cui: string | null
+  codFiscal: string | null
+  nrRegCom: string | null
+  platitorTva: boolean
+  adresa: Adresa
+  telefon: string | null
+  email: string | null
+  persoanaContact: string | null
+  telefonContact: string | null
+  observatii: string | null
+  conturiBancare: ContBancar[]
+  esteClient: boolean
+  esteSubantreprenor: boolean
+  activ: boolean
+}
+
+export type DatePartener = Omit<Partener, 'id' | 'codFiscal' | 'activ'>
 
 export type TipVersiuneDeviz = 'Oferta' | 'Contract' | 'BugetExecutie' | 'ActAditional'
 

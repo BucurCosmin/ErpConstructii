@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
+    <ProjectReference Include="..\ErpConstructii.Aprovizionare\ErpConstructii.Aprovizionare.csproj" />
+    <ProjectReference Include="..\..\Formulare\ErpConstructii.Formulare\ErpConstructii.Formulare.csproj" />
+    <ProjectReference Include="..\..\Identitate\ErpConstructii.Identitate\ErpConstructii.Identitate.csproj" />
+    <ProjectReference Include="..\..\Proiecte\ErpConstructii.Proiecte\ErpConstructii.Proiecte.csproj" />
+  </ItemGroup>
+</Project>

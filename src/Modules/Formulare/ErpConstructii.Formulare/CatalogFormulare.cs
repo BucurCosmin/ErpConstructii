@@ -2,8 +2,8 @@ namespace ErpConstructii.Formulare;
 
 /// <summary>
 /// Catalogul standard de formulare (documentul de proiect, secțiunea „Formulare și documente Word”).
-/// Doar „comanda-furnizor” are schema completă, ca model; celelalte tipuri sunt declarate cu câmpurile
-/// comune și se completează când se implementează modulul lor (TODO marcat la fiecare).
+/// Comenzile către furnizori și facturile primite au scheme explicite; celelalte tipuri se completează
+/// când se implementează modulul lor (TODO marcat la fiecare).
 /// </summary>
 public static class CatalogFormulare
 {
@@ -11,24 +11,57 @@ public static class CatalogFormulare
     [
         new("numar", "Număr", Obligatoriu: true),
         new("data", "Data", TipCamp.Data, Obligatoriu: true),
-        new("proiect_cod", "Cod proiect", Obligatoriu: true),
         new("proiect_denumire", "Proiect"),
         new("intocmit_de", "Întocmit de"),
     ];
 
     public static readonly TipFormular ComandaFurnizor = new(
         Cod: "comanda-furnizor",
-        Denumire: "Comandă către furnizor",
+        Denumire: "Notă de comandă",
         ModulErp: "Aprovizionare",
         Campuri:
         [
             .. CampuriComune,
+            new("proiect_cod", "Cod proiect"),
+            new("lucrare", "Lucrare", Obligatoriu: true),
+            new("compartiment_santier", "Compartiment / șantier", Obligatoriu: true),
+        ],
+        Tabele:
+        [
+            new TabelFormular("linii",
+            [
+                new("numar_crt", "Nr. crt."),
+                new("denumire", "Denumire", Obligatoriu: true),
+                new("um", "UM", Obligatoriu: true),
+                new("cantitate", "Cantitate", TipCamp.Numar, Obligatoriu: true),
+                new("observatii", "Observații"),
+                new("articol_deviz", "Articol deviz"),
+            ], CelPutinOLinie: true),
+        ],
+        SePoateImporta: true);
+
+    public static readonly TipFormular FacturaPrimita = new(
+        Cod: "factura-primita",
+        Denumire: "Factură primită de la furnizor",
+        ModulErp: "Aprovizionare",
+        Campuri:
+        [
+            .. CampuriComune,
+            new("proiect_cod", "Cod proiect", Obligatoriu: true),
             new("furnizor_denumire", "Furnizor", Obligatoriu: true),
-            new("furnizor_cui", "CUI furnizor", Obligatoriu: true),
-            new("termen_livrare", "Termen de livrare", TipCamp.Data),
-            new("adresa_livrare", "Adresa de livrare (șantier)"),
-            new("conditii_plata", "Condiții de plată"),
+            new("furnizor_cui", "CUI furnizor"),
+            new("furnizor_nr_reg_com", "Nr. Registrul Comerțului furnizor"),
+            new("furnizor_adresa", "Adresa furnizorului"),
+            new("furnizor_telefon", "Telefon furnizor"),
+            new("furnizor_email", "E-mail furnizor"),
+            new("furnizor_banca", "Banca furnizorului"),
+            new("furnizor_iban", "IBAN furnizor"),
+            new("data_scadenta", "Data scadentă", TipCamp.Data),
+            new("moneda", "Monedă"),
+            new("comanda_numar", "Număr comandă"),
             new("total_fara_tva", "Total fără TVA", TipCamp.Suma),
+            new("total_tva", "Total TVA", TipCamp.Suma),
+            new("total_cu_tva", "Total de plată", TipCamp.Suma, Obligatoriu: true),
             new("observatii", "Observații"),
         ],
         Tabele:
@@ -37,12 +70,14 @@ public static class CatalogFormulare
             [
                 new("cod_articol", "Cod articol"),
                 new("denumire", "Denumire", Obligatoriu: true),
-                new("um", "UM", Obligatoriu: true),
-                new("cantitate", "Cantitate", TipCamp.Numar, Obligatoriu: true),
+                new("um", "UM"),
+                new("cantitate", "Cantitate", TipCamp.Numar),
                 new("pret_unitar", "Preț unitar", TipCamp.Suma),
                 new("valoare", "Valoare", TipCamp.Suma),
-                new("articol_deviz", "Articol deviz", Obligatoriu: true),
-            ], CelPutinOLinie: true),
+                new("cota_tva", "Cotă TVA", TipCamp.Numar),
+                new("valoare_tva", "Valoare TVA", TipCamp.Suma),
+                new("articol_deviz", "Articol deviz"),
+            ]),
         ],
         SePoateImporta: true);
 
@@ -50,6 +85,7 @@ public static class CatalogFormulare
     public static readonly IReadOnlyList<TipFormular> Toate =
     [
         ComandaFurnizor,
+        FacturaPrimita,
         Declarat("referat-necesitate", "Referat de necesitate / cerere materiale", "Aprovizionare", true),
         Declarat("cerere-oferta", "Cerere de ofertă către furnizori", "Aprovizionare", false),
         Declarat("comanda-subantreprenor", "Comandă către subantreprenor", "Subantreprenori", true),

@@ -1,0 +1,73 @@
+@baseUrl = http://localhost:5080
+@token = replace-with-access-token
+@sablonId = replace-with-sablon-guid
+@importId = replace-with-import-guid
+
+### Tipurile de formulare și etichetele lor
+GET {{baseUrl}}/api/formulare/tipuri
+Authorization: Bearer {{token}}
+
+### Versiunile de șabloane ale firmei
+GET {{baseUrl}}/api/formulare/sabloane
+Authorization: Bearer {{token}}
+
+### Încarcă un DOCX etichetat; înlocuiește calea locală cu șablonul firmei
+POST {{baseUrl}}/api/formulare/sabloane?codTip=comanda-furnizor
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=FormBoundary
+
+--FormBoundary
+Content-Disposition: form-data; name="fisier"; filename="comanda.docx"
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+< C:\path\to\comanda.docx
+--FormBoundary--
+
+### Descarcă o versiune de șablon
+GET {{baseUrl}}/api/formulare/sabloane/{{sablonId}}/fisier
+Authorization: Bearer {{token}}
+
+### Activează o versiune de șablon
+POST {{baseUrl}}/api/formulare/sabloane/{{sablonId}}/activare
+Authorization: Bearer {{token}}
+Content-Length: 0
+
+### Preview pentru un formular Word creat în afara sistemului
+POST {{baseUrl}}/api/formulare/import/previzualizare
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=PreviewBoundary
+
+--PreviewBoundary
+Content-Disposition: form-data; name="fisier"; filename="comanda-completata.docx"
+Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document
+
+< C:\path\to\comanda-completata.docx
+--PreviewBoundary--
+
+### Importă un document extern cu date introduse manual ca ciornă de verificat
+POST {{baseUrl}}/api/formulare/import
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=ImportBoundary
+
+--ImportBoundary
+Content-Disposition: form-data; name="codTip"
+
+factura-primita
+--ImportBoundary
+Content-Disposition: form-data; name="dateJson"
+
+{"campuri":{"numar":"F-001","data":"2026-11-03","proiect_cod":"P-001","furnizor_denumire":"Furnizor exemplu","total_cu_tva":"1190"},"tabele":{}}
+--ImportBoundary
+Content-Disposition: form-data; name="fisier"; filename="factura.pdf"
+Content-Type: application/pdf
+
+< C:\path\to\factura.pdf
+--ImportBoundary--
+
+### Documentele importate și originalele lor
+GET {{baseUrl}}/api/formulare/import
+Authorization: Bearer {{token}}
+
+### Descarcă originalul importat
+GET {{baseUrl}}/api/formulare/import/{{importId}}/original
+Authorization: Bearer {{token}}

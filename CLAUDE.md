@@ -72,7 +72,7 @@ db/                                  roluri PostgreSQL, șablon RLS, script baz�
 docs/                                cerințe, decizii
 ```
 
-Module existente: Identitate (+ server de autentificare), Proiecte, Devize (+ Import.WinDoc), Contracte (doar calcul), Grafic (+ Import.Primavera, Import.Excel), Facturi (doar logică + contract ANAF), Formulare (+ Infrastructure Word/PDF).
+Module existente: Identitate (+ server de autentificare), Proiecte, Parteneri (furnizori, clienți și subantreprenori), Devize (+ Import.WinDoc), Aprovizionare (note de comandă cu numerotare și aprobare), Contracte (doar calcul), Grafic (+ Import.Primavera, Import.Excel), Facturi (doar logică + contract ANAF), Formulare (+ Infrastructure Word/PDF).
 
 ## Reguli de arhitectură (nu le încălca)
 

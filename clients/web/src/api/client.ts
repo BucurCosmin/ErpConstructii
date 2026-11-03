@@ -67,10 +67,29 @@ export const api = {
 
   delete: async <T>(url: string) => trateaza<T>(await trimite(url, { method: 'DELETE' })),
 
-  postFisier: async <T>(url: string, fisier: File) => {
+  postFisier: async <T>(url: string, fisier: File, campuri?: Record<string, string>) => {
     const date = new FormData()
     date.append('fisier', fisier)
+    if (campuri) {
+      for (const [cheie, valoare] of Object.entries(campuri)) date.append(cheie, valoare)
+    }
     return trateaza<T>(await trimite(url, { method: 'POST', body: date }))
+  },
+
+  getBinar: async (url: string) => {
+    const r = await trimite(url)
+    if (!r.ok) return trateaza<never>(r)
+    return r.blob()
+  },
+
+  postBinar: async (url: string, corp: unknown) => {
+    const r = await trimite(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corp),
+    })
+    if (!r.ok) return trateaza<never>(r)
+    return r.blob()
   },
 }
 

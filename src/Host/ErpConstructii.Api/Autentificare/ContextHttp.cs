@@ -17,5 +17,7 @@ public sealed class UtilizatorCurentHttp(IHttpContextAccessor accesor) : IUtiliz
     public Guid? UtilizatorId =>
         Guid.TryParse(accesor.HttpContext?.User.FindFirstValue(ClaimuriErp.Utilizator), out var id) ? id : null;
 
+    public string? Nume => accesor.HttpContext?.User.FindFirstValue(ClaimuriErp.Nume);
+
     public bool EsteAutentificat => accesor.HttpContext?.User.Identity?.IsAuthenticated == true;
 }

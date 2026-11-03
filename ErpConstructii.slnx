@@ -16,6 +16,10 @@
     <Project Path="src/Host/ErpConstructii.Api/ErpConstructii.Api.csproj" />
   </Folder>
   <Folder Name="/Modules/" />
+  <Folder Name="/Modules/Aprovizionare/">
+    <Project Path="src/Modules/Aprovizionare/ErpConstructii.Aprovizionare/ErpConstructii.Aprovizionare.csproj" />
+    <Project Path="src/Modules/Aprovizionare/ErpConstructii.Aprovizionare.Infrastructure/ErpConstructii.Aprovizionare.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/Modules/Identitate/">
     <Project Path="src/Modules/Identitate/ErpConstructii.Identitate/ErpConstructii.Identitate.csproj" />
     <Project Path="src/Modules/Identitate/ErpConstructii.Identitate.Infrastructure/ErpConstructii.Identitate.Infrastructure.csproj" />

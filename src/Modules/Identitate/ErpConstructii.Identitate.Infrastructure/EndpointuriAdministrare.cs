@@ -52,6 +52,18 @@ public sealed record ModificaRolCerere(string Denumire, IReadOnlyList<string> Pe
 
 public sealed record SalveazaFirmaCerere(string Denumire, string? Cui);
 
+public sealed record FirmaDetaliiDto(
+    Guid Id,
+    string Denumire,
+    string? Cui,
+    string? NrRegCom,
+    Adresa Adresa,
+    string? Telefon,
+    string? Fax,
+    string? Email,
+    string? Website,
+    IReadOnlyList<ContBancar> ConturiBancare);
+
 public sealed record FirmaAdminDto(Guid Id, string Denumire, string? Cui, bool Activa, int Utilizatori);
 
 /// <summary>
@@ -487,18 +499,19 @@ internal static class EndpointuriAdministrare
     private static async Task<IResult> CitesteFirma([AsParameters] Dependente d, CancellationToken ct)
     {
         var f = await d.Db.Firme.AsNoTracking().FirstAsync(x => x.Id == d.FirmaId, ct);
-        return Results.Ok(new FirmaDto(f.Id, f.Denumire, f.Cui));
+        return Results.Ok(new FirmaDetaliiDto(f.Id, f.Denumire, f.Cui, f.NrRegCom, f.Adresa, f.Telefon, f.Fax, f.Email, f.Website, f.ConturiBancare.ToList()));
     }
 
-    private static async Task<IResult> ModificaFirma(SalveazaFirmaCerere cerere, [AsParameters] Dependente d, CancellationToken ct)
+    /// <summary>Datele firmei active (antetul documentelor: comenzi, facturi, situații).</summary>
+    private static async Task<IResult> ModificaFirma(DateFirma cerere, [AsParameters] Dependente d, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(cerere.Denumire))
+        var f = await d.Db.Firme.FirstAsync(x => x.Id == d.FirmaId, ct);
+        var rezultat = f.ModificaDate(cerere with { ConturiBancare = cerere.ConturiBancare ?? [], Adresa = cerere.Adresa ?? Adresa.Goala });
+        if (!rezultat.Succes)
         {
-            return Eroare("Denumirea firmei este obligatorie.");
+            return Eroare(rezultat.Eroare.Mesaj);
         }
 
-        var f = await d.Db.Firme.FirstAsync(x => x.Id == d.FirmaId, ct);
-        f.Modifica(cerere.Denumire, string.IsNullOrWhiteSpace(cerere.Cui) ? null : cerere.Cui);
         await d.Db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
@@ -531,7 +544,12 @@ internal static class EndpointuriAdministrare
             return Eroare("Denumirea firmei este obligatorie.");
         }
 
-        var firma = new Firma(cerere.Denumire, string.IsNullOrWhiteSpace(cerere.Cui) ? null : cerere.Cui);
+        if (!string.IsNullOrWhiteSpace(cerere.Cui) && !ValidareFiscala.EsteCuiValid(cerere.Cui))
+        {
+            return Eroare($"CUI-ul „{cerere.Cui}” nu este valid (cifra de control nu corespunde).");
+        }
+
+        var firma = new Firma(cerere.Denumire, string.IsNullOrWhiteSpace(cerere.Cui) ? null : cerere.Cui.Trim().ToUpperInvariant());
         var roluri = RoluriPredefinite.PentruFirma(firma.Id).ToList();
         var admin = roluri.Single(r => r.Cod == "admin_firma");
 

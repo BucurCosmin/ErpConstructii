@@ -12,6 +12,8 @@ appsettings.*.local.json
 *.p12
 # fișiere reale de la clienți (devize, grafice) NU intră în git; se țin în tests/samples-private
 tests/samples-private/
+# modele de documente reale primite de la client (date reale de firmă, conturi bancare)
+Sabloane/
 
 # frontend
 node_modules/

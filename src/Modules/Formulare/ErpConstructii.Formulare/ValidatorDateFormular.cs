@@ -15,6 +15,10 @@ public static class ValidatorDateFormular
     public static IReadOnlyList<ProblemaImport> Valideaza(TipFormular tip, DateFormular date)
     {
         var probleme = new List<ProblemaImport>();
+        if (date.Campuri is null || date.Tabele is null)
+        {
+            return [new(Severitate.Eroare, "formular", "Lipsesc câmpurile sau tabelele formularului.")];
+        }
 
         foreach (var camp in tip.Campuri)
         {
@@ -24,7 +28,7 @@ public static class ValidatorDateFormular
 
         foreach (var tabel in tip.Tabele)
         {
-            var linii = date.Tabele.TryGetValue(tabel.Nume, out var l) ? l : [];
+            var linii = date.Tabele.TryGetValue(tabel.Nume, out var l) && l is not null ? l : [];
             if (tabel.CelPutinOLinie && linii.Count == 0)
             {
                 probleme.Add(new(Severitate.Eroare, tabel.Nume, "Tabelul nu are nicio linie completată."));
@@ -32,6 +36,12 @@ public static class ValidatorDateFormular
 
             for (var i = 0; i < linii.Count; i++)
             {
+                if (linii[i] is null)
+                {
+                    probleme.Add(new(Severitate.Eroare, $"{tabel.Nume}, linia {i + 1}", "Linia formularului este invalidă."));
+                    continue;
+                }
+
                 foreach (var coloana in tabel.Coloane)
                 {
                     linii[i].TryGetValue(coloana.Nume, out var valoare);

@@ -96,6 +96,84 @@ namespace ErpConstructii.Identitate.Infrastructure.Migrari
                         .HasColumnType("character varying(300)")
                         .HasColumnName("denumire");
 
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Fax")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("fax");
+
+                    b.Property<string>("NrRegCom")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("nr_reg_com");
+
+                    b.Property<string>("Telefon")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("telefon");
+
+                    b.Property<string>("Website")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("website");
+
+                    b.ComplexProperty(typeof(Dictionary<string, object>), "Adresa", "ErpConstructii.Identitate.Firma.Adresa#Adresa", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<string>("CodPostal")
+                                .HasMaxLength(10)
+                                .HasColumnType("character varying(10)")
+                                .HasColumnName("adresa_cod_postal");
+
+                            b1.Property<string>("Judet")
+                                .HasMaxLength(3)
+                                .HasColumnType("character varying(3)")
+                                .HasColumnName("adresa_judet");
+
+                            b1.Property<string>("Localitate")
+                                .IsRequired()
+                                .HasMaxLength(100)
+                                .HasColumnType("character varying(100)")
+                                .HasColumnName("adresa_localitate");
+
+                            b1.Property<string>("Strada")
+                                .IsRequired()
+                                .HasMaxLength(300)
+                                .HasColumnType("character varying(300)")
+                                .HasColumnName("adresa_strada");
+
+                            b1.Property<string>("Tara")
+                                .IsRequired()
+                                .HasMaxLength(2)
+                                .HasColumnType("character varying(2)")
+                                .HasColumnName("adresa_tara");
+                        });
+
+                    b.ComplexCollection(typeof(List<Dictionary<string, object>>), "ConturiBancare", "ErpConstructii.Identitate.Firma.ConturiBancare#ContBancar", b1 =>
+                        {
+                            b1.IsRequired();
+
+                            b1.Property<string>("Banca")
+                                .IsRequired();
+
+                            b1.Property<string>("Iban")
+                                .IsRequired();
+
+                            b1.Property<string>("Moneda")
+                                .IsRequired();
+
+                            b1.Property<bool>("Principal");
+
+                            b1
+                                .ToJson("conturi_bancare")
+                                .HasColumnType("jsonb");
+                        });
+
                     b.HasKey("Id")
                         .HasName("pk_firme");
 

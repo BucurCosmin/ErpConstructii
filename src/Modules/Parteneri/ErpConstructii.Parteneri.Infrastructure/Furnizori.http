@@ -1,0 +1,79 @@
+@baseUrl = http://localhost:5080
+@token = înlocuiește-cu-access-token
+@id = înlocuiește-cu-id-ul-creat
+
+### List active suppliers
+GET {{baseUrl}}/api/parteneri/furnizori
+Authorization: Bearer {{token}}
+
+### Include inactive suppliers
+GET {{baseUrl}}/api/parteneri/furnizori?inclusivInactivi=true
+Authorization: Bearer {{token}}
+
+### Read supplier details
+GET {{baseUrl}}/api/parteneri/furnizori/{{id}}
+Authorization: Bearer {{token}}
+
+### Create supplier
+POST {{baseUrl}}/api/parteneri/furnizori
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "denumire": "Furnizor Exemplu SRL",
+  "cui": null,
+  "nrRegCom": null,
+  "platitorTva": false,
+  "adresa": {
+    "strada": "Strada Exemplu 1",
+    "localitate": "Constanța",
+    "judet": "CT",
+    "codPostal": "900001",
+    "tara": "RO"
+  },
+  "telefon": null,
+  "email": null,
+  "persoanaContact": null,
+  "telefonContact": null,
+  "observatii": null,
+  "conturiBancare": [],
+  "esteClient": false,
+  "esteSubantreprenor": false
+}
+
+### Update supplier
+PUT {{baseUrl}}/api/parteneri/furnizori/{{id}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "denumire": "Furnizor Exemplu SRL",
+  "cui": null,
+  "nrRegCom": null,
+  "platitorTva": false,
+  "adresa": {
+    "strada": "Strada Exemplu 1",
+    "localitate": "Constanța",
+    "judet": "CT",
+    "codPostal": "900001",
+    "tara": "RO"
+  },
+  "telefon": null,
+  "email": null,
+  "persoanaContact": null,
+  "telefonContact": null,
+  "observatii": null,
+  "conturiBancare": [],
+  "esteClient": false,
+  "esteSubantreprenor": false
+}
+
+### Deactivate supplier
+POST {{baseUrl}}/api/parteneri/furnizori/{{id}}/dezactivare
+Authorization: Bearer {{token}}
+Content-Length: 0
+
+### Reactivate supplier
+POST {{baseUrl}}/api/parteneri/furnizori/{{id}}/activare
+Authorization: Bearer {{token}}
+Content-Length: 0

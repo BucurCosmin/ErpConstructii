@@ -15,6 +15,7 @@ public interface IFirmaCurenta
 public interface IUtilizatorCurent
 {
     Guid? UtilizatorId { get; }
+    string? Nume { get; }
     bool EsteAutentificat { get; }
 }
 

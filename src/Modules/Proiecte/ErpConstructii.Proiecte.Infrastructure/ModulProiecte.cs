@@ -29,8 +29,11 @@ public sealed class ModulProiecte : IModul
 {
     public string Nume => ProiecteDbContext.NumeSchema;
 
-    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare) =>
+    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare)
+    {
         servicii.AdaugaDbContextModul<ProiecteDbContext>(configurare, Nume);
+        servicii.AddScoped<IInterogareProiecte, InterogareProiecte>();
+    }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
     {
