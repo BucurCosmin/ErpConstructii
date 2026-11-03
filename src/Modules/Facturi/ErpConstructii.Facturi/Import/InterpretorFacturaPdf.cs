@@ -18,7 +18,7 @@ namespace ErpConstructii.Facturi.Import;
 /// </summary>
 public static partial class InterpretorFacturaPdf
 {
-    private enum Col { Nr, Denumire, Um, Cantitate, Pret, Valoare, Cota, ValoareTva }
+    private enum Col { Nr, Denumire, Um, Cantitate, Pret, Valoare, Cota, ValoareTva, Ignorat }
 
     private sealed record ColoanaAntet(Col Coloana, int X0, int X1)
     {
@@ -41,6 +41,14 @@ public static partial class InterpretorFacturaPdf
 
         var (linii, coloane, indexSfarsitTabel) = CitesteLinii(randuri, document.DinOcr, probleme);
         var (fara, tva, plata) = CitesteTotaluri(randuri, coloane, Math.Max(indexSfarsitTabel, 0), linii, probleme);
+
+        var textTot = Normalizeaza(string.Join(' ', randuri.Select(r => r.Text)));
+        if (textTot.Contains("COMANDA", StringComparison.Ordinal) && !textTot.Contains("FACTURA", StringComparison.Ordinal) &&
+            linii.All(l => l.PretUnitar.Certitudine == Certitudine.Lipsa && l.ValoareFaraTva.Certitudine == Certitudine.Lipsa))
+        {
+            probleme.Add(new ProblemaImport(Severitate.Eroare, "document",
+                "Documentul este o comandă către furnizor, nu o factură: nu are prețuri, valori și TVA. Importă factura primită de la furnizor (XML din SPV sau PDF)."));
+        }
 
         if (linii.Count == 0)
         {
@@ -87,18 +95,15 @@ public static partial class InterpretorFacturaPdf
 
         // Furnizorul: primul CUI valid care nu e al firmei (și nu e lângă eticheta clientului, dacă se poate).
         var candidati = valide.Where(g => g.Cui != firma && g.Cui != cumparator.Valoare).ToList();
+        // Un CUI de lângă eticheta beneficiarului / cumpărătorului nu e niciodată al furnizorului.
         var furnizor = candidati.FirstOrDefault(g => !EsteEtichetaClient(randuri, g.Rand, g.X));
-        if (furnizor.Cui is null && candidati.Count > 0)
-        {
-            furnizor = candidati[0];
-        }
 
         if (furnizor.Cui is not null)
         {
             return (new CampCitit<string>(furnizor.Cui, furnizor.Ocr, furnizor.Text), cumparator);
         }
 
-        var invalid = gasite.FirstOrDefault(g => !g.Valid && g.Cui != firma);
+        var invalid = gasite.FirstOrDefault(g => !g.Valid && g.Cui != firma && !EsteEtichetaClient(randuri, g.Rand, g.X));
         if (invalid.Cui is not null)
         {
             probleme.Add(new ProblemaImport(Severitate.Avertisment, "furnizor", $"CUI-ul citit „{invalid.Cui}” nu trece verificarea cifrei de control."));
@@ -117,6 +122,13 @@ public static partial class InterpretorFacturaPdf
             if (!m.Success)
             {
                 continue;
+            }
+
+            // Cu poziții (PDF / OCR): doar cuvintele din coloana etichetei, pe rândul ei și pe cele de sub ea.
+            var eticheta = randuri[i].Cuvinte.FirstOrDefault(c => EsteCuvantFurnizor(Normalizeaza(c.Text)));
+            if (eticheta is not null && DenumireDinColoana(randuri, i, eticheta) is { Length: >= 3 } dinColoana)
+            {
+                return new CampCitit<string>(Scurteaza(dinColoana, 300), Certitudine.Nesigur, $"Furnizor: {dinColoana}");
             }
 
             var valoare = TaieLaEticheta(m.Groups["v"].Value).Trim(' ', ':', '-');
@@ -148,6 +160,52 @@ public static partial class InterpretorFacturaPdf
         return CampCitit<string>.Lipsa();
     }
 
+    /// <summary>
+    /// Textul din coloana etichetei „Furnizor”: cuvintele de la poziția etichetei spre dreapta, până la următoarea etichetă
+    /// de pe rând; dacă pe rândul etichetei nu e nimic, rândurile de sub ea (cel mult 3), până la adresă / CUI / telefon.
+    /// </summary>
+    private static string? DenumireDinColoana(IReadOnlyList<RandText> randuri, int index, CuvantText eticheta)
+    {
+        var stanga = eticheta.X0 - 30;
+        var dreapta = randuri[index].Cuvinte.Where(c => c.X0 > eticheta.X1 && EsteCuvantClient(Normalizeaza(c.Text))).Select(c => c.X0).DefaultIfEmpty(int.MaxValue).Min();
+
+        string Coloana(RandText r, int deLa) => string.Join(' ', r.Cuvinte
+            .Where(c => !ReferenceEquals(c, eticheta) && c.X0 >= deLa && c.X0 < dreapta && c.Text.Any(char.IsLetterOrDigit))
+            .Select(c => c.Text)).Trim();
+
+        var parti = new List<string>();
+        var peRand = Coloana(randuri[index], eticheta.X0 + 1);
+        if (peRand.Length > 0)
+        {
+            parti.Add(peRand);
+        }
+
+        for (var j = index + 1; j < randuri.Count && j <= index + 3; j++)
+        {
+            var text = Coloana(randuri[j], stanga);
+            if (text.Length == 0)
+            {
+                continue;
+            }
+
+            var t = Normalizeaza(text);
+            if (PotrivireEtichetaUrmatoare().IsMatch(text) || t.StartsWith("ADRES", StringComparison.Ordinal) || t.StartsWith("TEL", StringComparison.Ordinal) ||
+                t.StartsWith("E:", StringComparison.Ordinal) || t.StartsWith("E-MAIL", StringComparison.Ordinal) || t.StartsWith("RC", StringComparison.Ordinal) ||
+                PotrivireCui().IsMatch(text))
+            {
+                break;
+            }
+
+            parti.Add(text);
+            if (PotrivireDenumireFirma().IsMatch(string.Join(' ', parti)))
+            {
+                break; // forma juridică (SRL, SA…) încheie denumirea
+            }
+        }
+
+        return parti.Count == 0 ? null : string.Join(' ', parti).Trim(' ', ':', '.', '…');
+    }
+
     // ------------------------------------------------------------------ antet
 
     private static CampCitit<string> CitesteNumar(IReadOnlyList<RandText> randuri)
@@ -159,6 +217,15 @@ public static partial class InterpretorFacturaPdf
             {
                 var valoare = $"{s.Groups["s"].Value.ToUpperInvariant()} {s.Groups["n"].Value}".Trim();
                 return new CampCitit<string>(valoare, CertitudineOcr(rand, s.Groups["n"].Value), s.Value.Trim());
+            }
+        }
+
+        foreach (var rand in randuri)
+        {
+            var nd = PotrivireNumarCuData().Match(rand.Text);
+            if (nd.Success)
+            {
+                return new CampCitit<string>(nd.Groups["n"].Value, CertitudineOcr(rand, nd.Groups["n"].Value), nd.Value.Trim());
             }
         }
 
@@ -177,6 +244,15 @@ public static partial class InterpretorFacturaPdf
 
     private static CampCitit<DateOnly> CitesteDataEmitere(IReadOnlyList<RandText> randuri)
     {
+        foreach (var rand in randuri)
+        {
+            var nd = PotrivireNumarCuData().Match(rand.Text);
+            if (nd.Success && ParseazaData(nd.Groups["d"].Value) is { } dn)
+            {
+                return new CampCitit<DateOnly>(dn, CertitudineOcr(rand, nd.Groups["d"].Value), nd.Value.Trim());
+            }
+        }
+
         foreach (var rand in randuri)
         {
             var m = PotrivireDataEmitere().Match(rand.Text);
@@ -308,6 +384,10 @@ public static partial class InterpretorFacturaPdf
                 {
                     den.Add(c);
                 }
+                else if (col == Col.Ignorat)
+                {
+                    // termen de livrare, observații: nu țin de valorile liniei
+                }
                 else
                 {
                     valori[col] = valori.TryGetValue(col, out var v) ? v + c.Text : c.Text;
@@ -367,7 +447,8 @@ public static partial class InterpretorFacturaPdf
         }
 
         var consistent = cantitate is { } c && pret is { } p && valoare is { } v && Egal(c * p, v);
-        var certitudineValori = consistent ? certitudineOcr : Certitudine.Nesigur;
+        var faraPreturi = pret is null && valoare is null;
+        var certitudineValori = consistent || faraPreturi ? certitudineOcr : Certitudine.Nesigur;
 
         // Ce lipsește se deduce din celelalte două (de verificat).
         if (valoare is null && cantitate is { } cq && pret is { } pq)
@@ -528,7 +609,9 @@ public static partial class InterpretorFacturaPdf
             Col? col = t switch
             {
                 _ when t.StartsWith("NR", StringComparison.Ordinal) && coloane.All(x => x.Coloana != Col.Nr) && coloane.Count == 0 => Col.Nr,
+                _ when t.StartsWith("TERMEN", StringComparison.Ordinal) || t.StartsWith("OBSERV", StringComparison.Ordinal) => Col.Ignorat,
                 _ when t.StartsWith("DENUMIRE", StringComparison.Ordinal) || t.StartsWith("PRODUS", StringComparison.Ordinal) ||
+                       t.StartsWith("MATERIAL", StringComparison.Ordinal) ||
                        t.StartsWith("DESCRIERE", StringComparison.Ordinal) || t.StartsWith("ARTICOL", StringComparison.Ordinal) ||
                        t.StartsWith("SERVICI", StringComparison.Ordinal) => Col.Denumire,
                 "UM" or "U.M" or "U M" => Col.Um,
@@ -567,8 +650,8 @@ public static partial class InterpretorFacturaPdf
         var esteNumar = c.Text.TrimEnd('%').Any(char.IsAsciiDigit) && c.Text.TrimEnd('%').All(ch => char.IsAsciiDigit(ch) || ch is ',' or '.' or '-');
         var denumire = coloane.First(x => x.Coloana == Col.Denumire);
         var candidate = coloane.Where(x => esteNumar
-            ? x.Coloana is Col.Cantitate or Col.Pret or Col.Valoare or Col.Cota or Col.ValoareTva
-            : x.Coloana is Col.Um or Col.Denumire);
+            ? x.Coloana is Col.Cantitate or Col.Pret or Col.Valoare or Col.Cota or Col.ValoareTva or Col.Ignorat
+            : x.Coloana is Col.Um or Col.Denumire or Col.Ignorat);
         var cea = candidate.OrderBy(x => Math.Abs(x.Centru - centru)).FirstOrDefault();
         if (cea is null)
         {
@@ -590,9 +673,9 @@ public static partial class InterpretorFacturaPdf
     {
         var t = Normalizeaza(text);
         var denumire = t.Contains("DENUMIRE", StringComparison.Ordinal) || t.Contains("PRODUS", StringComparison.Ordinal) ||
-                       t.Contains("DESCRIERE", StringComparison.Ordinal) || t.Contains("ARTICOL", StringComparison.Ordinal);
-        return denumire && t.Contains("CANT", StringComparison.Ordinal) &&
-               (t.Contains("PRET", StringComparison.Ordinal) || t.Contains("VALOARE", StringComparison.Ordinal));
+                       t.Contains("DESCRIERE", StringComparison.Ordinal) || t.Contains("ARTICOL", StringComparison.Ordinal) ||
+                       t.Contains("MATERIAL", StringComparison.Ordinal);
+        return denumire && t.Contains("CANT", StringComparison.Ordinal);
     }
 
     private static bool ContineCuvantAntet(string text)
@@ -615,28 +698,34 @@ public static partial class InterpretorFacturaPdf
     /// </summary>
     private static bool EsteEtichetaClient(IReadOnlyList<RandText> randuri, int index, int x)
     {
-        for (var i = index; i >= 0 && i >= index - 4; i--)
+        // Cu poziții: cea mai apropiată etichetă de deasupra, din coloana CUI-ului (eticheta cea mai din dreapta care începe
+        // la stânga lui). Antetele au des 2–3 coloane, iar eticheta poate fi cu multe rânduri mai sus (adresă, RC, cont…).
+        if (x > 0)
         {
-            var client = randuri[i].Cuvinte.FirstOrDefault(c => EsteCuvantClient(Normalizeaza(c.Text)));
-            var furnizor = randuri[i].Cuvinte.FirstOrDefault(c => EsteCuvantFurnizor(Normalizeaza(c.Text)));
+            for (var i = index; i >= 0 && i >= index - 15; i--)
+            {
+                var eticheta = randuri[i].Cuvinte
+                    .Where(c => c.X0 <= x + 40 && (EsteCuvantClient(Normalizeaza(c.Text)) || EsteCuvantFurnizor(Normalizeaza(c.Text))))
+                    .OrderByDescending(c => c.X0)
+                    .FirstOrDefault();
+                if (eticheta is not null)
+                {
+                    return EsteCuvantClient(Normalizeaza(eticheta.Text));
+                }
+            }
+
+            return false;
+        }
+
+        // Fără poziții (Word): eticheta cea mai apropiată de deasupra, pe text.
+        for (var i = index; i >= 0 && i >= index - 6; i--)
+        {
             var t = Normalizeaza(randuri[i].Text);
-            var areClient = client is not null || t.Contains("CUMPARATOR", StringComparison.Ordinal) || t.StartsWith("CLIENT", StringComparison.Ordinal) || t.StartsWith("BENEFICIAR", StringComparison.Ordinal);
-            var areFurnizor = furnizor is not null || t.Contains("FURNIZOR", StringComparison.Ordinal) || t.Contains("VANZATOR", StringComparison.Ordinal);
-
-            if (areClient && areFurnizor && client is not null && furnizor is not null && x > 0)
+            var areClient = t.Contains("CUMPARATOR", StringComparison.Ordinal) || t.StartsWith("CLIENT", StringComparison.Ordinal) || t.StartsWith("BENEFICIAR", StringComparison.Ordinal);
+            var areFurnizor = t.Contains("FURNIZOR", StringComparison.Ordinal) || t.Contains("VANZATOR", StringComparison.Ordinal);
+            if (areClient != areFurnizor)
             {
-                // Două coloane: CUI-ul e de partea etichetei cumpărătorului?
-                return client.X0 > furnizor.X0 ? x >= client.X0 - 20 : x < furnizor.X0 - 20;
-            }
-
-            if (areClient && !areFurnizor)
-            {
-                return true;
-            }
-
-            if (areFurnizor && !areClient)
-            {
-                return false;
+                return areClient;
             }
         }
 
@@ -759,6 +848,9 @@ public static partial class InterpretorFacturaPdf
     [GeneratedRegex(@"(?:\bFactur[aă](?:\s+fiscal[aă])?|\bInvoice)\s*(?:seria\s*\S+\s*)?(?:nr\.?|num[aă]r(?:ul)?|no\.?)\s*[:.]?\s*(?<n>[A-Z]{0,10}\s?[-/]?\s?\d[\d/\-]*)|\b(?:Nr\.?|Num[aă]r(?:ul)?)\s*(?:factur[aă]|document)\s*[:.]?\s*(?<n>[A-Z0-9][A-Z0-9/\-]*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireNumarFactura();
 
+    [GeneratedRegex(@"\bNr\.?\s*(?<n>[A-Z0-9][A-Z0-9\-]*)\s*/\s*(?<d>\d{1,2}\.\d{1,2}\.\d{4})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireNumarCuData();
+
     [GeneratedRegex(@"\bData\s*(?:factur[iă]i|emiterii|emitere|documentului)?\s*[:.]?\s*(?<d>" + Data + ")", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireDataEmitere();
 
@@ -768,7 +860,8 @@ public static partial class InterpretorFacturaPdf
     [GeneratedRegex(@"termen(?:ul)?\s+de\s+plat[aă]\s*[:.]?\s*(?<z>\d{1,3})\s*zile", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireTermenZile();
 
-    [GeneratedRegex(@"(?<z>\d{1,2})[./\-](?<l>\d{1,2})[./\-](?<a>\d{4}|\d{2})\b|\b(?<Y>\d{4})-(?<M>\d{2})-(?<D>\d{2})\b", RegexOptions.CultureInvariant)]
+    // Același separator între zi, lună și an („1/09.01.2026” nu e o dată; „09.01.2026” da).
+    [GeneratedRegex(@"(?<!\d)(?<z>\d{1,2})(?<s>[./\-])(?<l>\d{1,2})\k<s>(?<a>\d{4}|\d{2})\b|\b(?<Y>\d{4})-(?<M>\d{2})-(?<D>\d{2})\b", RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireDataLibera();
 
     [GeneratedRegex(@"\b(?:comand[aă]|comenzii?|order|contract(?:ul)?|aviz(?:ul)?)\s*(?:nr\.?|no\.?)?\s*[:.]?\s*[A-Z0-9][A-Z0-9/\-.]*\d[A-Z0-9/\-.]*", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]

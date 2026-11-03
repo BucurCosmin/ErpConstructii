@@ -264,6 +264,64 @@ public class InterpretorFacturaPdfTeste
     }
 }
 
+/// <summary>Formular de comandă cu 3 coloane (Beneficiar | COMANDA | Furnizor), ca formularul GC 007; date sintetice.</summary>
+public class ComandaCaFacturaTeste
+{
+    private static RandText R(int y, params (string Text, int X0)[] cuvinte) =>
+        new(string.Join(' ', cuvinte.Select(c => c.Text)),
+            cuvinte.Select(c => new CuvantText(c.Text, c.X0, c.X0 + c.Text.Length * 20, 100)).ToList(), 1, y, y + 30);
+
+    private static TextDocument Comanda() => new(
+    [
+        R(150, ("Beneficiar:", 270)),
+        R(190, ("COMANDA", 1130)),
+        R(207, ("Furnizor:", 1600), ("ALFA", 1800), ("TRADE", 1900)),
+        R(226, ("SC", 320), ("CONSTRUCT", 390), ("TEST", 600), ("SRL", 700)),
+        R(250, ("INDUSTRY", 1600)),
+        R(292, ("Nr.", 1090), ("7/09.01.2026", 1160)),
+        R(330, ("ADRESA", 1600), (":", 1750), ("Str.", 1780), ("Exemplu", 1860)),
+        R(415, ("CUI:", 270), ("RO", 360), (DateTest.CuiFirma, 430), ("Obiect/", 940), ("Lucrare", 1100)),
+        R(1380, ("MATERIAL", 717), ("/", 944), ("PRODUS", 969), ("U.M", 1547), ("CANTITATE", 1702), ("TERMEN", 2040)),
+        R(1460, ("1.", 296), ("MANUSI", 397), ("PROTECTIE", 561), ("MARIMEA", 800), ("9", 1000), ("BUC", 1517), ("60", 1800)),
+        R(1507, ("2.", 296), ("PRAF", 397), ("CRETA", 513), ("BUC", 1517), ("1", 1811)),
+        R(2120, ("APROBAT,", 249), ("AVIZAT,", 953), ("INTOCMIT,", 1799)),
+    ], [], DinOcr: false);
+
+    [Fact]
+    public void CUI_ul_beneficiarului_nu_ajunge_niciodata_la_furnizor()
+    {
+        // Firma activă nu e cea din document → beneficiarul e semnalat, dar furnizorul rămâne fără CUI (nu se ia al beneficiarului).
+        var f = InterpretorFacturaPdf.Interpreteaza(Comanda(), "34567892");
+        Assert.Equal(Certitudine.Lipsa, f.FurnizorCui.Certitudine);
+        Assert.Equal(DateTest.CuiFirma, f.CumparatorCui.Valoare);
+    }
+
+    [Fact]
+    public void Furnizorul_se_citeste_din_coloana_lui_chiar_pe_doua_randuri()
+    {
+        var f = InterpretorFacturaPdf.Interpreteaza(Comanda(), DateTest.CuiFirma);
+        Assert.Equal("ALFA TRADE INDUSTRY", f.FurnizorDenumire.Valoare); // nu „SC CONSTRUCT TEST SRL” din coloana beneficiarului
+        Assert.Equal((DateTest.CuiFirma, Certitudine.Sigur), (f.CumparatorCui.Valoare, f.CumparatorCui.Certitudine));
+    }
+
+    [Fact]
+    public void Numarul_cu_data_se_imparte_corect()
+    {
+        var f = InterpretorFacturaPdf.Interpreteaza(Comanda(), DateTest.CuiFirma);
+        Assert.Equal(("7", new DateOnly(2026, 1, 9)), (f.Numar.Valoare, f.DataEmitere.Valoare)); // „7/09.01.2026”, nu 2001
+    }
+
+    [Fact]
+    public void Tabelul_MATERIAL_PRODUS_fara_preturi_se_citeste_iar_documentul_e_semnalat_ca_comanda()
+    {
+        var f = InterpretorFacturaPdf.Interpreteaza(Comanda(), DateTest.CuiFirma);
+
+        Assert.Equal(2, f.Linii.Count);
+        Assert.Equal(("MANUSI PROTECTIE MARIMEA 9", "buc", 60m, Certitudine.Sigur), (f.Linii[0].Denumire.Valoare, f.Linii[0].UnitateMasura.Valoare, f.Linii[0].Cantitate.Valoare, f.Linii[0].Cantitate.Certitudine));
+        Assert.Contains(f.Probleme, p => p.Severitate == Severitate.Eroare && p.Locatie == "document");
+    }
+}
+
 public class FacturaPrimitaTeste
 {
     private static readonly LinieFactura Linie = new("Plasă sudată", "buc", 70m, 10m, 700m, 0.21m, 147m);
