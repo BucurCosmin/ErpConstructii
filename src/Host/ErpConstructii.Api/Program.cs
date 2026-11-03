@@ -1,4 +1,5 @@
 using ErpConstructii.Api.Autentificare;
+using ErpConstructii.Api.Dezvoltare;
 using ErpConstructii.Devize.Import.WinDoc;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Formulare.Infrastructure;
@@ -68,6 +69,17 @@ app.UseAuthorization();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+    app.MapeazaSesiuneDev();
+
+    // Date demo pentru aplicația web. Dacă baza nu e pregătită (migrări nerulate), aplicația pornește oricum.
+    try
+    {
+        await DateDemo.SeteazaAsync(app.Services);
+    }
+    catch (Exception ex) when (ex is Npgsql.NpgsqlException or InvalidOperationException or Microsoft.EntityFrameworkCore.DbUpdateException)
+    {
+        app.Logger.LogWarning(ex, "Datele demo nu au putut fi create. Ai rulat migrările? (vezi README)");
+    }
 }
 
 app.MapGet("/sanatate", () => Results.Ok(new { stare = "ok" })).AllowAnonymous();
@@ -80,7 +92,7 @@ foreach (var modul in module)
     modul.MapeazaEndpointuri(api);
 }
 
-app.Run();
+await app.RunAsync();
 
 /// <summary>Expus pentru testele de integrare (WebApplicationFactory).</summary>
 public partial class Program;

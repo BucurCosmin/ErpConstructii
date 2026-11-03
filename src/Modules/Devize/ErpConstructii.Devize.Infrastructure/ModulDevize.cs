@@ -26,6 +26,25 @@ public sealed record PrevizualizareImportDto(
 
 public sealed record VersiuneDto(Guid Id, string Tip, int Numar, string Denumire, string Stare, string Sursa);
 
+public sealed record ArticolDto(
+    Guid Id,
+    string Simbol,
+    string Denumire,
+    string UnitateMasura,
+    decimal Cantitate,
+    ValoriResurse PretUnitar,
+    ValoriResurse Valoare);
+
+public sealed record CategorieDto(Guid Id, string Cod, string Denumire, bool Subcontractata, decimal Total, IReadOnlyList<ArticolDto> Articole);
+
+public sealed record ObiectDto(Guid Id, string Cod, string Denumire, decimal Total, IReadOnlyList<CategorieDto> Categorii);
+
+public sealed record StructuraDevizDto(
+    VersiuneDto Versiune,
+    ParametriRecapitulatie Parametri,
+    RecapitulatieDeviz Recapitulatie,
+    IReadOnlyList<ObiectDto> Obiecte);
+
 public sealed class ModulDevize : IModul
 {
     public string Nume => DevizeDbContext.NumeSchema;
@@ -51,6 +70,13 @@ public sealed class ModulDevize : IModul
                 .Select(v => new VersiuneDto(v.Id, v.Tip.ToString(), v.Numar, v.Denumire, v.Stare.ToString(), v.Sursa))
                 .ToListAsync(ct))
             .CerePermisiune(vizualizare);
+
+        // Structura completă obiect → categorie → articol, cu valorile calculate (pentru afișare).
+        grup.MapGet("/{versiuneId:guid}", async (Guid proiectId, Guid versiuneId, DevizeDbContext db, CancellationToken ct) =>
+        {
+            var v = await IncarcaCompletAsync(db, proiectId, versiuneId, ct);
+            return v is null ? Results.NotFound() : Results.Ok(Structura(v));
+        }).CerePermisiune(vizualizare);
 
         grup.MapGet("/{versiuneId:guid}/recapitulatie", async (Guid proiectId, Guid versiuneId, DevizeDbContext db, CancellationToken ct) =>
         {
@@ -149,6 +175,28 @@ public sealed class ModulDevize : IModul
             recapitulatie,
             probleme.Select(p => new ProblemaDto(p.Severitate.ToString(), p.Locatie, p.Mesaj)).ToList(),
             deviz is not null && probleme.All(p => p.Severitate != Severitate.Eroare));
+    }
+
+    private static StructuraDevizDto Structura(VersiuneDeviz v)
+    {
+        var parametri = v.Parametri();
+        var obiecte = v.Obiecte.OrderBy(o => o.Ordine).Select(o =>
+        {
+            var categorii = o.Categorii.OrderBy(c => c.Ordine).Select(c =>
+            {
+                var articole = c.Articole.OrderBy(a => a.Ordine).Select(a => new ArticolDto(
+                    a.Id, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.PretUnitar,
+                    CalculatorDeviz.ValoareLinie(a.CaLinie(), parametri.RotunjireLinie))).ToList();
+                return new CategorieDto(c.Id, c.Cod, c.Denumire, c.Subcontractata, articole.Sum(a => a.Valoare.Total), articole);
+            }).ToList();
+            return new ObiectDto(o.Id, o.Cod, o.Denumire, categorii.Sum(c => c.Total), categorii);
+        }).ToList();
+
+        return new StructuraDevizDto(
+            new VersiuneDto(v.Id, v.Tip.ToString(), v.Numar, v.Denumire, v.Stare.ToString(), v.Sursa),
+            parametri,
+            v.Recapitulatie(),
+            obiecte);
     }
 
     private static Task<VersiuneDeviz?> IncarcaCompletAsync(DevizeDbContext db, Guid proiectId, Guid versiuneId, CancellationToken ct) =>

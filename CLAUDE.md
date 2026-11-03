@@ -31,7 +31,8 @@ Abia după ce build-ul și testele sunt verzi, treci la backlog-ul de mai jos.
 ## Comenzi
 
 ```bash
-docker compose up -d                                   # PostgreSQL 17 + Gotenberg (PDF)
+powershell -File db/creeaza-baza-locala.ps1           # PostgreSQL local: baza erp, roluri, migrări
+docker compose up -d                                   # alternativ: PostgreSQL 17 + Gotenberg (PDF)
 dotnet run --project src/Host/ErpConstructii.Api       # http://localhost:5080, OpenAPI la /openapi/v1.json
 
 # Migrări EF: una per modul, rulate cu rolul erp_owner (NU erp_app).
@@ -40,6 +41,8 @@ dotnet ef migrations add Initial \
   -s src/Host/ErpConstructii.Api \
   -c ProiecteDbContext -o Migrari
 ```
+
+Interfața web: `cd clients/web && npm run dev` (http://localhost:5173, proxy spre API). În Development, API-ul creează date demo (`Dezvoltare/DateDemo.cs`), iar aplicația web își ia identitatea demo din `GET /dev/sesiune`.
 
 În Development, autentificarea se face prin headere: `X-Dev-Utilizator: <guid>` și `X-Dev-Firma: <guid>`.
 
@@ -58,7 +61,10 @@ src/
 tests/
   ErpConstructii.Teste.Unitare       logica pură, valori calculate de mână
   ErpConstructii.Teste.Formulare     generare + citire Word (Open XML)
-db/                                  roluri PostgreSQL, șablon RLS
+clients/
+  web                                React + TypeScript + Ant Design (Vite)
+  mobile                             (viitor) React Native, partajează tipurile și clientul API
+db/                                  roluri PostgreSQL, șablon RLS, script bază locală
 docs/                                cerințe, decizii
 ```
 
@@ -94,7 +100,7 @@ Module existente: Identitate, Proiecte, Devize (+ Import.WinDoc), Contracte (doa
 ## Backlog — faza 0 (în ordine)
 
 1. Build și teste verzi (vezi „Primul pas”).
-2. Migrările inițiale pentru Identitate, Proiecte, Devize. Aplici RLS pe tabelele cu `firma_id`. Test de integrare (Testcontainers PostgreSQL): o firmă nu vede datele alteia, nici cu interogări fără `WHERE`.
+2. ~~Migrările inițiale pentru Identitate, Proiecte, Devize, cu RLS (`MigrariRls.AplicaRls`).~~ Rămâne: test de integrare (Testcontainers PostgreSQL): o firmă nu vede datele alteia, nici cu interogări fără `WHERE`.
 3. Autentificare reală: ASP.NET Core Identity + OpenIddict (D-07), MFA TOTP, claim `firma_id` pentru firma activă și schimbarea firmei active. Elimini `throw`-ul din `Program.cs` pentru non-Development.
 4. Administrarea utilizatorilor, rolurilor și atribuirilor: la crearea unei firme se copiază rolurile din `RoluriPredefinite`, iar cache-ul de permisiuni se invalidează la schimbări.
 5. Jurnalul de audit append-only (schema `audit`), scris din `InterceptorAudit`.

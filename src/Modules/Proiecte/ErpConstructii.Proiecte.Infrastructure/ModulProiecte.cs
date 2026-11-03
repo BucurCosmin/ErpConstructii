@@ -11,7 +11,17 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpConstructii.Proiecte.Infrastructure;
 
-public sealed record ProiectDto(Guid Id, string Cod, string Denumire, string Beneficiar, string Stare, DateOnly? TermenContractual);
+public sealed record ProiectDto(
+    Guid Id,
+    string Cod,
+    string Denumire,
+    string Beneficiar,
+    string? CuiBeneficiar,
+    string AdresaSantier,
+    string Stare,
+    DateOnly? DataInceput,
+    DateOnly? TermenContractual,
+    DateTimeOffset CreatLa);
 
 public sealed record CreeazaProiectCerere(string Cod, string Denumire, string Beneficiar, string? CuiBeneficiar, string AdresaSantier);
 
@@ -49,7 +59,7 @@ public sealed class ModulProiecte : IModul
 
             return await interogare
                 .OrderBy(p => p.Cod)
-                .Select(p => new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.Stare.ToString(), p.TermenContractual))
+                .Select(p => new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa))
                 .ToListAsync(ct);
         }).CerePermisiune(vizualizare);
 
@@ -58,7 +68,7 @@ public sealed class ModulProiecte : IModul
             var p = await db.Proiecte.AsNoTracking().FirstOrDefaultAsync(x => x.Id == proiectId, ct);
             return p is null
                 ? Results.NotFound()
-                : Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.Stare.ToString(), p.TermenContractual));
+                : Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa));
         }).CerePermisiune(vizualizare);
 
         grup.MapPost("/", async (CreeazaProiectCerere cerere, ProiecteDbContext db, CancellationToken ct) =>

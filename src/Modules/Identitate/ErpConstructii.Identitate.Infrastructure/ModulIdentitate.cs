@@ -4,10 +4,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpConstructii.Identitate.Infrastructure;
+
+public sealed record ProfilDto(Guid Id, string Email, string Nume, string Tip, Guid? FirmaActiva);
 
 public sealed class ModulIdentitate : IModul
 {
@@ -24,6 +27,20 @@ public sealed class ModulIdentitate : IModul
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
     {
         var grup = rute.MapGroup("/identitate").WithTags("Identitate");
+
+        // Profilul utilizatorului curent (antetul aplicației web).
+        grup.MapGet("/eu", async (IdentitateDbContext db, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct) =>
+        {
+            if (utilizator.UtilizatorId is not { } id)
+            {
+                return Results.Unauthorized();
+            }
+
+            var u = await db.Utilizatori.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+            return u is null
+                ? Results.NotFound()
+                : Results.Ok(new ProfilDto(u.Id, u.Email, u.Nume, u.Tip.ToString(), firma.FirmaId));
+        });
 
         // Permisiunile utilizatorului curent pe firma activă: frontend-ul le folosește
         // ca să ascundă butoane, dar verificarea reală rămâne pe server.

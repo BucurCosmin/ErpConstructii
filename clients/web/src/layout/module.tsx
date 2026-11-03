@@ -1,0 +1,212 @@
+import {
+  AuditOutlined,
+  BankOutlined,
+  BarChartOutlined,
+  CalculatorOutlined,
+  CarOutlined,
+  DashboardOutlined,
+  FileDoneOutlined,
+  FileTextOutlined,
+  FundProjectionScreenOutlined,
+  ProjectOutlined,
+  SafetyCertificateOutlined,
+  ScheduleOutlined,
+  SettingOutlined,
+  ShoppingCartOutlined,
+  TeamOutlined,
+  ToolOutlined,
+} from '@ant-design/icons'
+import type { ReactNode } from 'react'
+
+/**
+ * Modulele aplicației, în ordinea fluxului unui proiect de construcții.
+ * Modulele încă neimplementate au o pagină „în dezvoltare” cu cerințele lor (docs/cerinte.md).
+ */
+export interface ModulAplicatie {
+  cheie: string
+  cale: string
+  eticheta: string
+  icon: ReactNode
+  grup: 'principal' | 'proiect' | 'executie' | 'financiar' | 'sistem'
+  /** Permisiunea de vizualizare (modul.vizualizare) cerută pentru afișare. */
+  permisiune?: string
+  implementat?: boolean
+  faza?: string
+  descriere?: string
+  cerinte?: string[]
+}
+
+export const module: ModulAplicatie[] = [
+  { cheie: 'tablou', cale: '/', eticheta: 'Tablou de bord', icon: <DashboardOutlined />, grup: 'principal', implementat: true },
+  {
+    cheie: 'proiecte',
+    cale: '/proiecte',
+    eticheta: 'Proiecte',
+    icon: <ProjectOutlined />,
+    grup: 'principal',
+    permisiune: 'proiecte.vizualizare',
+    implementat: true,
+  },
+  {
+    cheie: 'ofertare',
+    cale: '/ofertare',
+    eticheta: 'Ofertare și devize',
+    icon: <CalculatorOutlined />,
+    grup: 'proiect',
+    permisiune: 'ofertare.vizualizare',
+    implementat: true,
+  },
+  {
+    cheie: 'contracte',
+    cale: '/contracte',
+    eticheta: 'Contracte',
+    icon: <FileDoneOutlined />,
+    grup: 'proiect',
+    permisiune: 'contracte.vizualizare',
+    faza: 'Faza 1',
+    descriere:
+      'Contracte cu beneficiarul și cu subantreprenorii: valoare, termene, avans, garanție de bună execuție, penalități, acte adiționale și formule de ajustare a prețului pe indici INS.',
+    cerinte: ['REQ-CTR-01', 'REQ-CTR-02', 'REQ-CTR-03', 'REQ-CTR-04'],
+  },
+  {
+    cheie: 'buget',
+    cale: '/buget',
+    eticheta: 'Buget și cost',
+    icon: <FundProjectionScreenOutlined />,
+    grup: 'proiect',
+    permisiune: 'buget.vizualizare',
+    faza: 'Faza 1–2',
+    descriere: 'Bugetul de execuție pe articole de deviz, angajat vs. realizat, marjă și prognoză la terminare.',
+    cerinte: ['REQ-GEN-02', 'REQ-RPT-02'],
+  },
+  {
+    cheie: 'grafic',
+    cale: '/grafic',
+    eticheta: 'Grafic de execuție',
+    icon: <ScheduleOutlined />,
+    grup: 'proiect',
+    permisiune: 'proiecte.vizualizare',
+    faza: 'Faza 1',
+    descriere:
+      'Import din Primavera P6 și Excel, legarea activităților de articolele de deviz, actualizare la data de raportare, linii de bază înghețate.',
+    cerinte: ['REQ-GRF-01', 'REQ-GRF-02', 'REQ-GRF-03', 'REQ-GRF-04'],
+  },
+  {
+    cheie: 'situatii',
+    cale: '/situatii',
+    eticheta: 'Situații de lucrări',
+    icon: <AuditOutlined />,
+    grup: 'executie',
+    permisiune: 'situatii.vizualizare',
+    faza: 'Faza 1',
+    descriere:
+      'Situații lunare pe articole, cumulat și rest de executat; ajustare, recuperare avans, reținere garanție, TVA sau taxare inversă.',
+    cerinte: ['REQ-SIT-01', 'REQ-SIT-02', 'REQ-SIT-03', 'REQ-SIT-04'],
+  },
+  {
+    cheie: 'santier',
+    cale: '/santier',
+    eticheta: 'Execuție șantier',
+    icon: <SafetyCertificateOutlined />,
+    grup: 'executie',
+    permisiune: 'santier.vizualizare',
+    faza: 'Faza 2',
+    descriere: 'Jurnal zilnic, pontaj pe articol, bonuri de consum, cereri de materiale. Alimentat din aplicația mobilă, cu lucru offline.',
+    cerinte: ['REQ-SNT-01', 'REQ-SNT-02', 'REQ-SNT-03', 'REQ-SNT-05'],
+  },
+  {
+    cheie: 'aprovizionare',
+    cale: '/aprovizionare',
+    eticheta: 'Aprovizionare',
+    icon: <ShoppingCartOutlined />,
+    grup: 'executie',
+    permisiune: 'aprovizionare.vizualizare',
+    faza: 'Faza 2',
+    descriere: 'Cereri de materiale, comenzi către furnizori, NIR, gestiuni de șantier și potrivirea în 3 puncte comandă–NIR–factură.',
+    cerinte: ['REQ-FCT-09', 'REQ-FCT-10'],
+  },
+  {
+    cheie: 'utilaje',
+    cale: '/utilaje',
+    eticheta: 'Utilaje',
+    icon: <CarOutlined />,
+    grup: 'executie',
+    permisiune: 'utilaje.vizualizare',
+    faza: 'Faza 2',
+    descriere: 'Parc de utilaje, alocare pe șantiere, ore de funcționare, consum de combustibil și cost pe articol.',
+    cerinte: ['REQ-SNT-04', 'REQ-RPT-03'],
+  },
+  {
+    cheie: 'facturi',
+    cale: '/facturi',
+    eticheta: 'Facturi și e-Factura',
+    icon: <FileTextOutlined />,
+    grup: 'financiar',
+    permisiune: 'financiar.vizualizare',
+    faza: 'Faza 1',
+    descriere:
+      'Facturi emise și primite în format UBL CIUS-RO, trimitere automată în SPV, urmărirea stării, taxare inversă propusă automat.',
+    cerinte: ['REQ-FCT-01', 'REQ-FCT-02', 'REQ-FCT-03', 'REQ-FCT-04', 'REQ-FCT-07'],
+  },
+  {
+    cheie: 'financiar',
+    cale: '/financiar',
+    eticheta: 'Financiar',
+    icon: <BankOutlined />,
+    grup: 'financiar',
+    permisiune: 'financiar.vizualizare',
+    faza: 'Faza 3',
+    descriere: 'Contabilitate, SAF-T (D406), trezorerie și cash-flow previzionat. Până atunci: export către programul contabil existent.',
+    cerinte: ['REQ-FCT-12', 'REQ-CNF-01'],
+  },
+  {
+    cheie: 'hr',
+    cale: '/hr',
+    eticheta: 'Personal și salarizare',
+    icon: <TeamOutlined />,
+    grup: 'financiar',
+    permisiune: 'hr.vizualizare',
+    faza: 'Faza 3',
+    descriere: 'Salarizare cu facilitățile din construcții, D112, REGES-Online.',
+    cerinte: ['REQ-CNF-03', 'REQ-CNF-04'],
+  },
+  {
+    cheie: 'rapoarte',
+    cale: '/rapoarte',
+    eticheta: 'Rapoarte',
+    icon: <BarChartOutlined />,
+    grup: 'sistem',
+    faza: 'Faza 2',
+    descriere: 'Curba S, EVM (CPI, SPI, EAC), buget vs. realizat, consum normat vs. real, rapoarte PDF/Excel programate.',
+    cerinte: ['REQ-RPT-01', 'REQ-RPT-02', 'REQ-RPT-03', 'REQ-RPT-04'],
+  },
+  {
+    cheie: 'formulare',
+    cale: '/formulare',
+    eticheta: 'Formulare și documente',
+    icon: <ToolOutlined />,
+    grup: 'sistem',
+    faza: 'Faza 1',
+    descriere: 'Catalog de formulare (NIR, bon de consum, PV-uri, dispoziții de șantier), generare Word/PDF din șabloanele firmei, import formulare completate.',
+    cerinte: ['REQ-FRM-01', 'REQ-FRM-03', 'REQ-FRM-04', 'REQ-FRM-08'],
+  },
+  {
+    cheie: 'administrare',
+    cale: '/administrare',
+    eticheta: 'Administrare',
+    icon: <SettingOutlined />,
+    grup: 'sistem',
+    permisiune: 'administrare.vizualizare',
+    faza: 'Faza 0',
+    descriere: 'Utilizatori, roluri și atribuiri pe firmă/proiect, setările firmei (cote, serii de numerotare), jurnal de audit.',
+    cerinte: ['REQ-UTL-01', 'REQ-DRP-02', 'REQ-DRP-03', 'REQ-GEN-05'],
+  },
+]
+
+export const grupuri: Record<ModulAplicatie['grup'], string> = {
+  principal: '',
+  proiect: 'Proiect',
+  executie: 'Execuție',
+  financiar: 'Financiar',
+  sistem: 'Sistem',
+}
