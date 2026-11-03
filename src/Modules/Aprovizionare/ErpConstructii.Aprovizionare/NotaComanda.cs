@@ -10,6 +10,13 @@ public enum StareNotaComanda
     Respinsa,
 }
 
+/// <summary>De unde vine nota: emisă în sistem sau importată dintr-un document extern (hârtie scanată, Word).</summary>
+public enum SursaNotaComanda
+{
+    Sistem,
+    Import,
+}
+
 public sealed record LinieNotaComanda(
     string Denumire,
     string UnitateMasura,
@@ -66,6 +73,14 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
     public string LiniiJson { get; private set; } = "[]";
     public IReadOnlyList<LinieNotaComanda> Linii => JsonSerializer.Deserialize<List<LinieNotaComanda>>(LiniiJson) ?? [];
     public StareNotaComanda Stare { get; private set; }
+    public SursaNotaComanda Sursa { get; private set; } = SursaNotaComanda.Sistem;
+
+    /// <summary>Numărul de pe documentul original (pentru notele importate), păstrat lângă numărul de sistem.</summary>
+    public string? NumarExtern { get; private set; }
+
+    /// <summary>Documentul original importat (scanare / Word), arhivat neschimbat.</summary>
+    public Guid? DocumentOriginalId { get; private set; }
+
     public Guid? DecisaDeId { get; private set; }
     public string? DecisaDeNume { get; private set; }
     public DateTimeOffset? DecisaLa { get; private set; }
@@ -84,7 +99,24 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
         string emitentNume,
         Guid sablonId,
         int versiuneSablon,
-        IReadOnlyCollection<LinieNotaComanda> linii)
+        IReadOnlyCollection<LinieNotaComanda> linii) =>
+        Creeaza(an, numar, proiectId, proiectCod, lucrare, compartimentSantier, data, emitentId, emitentNume,
+            sablonId, versiuneSablon, linii, cereSablon: true);
+
+    private static Rezultat<NotaComanda> Creeaza(
+        int an,
+        int numar,
+        Guid proiectId,
+        string proiectCod,
+        string lucrare,
+        string compartimentSantier,
+        DateOnly data,
+        Guid emitentId,
+        string emitentNume,
+        Guid sablonId,
+        int versiuneSablon,
+        IReadOnlyCollection<LinieNotaComanda> linii,
+        bool cereSablon)
     {
         if (an < 2000 || numar < 1)
             return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Numărul notei de comandă nu este valid."));
@@ -93,9 +125,10 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
             return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Proiectul, lucrarea și compartimentul / șantierul sunt obligatorii."));
         if (compartimentSantier.Length > 300)
             return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Compartimentul / șantierul nu poate depăși 300 de caractere."));
-        if (emitentId == Guid.Empty || string.IsNullOrWhiteSpace(emitentNume) ||
-            emitentNume.Length > 200 || sablonId == Guid.Empty || versiuneSablon < 1)
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Emitentul și versiunea șablonului sunt obligatorii."));
+        if (emitentId == Guid.Empty || string.IsNullOrWhiteSpace(emitentNume) || emitentNume.Length > 200)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Emitentul este obligatoriu."));
+        if (cereSablon && (sablonId == Guid.Empty || versiuneSablon < 1))
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Versiunea șablonului este obligatorie."));
         if (linii.Count == 0 || linii.Any(l =>
                 string.IsNullOrWhiteSpace(l.Denumire) ||
                 string.IsNullOrWhiteSpace(l.UnitateMasura) ||
@@ -104,6 +137,46 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
 
         return Rezultat.Ok(new NotaComanda(
             an, numar, proiectId, proiectCod.Trim(), lucrare.Trim(), compartimentSantier.Trim(), data, emitentId, emitentNume.Trim(), sablonId, versiuneSablon, linii));
+    }
+
+    /// <summary>
+    /// Notă emisă în afara sistemului (REQ-FRM-10): primește număr de sistem ca orice notă, păstrează numărul și
+    /// data de pe documentul original și intră în același flux de aprobare (viza de pe hârtie nu o aprobă automat).
+    /// Emitentul este cel care importă; el nu o poate aproba (separarea atribuțiilor).
+    /// Fără șablon activ (<paramref name="sablonId"/> gol), nota nu poate fi regenerată în Word; rămâne originalul.
+    /// </summary>
+    public static Rezultat<NotaComanda> Importa(
+        int an,
+        int numar,
+        string? numarExtern,
+        Guid proiectId,
+        string proiectCod,
+        string lucrare,
+        string compartimentSantier,
+        DateOnly dataDocument,
+        Guid emitentId,
+        string emitentNume,
+        Guid sablonId,
+        int versiuneSablon,
+        IReadOnlyCollection<LinieNotaComanda> linii,
+        Guid documentOriginalId)
+    {
+        if (numarExtern?.Length > 50)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Numărul de pe documentul original nu poate depăși 50 de caractere."));
+        if (documentOriginalId == Guid.Empty)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Documentul original este obligatoriu pentru o notă importată."));
+
+        // Șablonul e opțional: documentul de referință al unei note importate este originalul arhivat.
+        var rezultat = Creeaza(an, numar, proiectId, proiectCod, lucrare, compartimentSantier, dataDocument,
+            emitentId, emitentNume, sablonId, versiuneSablon, linii, cereSablon: false);
+        if (rezultat.Esec)
+            return rezultat;
+
+        var nota = rezultat.Valoare;
+        nota.Sursa = SursaNotaComanda.Import;
+        nota.NumarExtern = string.IsNullOrWhiteSpace(numarExtern) ? null : numarExtern.Trim();
+        nota.DocumentOriginalId = documentOriginalId;
+        return Rezultat.Ok(nota);
     }
 
     public Rezultat Aproba(Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)

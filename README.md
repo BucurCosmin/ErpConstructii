@@ -8,6 +8,23 @@ ERP pentru firme de construcții din România (după modelul Charisma ERP): devi
 
 ## Pornire rapidă
 
+**Zilnic** (după ce baza de date există): din folderul proiectului rulezi
+
+```powershell
+powershell -ExecutionPolicy Bypass -File porneste.ps1
+```
+
+Scriptul pornește API-ul și interfața web în câte o fereastră și deschide http://localhost:5173.
+Atenție: `dotnet run` simplu, dat din rădăcină, nu merge (acolo e soluția, nu API-ul); varianta manuală e
+`dotnet run --project src/Host/ErpConstructii.Api` plus `npm run dev` în `clients/web`.
+
+**Prima instalare:**
+
+Pentru importul notelor scanate (OCR) trebuie modelele de limbă Tesseract: `scripts/descarca-tessdata.ps1`
+(rulat automat de `porneste.ps1`). Pe Windows, Tesseract are nevoie de Microsoft Visual C++ Redistributable 2015–2022;
+pe Linux, de pachetele `libtesseract5` și `libleptonica`.
+
+
 Cerințe: .NET SDK 10, Node.js 22+, PostgreSQL 17/18 (local sau prin Docker), `dotnet tool install -g dotnet-ef`.
 
 ```bash

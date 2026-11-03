@@ -48,7 +48,9 @@ Interfața web: `cd clients/web && npm run dev` (http://localhost:5173; proxy Vi
 
 **Administrare:** pe firma activă (schema `identitate` nu are RLS, deci fiecare interogare filtrează explicit pe `FirmaId`). Drepturile `administrare.*` se cer pe toată firma (`CerePermisiunePeFirma`). Reguli: firma nu rămâne fără administrator activ; contul (parolă, MFA, activare) al unui utilizator cu acces și la alte firme îl modifică doar administratorul de sistem; atribuirile revocate se încheie (istoric), nu se șterg, cu excepția celor care încă nu au început. Utilizatorii noi primesc o parolă temporară, schimbată obligatoriu la primul login.
 
-Pentru teste cu curl, în Development API-ul acceptă și headerele `X-Dev-Utilizator: <guid>` și `X-Dev-Firma: <guid>` (schema „Dev”, neînregistrată în alte medii).
+**Import documente externe (note de comandă scanate / Word):** extractorii (`IExtractorText`, în `Formulare.Infrastructure/Extragere`) produc un `TextDocument` neutru: Word → paragrafe + tabele exacte; PDF / imagini → OCR local Tesseract (`ron+eng`, PDF randat cu PDFium la 300 DPI, liniile tabelelor șterse înainte de OCR, segmentare `SparseText`, cuvinte cu poziții regrupate pe rânduri). `InterpretorNecesarMateriale` (logică pură, Aprovizionare) dă fiecărui câmp o `Certitudine` (Sigur / Nesigur / Lipsa); `PotrivireProiect` propune proiectul din textul „Lucrare”. Confirmarea creează `NotaComanda.Importa`: număr de sistem, `NumarExtern`, originalul în `aprovizionare.documente_originale` (SHA-256 unic pe firmă), stare „în așteptare aprobare”. Modelele OCR: `scripts/descarca-tessdata.ps1` (folderul `tessdata/`, ignorat de git; configurabil cu `Ocr:CaleTessdata`). Testele pe documente reale se fac doar local, cu fișierele din `Sabloane/` (nu în teste unitare).
+
+Pentru teste cu curl, în Development API-ul acceptă și headerele `X-Dev-Utilizator: <guid>`, `X-Dev-Firma: <guid>` și opțional `X-Dev-Nume` (schema „Dev”, neînregistrată în alte medii). Pentru testele în browser se folosește un utilizator de test separat, nu contul demo (care are MFA înrolat pe telefonul utilizatorului).
 
 ## Structura
 

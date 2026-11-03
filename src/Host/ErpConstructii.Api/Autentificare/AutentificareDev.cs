@@ -10,6 +10,7 @@ namespace ErpConstructii.Api.Autentificare;
 /// Autentificare DOAR pentru dezvoltare locală: identitatea vine din headere.
 ///   X-Dev-Utilizator: GUID-ul utilizatorului
 ///   X-Dev-Firma:      GUID-ul firmei active
+///   X-Dev-Nume:       numele afișat pe documente (opțional)
 /// Este înregistrată numai când mediul este Development (vezi Program.cs).
 /// </summary>
 public sealed class AutentificareDev(
@@ -33,6 +34,10 @@ public sealed class AutentificareDev(
         {
             claimuri.Add(new Claim(ClaimuriErp.Firma, firmaId.ToString()));
         }
+
+        // Numele apare pe documente (emitent, aprobator); opțional, cu o valoare implicită.
+        var nume = Request.Headers.TryGetValue("X-Dev-Nume", out var n) && !string.IsNullOrWhiteSpace(n) ? n.ToString() : "Utilizator dezvoltare";
+        claimuri.Add(new Claim(ClaimuriErp.Nume, nume));
 
         var identitate = new ClaimsIdentity(claimuri, Schema);
         var tichet = new AuthenticationTicket(new ClaimsPrincipal(identitate), Schema);

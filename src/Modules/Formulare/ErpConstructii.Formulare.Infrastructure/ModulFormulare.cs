@@ -2,6 +2,7 @@ using ErpConstructii.Formulare.Infrastructure.Word;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure;
 using ErpConstructii.Infrastructure.Autorizare;
+using ErpConstructii.Formulare.Infrastructure.Extragere;
 using ErpConstructii.SharedKernel.Import;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -26,6 +27,14 @@ public sealed class ModulFormulare : IModul
         servicii.AddSingleton<IGeneratorFormular, GeneratorWord>();
         servicii.AddSingleton<ICititorFormular, CititorWord>();
         servicii.AddSingleton<IValidatorSablon, ValidatorSablonWord>();
+
+        // Extragerea textului din documente externe (Word direct; PDF scanat și imagini prin OCR local).
+        servicii.Configure<OptiuniOcr>(configurare.GetSection("Ocr"));
+        servicii.AddSingleton<IExtractorText, ExtractorTextWord>();
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+        {
+            servicii.AddSingleton<IExtractorText, ExtractorTextOcr>();
+        }
 
         var urlGotenberg = configurare["Formulare:GotenbergUrl"] ?? "http://localhost:3000";
         servicii.AddHttpClient<IConvertorPdf, ConvertorPdfGotenberg>(c =>

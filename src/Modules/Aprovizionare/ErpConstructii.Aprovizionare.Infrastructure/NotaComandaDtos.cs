@@ -72,7 +72,10 @@ public sealed record NotaComandaDto(
     DateTimeOffset? DecisaLa,
     string? MotivRespingere,
     int VersiuneSablon,
-    IReadOnlyList<LinieNotaComandaDto> Linii);
+    IReadOnlyList<LinieNotaComandaDto> Linii,
+    string Sursa,
+    string? NumarExtern,
+    bool AreOriginal);
 
 internal static class MapareNotaComanda
 {
@@ -94,5 +97,8 @@ internal static class MapareNotaComanda
             nota.MotivRespingere,
             nota.VersiuneSablon,
             nota.Linii.Select(l => new LinieNotaComandaDto(
-                l.Denumire, l.UnitateMasura, l.Cantitate, l.Observatii, l.ArticolDevizId)).ToList());
+                l.Denumire, l.UnitateMasura, l.Cantitate, l.Observatii, l.ArticolDevizId)).ToList(),
+            nota.Sursa.ToString(),
+            nota.NumarExtern,
+            nota.DocumentOriginalId is not null);
 }

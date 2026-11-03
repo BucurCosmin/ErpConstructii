@@ -124,7 +124,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-FRM-06 | PDF gratuit: LibreOffice headless prin Gotenberg, serviciu separat. | 1 | ✅ |
 | REQ-FRM-07 | Arhivare imuabilă cu SHA-256; corecție = versiune nouă; varianta semnată atașată lângă cea generată. | 1 | ⬜ |
 | REQ-FRM-08 | Import al formularelor completate manual: recunoaștere tip/versiune, citirea câmpurilor, validare. | 1 | ✅ |
-| REQ-FRM-09 | Potrivire la import: furnizor după CUI, proiect după cod, materiale după cod/denumire, cu propuneri. | 2 | ⬜ |
+| REQ-FRM-09 | Potrivire la import: furnizor după CUI, proiect după cod, materiale după cod/denumire, cu propuneri. | 2 | 🟡 (proiect) |
 | REQ-FRM-10 | Documentul importat intră ca ciornă „de verificat” și trece prin același flux de aprobare; originalul se arhivează. | 2 | 🟡 |
 | REQ-FRM-11 | Documentele fără șablon: atașate ca fișier + introducere manuală. | 1 | 🟡 |
 | REQ-FRM-12 | Numerotare pe serii (firmă, tip, an); numere rezervate pentru formulare goale, anulate la expirare. | 1 | 🟡 |

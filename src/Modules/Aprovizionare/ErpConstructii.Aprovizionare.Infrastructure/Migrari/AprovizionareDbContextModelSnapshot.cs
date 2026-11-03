@@ -23,6 +23,71 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ErpConstructii.Aprovizionare.DocumentOriginal", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<byte[]>("Continut")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("continut");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<long>("DimensiuneOcteti")
+                        .HasColumnType("bigint")
+                        .HasColumnName("dimensiune_octeti");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<string>("HashSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("hash_sha256")
+                        .IsFixedLength();
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("NumeFisier")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("nume_fisier");
+
+                    b.Property<string>("TipContinut")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("tip_continut");
+
+                    b.HasKey("Id")
+                        .HasName("pk_documente_originale");
+
+                    b.HasIndex("FirmaId", "HashSha256")
+                        .IsUnique()
+                        .HasDatabaseName("ix_documente_originale_firma_id_hash_sha256");
+
+                    b.ToTable("documente_originale", "aprovizionare");
+                });
+
             modelBuilder.Entity("ErpConstructii.Aprovizionare.NotaComanda", b =>
                 {
                     b.Property<Guid>("Id")
@@ -64,6 +129,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                     b.Property<DateTimeOffset?>("DecisaLa")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("decisa_la");
+
+                    b.Property<Guid?>("DocumentOriginalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_original_id");
 
                     b.Property<Guid>("EmitentId")
                         .HasColumnType("uuid")
@@ -109,6 +178,11 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("integer")
                         .HasColumnName("numar");
 
+                    b.Property<string>("NumarExtern")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("numar_extern");
+
                     b.Property<string>("ProiectCod")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -128,6 +202,14 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
                         .HasColumnName("stare");
+
+                    b.Property<string>("Sursa")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Sistem")
+                        .HasColumnName("sursa");
 
                     b.Property<int>("VersiuneSablon")
                         .HasColumnType("integer")

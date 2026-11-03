@@ -1,5 +1,5 @@
 import { CheckOutlined, CloseOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tabs, Tag, Typography, Upload } from 'antd'
+import { Alert, App, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Upload } from 'antd'
 import type { UploadFile } from 'antd'
 import { useEffect, useState } from 'react'
 import dayjs from 'dayjs'
@@ -20,6 +20,7 @@ import type { DateFormularApi, ImportFormularApi } from '../../api/formulare'
 import { usePermisiuni, useProfil, useProiecte } from '../../api/interogari'
 import type { Proiect } from '../../api/tipuri'
 import { AntetPagina } from '../../layout/AntetPagina'
+import { ImportNotaExterna } from './ImportNotaExterna'
 
 interface LinieNotaValues {
   denumire: string
@@ -114,31 +115,6 @@ function LiniiNota() {
   )
 }
 
-function LiniiImport({ obligatoriu }: { obligatoriu: boolean }) {
-  return (
-    <Form.List name="linii">
-      {(fields, { add, remove }) => (
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
-          {fields.map(({ key, name }) => (
-            <Card key={key} size="small" title={`Poziția ${name + 1}`} extra={
-              <Button type="link" danger onClick={() => remove(name)}>Șterge</Button>
-            }>
-              <Row gutter={12}>
-                <Col xs={24} md={8}><Form.Item name={[name, 'denumire']} label="Denumire" rules={obligatoriu ? [{ required: true }] : []}><Input /></Form.Item></Col>
-                <Col xs={12} md={4}><Form.Item name={[name, 'um']} label="UM" rules={obligatoriu ? [{ required: true }] : []}><Input /></Form.Item></Col>
-                <Col xs={12} md={4}><Form.Item name={[name, 'cantitate']} label="Cantitate" rules={obligatoriu ? [{ required: true }] : []}><Input /></Form.Item></Col>
-                <Col xs={12} md={4}><Form.Item name={[name, 'cod_articol']} label="Cod articol"><Input /></Form.Item></Col>
-                <Col xs={12} md={4}><Form.Item name={[name, 'articol_deviz']} label="Articol deviz"><Input /></Form.Item></Col>
-              </Row>
-            </Card>
-          ))}
-          <Button icon={<PlusOutlined />} onClick={() => add({})}>Adaugă poziție</Button>
-        </Space>
-      )}
-    </Form.List>
-  )
-}
-
 function descarca(blob: Blob, nume: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -165,7 +141,6 @@ export function Aprovizionare() {
   const profil = useProfil()
   const proiecte = useProiecte()
   const sabloane = useSabloaneFormular()
-  const importuri = useImporturiFormular()
   const emiteNota = useEmiteNotaComanda()
   const aprobaNota = useAprobaNotaComanda()
   const respingeNota = useRespingeNotaComanda()
@@ -178,7 +153,7 @@ export function Aprovizionare() {
   const [filtreNote, setFiltreNote] = useState<FiltreNoteComanda>({})
   const [notaSelectata, setNotaSelectata] = useState<NotaComanda>()
   const [fisierImport, setFisierImport] = useState<File>()
-  const [tipImport, setTipImport] = useState<'comanda-furnizor' | 'factura-primita'>('factura-primita')
+  const [tipImport, setTipImport] = useState<'comanda-furnizor' | 'factura-primita'>('comanda-furnizor')
 
   const note = useNoteComanda(filtreNote)
   const importuriFormular = useImporturiFormular()
@@ -257,6 +232,15 @@ export function Aprovizionare() {
       descarca(document, `${nota.numar.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`)
     } catch (eroare) {
       message.error(eroare instanceof Error ? eroare.message : 'Documentul nu a putut fi generat.')
+    }
+  }
+
+  const descarcaOriginalNota = async (nota: NotaComanda) => {
+    try {
+      const original = await api.getBinar(`/api/aprovizionare/proiecte/${nota.proiectId}/note-comanda/${nota.id}/original`)
+      descarca(original, `original-${nota.numar.replace(/[^a-zA-Z0-9_-]/g, '_')}`)
+    } catch (eroare) {
+      message.error(eroare instanceof Error ? eroare.message : 'Originalul nu a putut fi descărcat.')
     }
   }
 
@@ -451,7 +435,21 @@ export function Aprovizionare() {
                     }}
                     pagination={{ pageSize: 10, hideOnSinglePage: true }}
                     columns={[
-                      { title: 'Număr', dataIndex: 'numar', width: 140 },
+                      {
+                        title: 'Număr',
+                        dataIndex: 'numar',
+                        width: 170,
+                        render: (numar: string, nota: NotaComanda) => (
+                          <Space orientation="vertical" size={0}>
+                            <span>{numar}</span>
+                            {nota.sursa === 'Import' && (
+                              <Tooltip title="Notă emisă în afara sistemului; numărul de pe documentul original">
+                                <Tag color="purple" style={{ marginInlineEnd: 0 }}>importată{nota.numarExtern ? ` · nr. ${nota.numarExtern}` : ''}</Tag>
+                              </Tooltip>
+                            )}
+                          </Space>
+                        ),
+                      },
                       { title: 'Data', dataIndex: 'data', width: 110, responsive: ['sm'], render: (data: string) => new Date(`${data}T00:00:00`).toLocaleDateString('ro-RO') },
                       { title: 'Lucrare', dataIndex: 'lucrare', width: 260, responsive: ['md'], ellipsis: true },
                       { title: 'Status', dataIndex: 'stare', width: 180, render: (stare: NotaComanda['stare']) => etichetaStare(stare) },
@@ -474,9 +472,16 @@ export function Aprovizionare() {
                             {poateAproba && nota.stare === 'InAsteptareAprobare' && nota.emitentId === profil.data?.id && (
                               <Tag>Emitentul nu poate aproba</Tag>
                             )}
-                            <Button size="small" icon={<DownloadOutlined />} onClick={() => void descarcaNota(nota)}>
-                              DOCX
-                            </Button>
+                            {nota.versiuneSablon > 0 && (
+                              <Button size="small" icon={<DownloadOutlined />} onClick={() => void descarcaNota(nota)}>
+                                DOCX
+                              </Button>
+                            )}
+                            {nota.areOriginal && (
+                              <Button size="small" icon={<DownloadOutlined />} onClick={() => void descarcaOriginalNota(nota)}>
+                                Original
+                              </Button>
+                            )}
                           </Space>
                         ),
                       },
@@ -554,29 +559,34 @@ export function Aprovizionare() {
             label: 'Import document extern',
             children: (
               <Space direction="vertical" style={{ width: '100%' }} size="large">
-                <Card title="Import de notă de comandă sau factură primită">
+                <Card
+                  title="Import document emis în afara sistemului"
+                  extra={
+                    <Select
+                      value={tipImport}
+                      onChange={schimbaTipImport}
+                      style={{ width: 200 }}
+                      options={[
+                        { value: 'comanda-furnizor', label: 'Notă de comandă' },
+                        { value: 'factura-primita', label: 'Factură primită' },
+                      ]}
+                    />
+                  }
+                >
+                  {tipImport === 'comanda-furnizor' ? (
+                    <ImportNotaExterna poateCrea={poateCrea} />
+                  ) : (
+                  <>
                   <Alert
                     type="info"
                     showIcon
                     message="Originalul este păstrat nemodificat, iar datele introduse intră ca ciornă „De verificat”."
-                    description="La importul unei note de comandă, furnizorul nu este solicitat. Facturile primite păstrează datele furnizorului."
+                    description="Facturile primite păstrează datele furnizorului."
                     style={{ marginBottom: 16 }}
                   />
                   <Form form={formImport} layout="vertical" initialValues={{ data: dayjs().format('YYYY-MM-DD'), linii: [{}] }} onFinish={importaDocument}>
                     <Row gutter={16}>
-                      <Col xs={24} md={8}>
-                        <Form.Item label="Tip document">
-                          <Select
-                            value={tipImport}
-                            onChange={schimbaTipImport}
-                            options={[
-                              { value: 'comanda-furnizor', label: 'Notă de comandă' },
-                              { value: 'factura-primita', label: 'Factură primită' },
-                            ]}
-                          />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={16}>
+                      <Col xs={24}>
                         <Form.Item label="Original PDF sau DOCX" required>
                           <Upload
                             accept=".pdf,.docx"
@@ -608,15 +618,14 @@ export function Aprovizionare() {
                           <Col xs={24} md={8}><Form.Item name="total_fara_tva" label="Total fără TVA"><Input /></Form.Item></Col>
                         </>
                       )}
-                      {tipImport === 'comanda-furnizor' && (
-                        <Col span={24}><LiniiImport obligatoriu /></Col>
-                      )}
                       <Col span={24}><Form.Item name="observatii" label="Observații"><Input.TextArea rows={2} /></Form.Item></Col>
                     </Row>
                     <Button type="primary" htmlType="submit" loading={importa.isPending} disabled={!poateCrea || !fisierImport}>
                       Importă ca ciornă de verificat
                     </Button>
                   </Form>
+                  </>
+                  )}
                 </Card>
 
                 <Card title="Documente importate — de verificat">

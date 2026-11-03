@@ -12,6 +12,22 @@ public sealed class AprovizionareDbContext(DbContextOptions<AprovizionareDbConte
     protected override string Schema => NumeSchema;
 
     public DbSet<NotaComanda> NoteComanda => Set<NotaComanda>();
+    public DbSet<DocumentOriginal> DocumenteOriginale => Set<DocumentOriginal>();
+}
+
+internal sealed class ConfigurareDocumentOriginal : IEntityTypeConfiguration<DocumentOriginal>
+{
+    public void Configure(EntityTypeBuilder<DocumentOriginal> b)
+    {
+        b.ToTable("documente_originale");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.NumeFisier).HasMaxLength(260).IsRequired();
+        b.Property(x => x.TipContinut).HasMaxLength(100).IsRequired();
+        b.Property(x => x.HashSha256).HasMaxLength(64).IsFixedLength().IsRequired();
+        b.Property(x => x.Continut).IsRequired();
+        // Același fișier nu se importă de două ori în aceeași firmă.
+        b.HasIndex(x => new { x.FirmaId, x.HashSha256 }).IsUnique();
+    }
 }
 
 internal sealed class ConfigurareNotaComanda : IEntityTypeConfiguration<NotaComanda>
@@ -34,6 +50,8 @@ internal sealed class ConfigurareNotaComanda : IEntityTypeConfiguration<NotaComa
         b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
         b.Property(x => x.Stare).HasConversion<string>().HasMaxLength(40).IsRequired();
         b.Property(x => x.MotivRespingere).HasMaxLength(1000);
+        b.Property(x => x.Sursa).HasConversion<string>().HasMaxLength(20).HasDefaultValue(SursaNotaComanda.Sistem).IsRequired();
+        b.Property(x => x.NumarExtern).HasMaxLength(50);
         b.Ignore(x => x.NumarAfisat);
         b.Ignore(x => x.Linii);
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();

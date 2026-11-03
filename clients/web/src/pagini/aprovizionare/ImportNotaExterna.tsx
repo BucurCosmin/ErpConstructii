@@ -1,0 +1,413 @@
+import { CheckCircleOutlined, DeleteOutlined, FileWordOutlined, InboxOutlined, PlusOutlined, ScanOutlined, WarningOutlined } from '@ant-design/icons'
+import {
+  Alert,
+  App,
+  AutoComplete,
+  Button,
+  Card,
+  Col,
+  DatePicker,
+  Empty,
+  Flex,
+  Form,
+  Input,
+  InputNumber,
+  Result,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+} from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
+import { useEffect, useRef, useState } from 'react'
+import { useImportaNota, useInterpreteazaNota } from '../../api/aprovizionare'
+import type { CampCitit, Certitudine, InterpretareNota, NotaComanda } from '../../api/aprovizionare'
+import { useProiecte } from '../../api/interogari'
+
+const UNITATI = ['buc', 'kg', 't', 'm', 'ml', 'mp', 'mc', 'l', 'set', 'bax', 'cut', 'rola', 'sac', 'per', 'pac', 'kit', 'palet']
+
+interface LinieFormular {
+  denumire?: string
+  unitateMasura?: string
+  cantitate?: number | null
+  observatii?: string
+  /** Valorile citite din document și certitudinea lor (nu se trimit la server). */
+  citit?: {
+    rand: number
+    denumire: CampCitit<string>
+    unitateMasura: CampCitit<string>
+    cantitate: CampCitit<number>
+  }
+}
+
+interface ValoriFormular {
+  proiectId?: string
+  numarExtern?: string
+  dataDocument?: Dayjs | null
+  compartimentSantier?: string
+  linii: LinieFormular[]
+}
+
+/**
+ * Starea vizuală a unui câmp citit din document: „de verificat” cât timp valoarea propusă nu a fost schimbată.
+ * Câmpurile lipsă sunt obligatorii (regula din formular), deci nu au nevoie de altă marcare.
+ */
+function stareCamp<T>(camp: CampCitit<T> | undefined, valoareCurenta: unknown) {
+  if (!camp || camp.certitudine !== 'Nesigur' || valoareCurenta !== camp.valoare) return {}
+  return {
+    validateStatus: 'warning' as const,
+    help: camp.textSursa ? `De verificat. Citit în document: „${camp.textSursa}”` : 'De verificat',
+  }
+}
+
+const eticheteCertitudine: Record<Certitudine, { text: string; culoare: string; icon: React.ReactNode }> = {
+  Sigur: { text: 'citit clar', culoare: 'green', icon: <CheckCircleOutlined /> },
+  Nesigur: { text: 'de verificat', culoare: 'orange', icon: <WarningOutlined /> },
+  Lipsa: { text: 'de completat', culoare: 'red', icon: <WarningOutlined /> },
+}
+
+/**
+ * Importul unei note de comandă / necesar de materiale emis în afara sistemului (PDF scanat, poză, Word):
+ * sistemul citește documentul, propune datele, iar utilizatorul le verifică și le completează înainte de creare.
+ */
+export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
+  const { message } = App.useApp()
+  const proiecte = useProiecte()
+  const interpreteaza = useInterpreteazaNota()
+  const importa = useImportaNota()
+  const [form] = Form.useForm<ValoriFormular>()
+  const [fisier, setFisier] = useState<File>()
+  const [url, setUrl] = useState<string>()
+  const [rezultat, setRezultat] = useState<InterpretareNota>()
+  const [creata, setCreata] = useState<NotaComanda>()
+  const urlCurent = useRef<string | undefined>(undefined)
+
+  const valori = Form.useWatch([], form) as ValoriFormular | undefined
+  const linii = Form.useWatch('linii', form) as LinieFormular[] | undefined
+
+  // Previzualizarea originalului se eliberează la plecarea din pagină.
+  useEffect(() => () => {
+    if (urlCurent.current) URL.revokeObjectURL(urlCurent.current)
+  }, [])
+
+  const reseteaza = () => {
+    if (urlCurent.current) URL.revokeObjectURL(urlCurent.current)
+    urlCurent.current = undefined
+    setUrl(undefined)
+    setFisier(undefined)
+    setRezultat(undefined)
+    setCreata(undefined)
+    form.resetFields()
+  }
+
+  const citeste = async (f: File) => {
+    reseteaza()
+    setFisier(f)
+    if (!f.name.toLowerCase().endsWith('.docx')) {
+      const u = URL.createObjectURL(f)
+      urlCurent.current = u
+      setUrl(u)
+    }
+
+    try {
+      const r = await interpreteaza.mutateAsync(f)
+      setRezultat(r)
+      form.setFieldsValue({
+        proiectId: r.proiectPropus?.id,
+        numarExtern: r.numarExtern.valoare ?? undefined,
+        dataDocument: r.data.valoare ? dayjs(r.data.valoare) : null,
+        compartimentSantier: r.compartimentSantier.valoare ?? undefined,
+        linii: r.linii.length
+          ? r.linii.map((l) => ({
+              denumire: l.denumire.valoare ?? undefined,
+              unitateMasura: l.unitateMasura.valoare ?? undefined,
+              cantitate: l.cantitate.valoare,
+              observatii: l.observatii.valoare ?? undefined,
+              citit: { rand: l.rand, denumire: l.denumire, unitateMasura: l.unitateMasura, cantitate: l.cantitate },
+            }))
+          : [{}],
+      })
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+    return false
+  }
+
+  const creeaza = async (v: ValoriFormular) => {
+    if (!fisier || !v.proiectId || !v.dataDocument) return
+    try {
+      const nota = await importa.mutateAsync({
+        proiectId: v.proiectId,
+        fisier,
+        date: {
+          numarExtern: v.numarExtern?.trim() || null,
+          dataDocument: v.dataDocument.format('YYYY-MM-DD'),
+          compartimentSantier: (v.compartimentSantier ?? '').trim(),
+          linii: v.linii.map((l) => ({
+            denumire: (l.denumire ?? '').trim(),
+            unitateMasura: (l.unitateMasura ?? '').trim(),
+            cantitate: Number(l.cantitate),
+            observatii: l.observatii?.trim() || null,
+            articolDevizId: null,
+          })),
+        },
+      })
+      setCreata(nota)
+      message.success(`Nota ${nota.numar} a fost creată și trimisă spre aprobare.`)
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
+  // ------------------------------------------------------------------ după creare
+  if (creata) {
+    return (
+      <Result
+        status="success"
+        title={`Nota ${creata.numar} a fost creată`}
+        subTitle={`Număr pe document: ${creata.numarExtern ?? '—'} · ${creata.linii.length} materiale · trimisă spre aprobare. Originalul este atașat notei.`}
+        extra={<Button type="primary" onClick={reseteaza}>Importă alt document</Button>}
+      />
+    )
+  }
+
+  // ------------------------------------------------------------------ alegerea fișierului
+  if (!fisier) {
+    return (
+      <Upload.Dragger
+        accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.docx"
+        multiple={false}
+        showUploadList={false}
+        beforeUpload={citeste}
+        disabled={!poateCrea}
+        style={{ padding: '24px 0' }}
+      >
+        <p className="ant-upload-drag-icon">
+          <InboxOutlined />
+        </p>
+        <p className="ant-upload-text">Trage aici nota de comandă sau apasă pentru a o alege</p>
+        <p className="ant-upload-hint">
+          PDF scanat, poză (JPG, PNG) sau document Word. Sistemul citește documentul și îți propune datele; verifici ce nu e clar,
+          apoi creezi nota.
+        </p>
+      </Upload.Dragger>
+    )
+  }
+
+  // ------------------------------------------------------------------ citire în curs / verificare
+  const camp = (cheie: 'numarExtern' | 'compartimentSantier') => rezultat?.[cheie]
+  const numarare = { Sigur: 0, Nesigur: 0, Lipsa: 0 }
+  if (rezultat) {
+    for (const c of [rezultat.numarExtern, rezultat.data, rezultat.compartimentSantier]) numarare[c.certitudine]++
+    for (const l of rezultat.linii) for (const c of [l.denumire, l.unitateMasura, l.cantitate]) numarare[c.certitudine]++
+  }
+  const esteWord = fisier.name.toLowerCase().endsWith('.docx')
+  const esteImagine = /\.(png|jpe?g|tiff?|bmp)$/i.test(fisier.name)
+
+  return (
+    <Row gutter={16}>
+      <Col xs={24} xl={10}>
+        <Card
+          size="small"
+          title={
+            <Space>
+              {esteWord ? <FileWordOutlined /> : <ScanOutlined />}
+              <Typography.Text ellipsis style={{ maxWidth: 320 }}>{fisier.name}</Typography.Text>
+            </Space>
+          }
+          extra={<Button size="small" onClick={reseteaza}>Alt document</Button>}
+          styles={{ body: { padding: 0 } }}
+          style={{ position: 'sticky', top: 80 }}
+        >
+          {esteWord ? (
+            <Empty style={{ padding: 48 }} description="Previzualizarea nu e disponibilă pentru Word; datele au fost citite direct din document." />
+          ) : esteImagine ? (
+            <img src={url} alt="Documentul original" style={{ width: '100%', display: 'block' }} />
+          ) : (
+            <iframe src={url} title="Documentul original" style={{ width: '100%', height: 760, border: 0, display: 'block' }} />
+          )}
+        </Card>
+      </Col>
+
+      <Col xs={24} xl={14}>
+        {interpreteaza.isPending || !rezultat ? (
+          <Card>
+            <Flex vertical align="center" gap={12} style={{ padding: 48 }}>
+              <Spin size="large" />
+              <Typography.Text>{esteWord ? 'Se citește documentul…' : 'Se recunoaște textul din scanare (OCR)…'}</Typography.Text>
+            </Flex>
+          </Card>
+        ) : (
+          <Form<ValoriFormular> form={form} name="importNota" layout="vertical" onFinish={creeaza} requiredMark="optional">
+            {rezultat.notaExistenta && (
+              <Alert
+                type="error"
+                showIcon
+                style={{ marginBottom: 16 }}
+                title={`Acest document a fost deja importat ca nota ${rezultat.notaExistenta}.`}
+              />
+            )}
+            <Alert
+              type={numarare.Nesigur + numarare.Lipsa > 0 ? 'warning' : 'success'}
+              showIcon
+              style={{ marginBottom: 16 }}
+              title={
+                <Space wrap size={4}>
+                  <span>{rezultat.dinOcr ? 'Am citit scanarea prin OCR:' : 'Am citit documentul:'}</span>
+                  {(Object.keys(numarare) as Certitudine[]).map((c) => (
+                    <Tag key={c} color={eticheteCertitudine[c].culoare} icon={eticheteCertitudine[c].icon}>
+                      {numarare[c]} {eticheteCertitudine[c].text}
+                    </Tag>
+                  ))}
+                </Space>
+              }
+              description={
+                rezultat.probleme.length > 0 && (
+                  <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
+                    {rezultat.probleme.map((p, i) => (
+                      <li key={i}>{p.mesaj}</li>
+                    ))}
+                  </ul>
+                )
+              }
+            />
+
+            <Card size="small" title="Antetul notei" style={{ marginBottom: 16 }}>
+              <Row gutter={12}>
+                <Col xs={24}>
+                  <Form.Item
+                    name="proiectId"
+                    label="Proiect / șantier"
+                    rules={[{ required: true, message: 'Alege proiectul.' }]}
+                    {...(rezultat.proiectPropus && valori?.proiectId === rezultat.proiectPropus.id && rezultat.proiectPropus.certitudine === 'Nesigur'
+                      ? { validateStatus: 'warning' as const, help: 'Propus după textul lucrării. Verifică.' }
+                      : {})}
+                    extra={rezultat.lucrare.valoare && <>Lucrarea din document: „{rezultat.lucrare.valoare}”</>}
+                  >
+                    <Select
+                      showSearch={{ optionFilterProp: 'label' }}
+                      placeholder="Alege proiectul"
+                      loading={proiecte.isLoading}
+                      options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item name="numarExtern" label="Nr. pe document" {...stareCamp(camp('numarExtern'), valori?.numarExtern)}>
+                    <Input maxLength={50} placeholder="ex. 81" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    name="dataDocument"
+                    label="Data documentului"
+                    rules={[{ required: true, message: 'Completează data.' }]}
+                    {...(rezultat.data.certitudine === 'Nesigur' && valori?.dataDocument?.format('YYYY-MM-DD') === rezultat.data.valoare
+                      ? { validateStatus: 'warning' as const, help: `De verificat. Citit: „${rezultat.data.textSursa ?? ''}”` }
+                      : {})}
+                  >
+                    <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={8}>
+                  <Form.Item
+                    name="compartimentSantier"
+                    label="Compartiment / șantier"
+                    rules={[{ required: true, whitespace: true, message: 'Nu apare în document; completează-l.' }]}
+                    {...stareCamp(camp('compartimentSantier'), valori?.compartimentSantier)}
+                  >
+                    <Input maxLength={300} />
+                  </Form.Item>
+                </Col>
+              </Row>
+            </Card>
+
+            <Card size="small" title="Materiale" style={{ marginBottom: 16 }}>
+              <Row gutter={8} style={{ fontWeight: 600, color: '#4a5568', marginBottom: 4 }}>
+                <Col flex="36px">Nr.</Col>
+                <Col flex="auto">Denumire material</Col>
+                <Col flex="110px">UM</Col>
+                <Col flex="130px">Cantitate</Col>
+                <Col flex="160px">Observații</Col>
+                <Col flex="32px" />
+              </Row>
+              <Form.List name="linii">
+                {(campuri, { add, remove }) => (
+                  <>
+                    {campuri.map(({ key, name }, index) => {
+                      const linie = linii?.[name]
+                      const citit = linie?.citit
+                      return (
+                        <Row key={key} gutter={8} align="top">
+                          <Col flex="36px" style={{ paddingTop: 5 }}>
+                            <Typography.Text type="secondary">{citit?.rand ?? index + 1}</Typography.Text>
+                          </Col>
+                          <Col flex="auto">
+                            <Form.Item
+                              name={[name, 'denumire']}
+                              rules={[{ required: true, whitespace: true, message: 'Completează denumirea.' }]}
+                              {...stareCamp(citit?.denumire, linie?.denumire)}
+                            >
+                              <Input maxLength={300} />
+                            </Form.Item>
+                          </Col>
+                          <Col flex="110px">
+                            <Form.Item
+                              name={[name, 'unitateMasura']}
+                              rules={[{ required: true, whitespace: true, message: 'UM?' }]}
+                              {...stareCamp(citit?.unitateMasura, linie?.unitateMasura)}
+                            >
+                              <AutoComplete options={UNITATI.map((u) => ({ value: u }))} maxLength={30} />
+                            </Form.Item>
+                          </Col>
+                          <Col flex="130px">
+                            <Form.Item
+                              name={[name, 'cantitate']}
+                              rules={[{ required: true, message: 'Cantitatea?' }, { type: 'number', min: 0.0001, message: '> 0' }]}
+                              {...stareCamp(citit?.cantitate, linie?.cantitate)}
+                            >
+                              <InputNumber min={0} step={1} decimalSeparator="," style={{ width: '100%' }} />
+                            </Form.Item>
+                          </Col>
+                          <Col flex="160px">
+                            <Form.Item name={[name, 'observatii']}>
+                              <Input maxLength={500} />
+                            </Form.Item>
+                          </Col>
+                          <Col flex="32px">
+                            <Tooltip title="Șterge rândul">
+                              <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)} disabled={campuri.length === 1} />
+                            </Tooltip>
+                          </Col>
+                        </Row>
+                      )
+                    })}
+                    <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} block>
+                      Adaugă material
+                    </Button>
+                  </>
+                )}
+              </Form.List>
+            </Card>
+
+            <Flex justify="space-between" align="center" wrap gap={8}>
+              <Typography.Text type="secondary">
+                Nota primește număr de sistem, păstrează numărul de pe document și intră în fluxul de aprobare.
+              </Typography.Text>
+              <Space>
+                <Button onClick={reseteaza}>Renunță</Button>
+                <Button type="primary" htmlType="submit" loading={importa.isPending} disabled={!poateCrea || !!rezultat.notaExistenta}>
+                  Creează nota de comandă
+                </Button>
+              </Space>
+            </Flex>
+          </Form>
+        )}
+      </Col>
+    </Row>
+  )
+}

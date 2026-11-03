@@ -21,6 +21,9 @@
     <!-- API -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <!-- Documente -->
+    <!-- OCR local pentru documente scanate (Tesseract) și randarea PDF-urilor în imagini (PDFium) -->
+    <PackageVersion Include="Tesseract" Version="5.2.0" />
+    <PackageVersion Include="PDFtoImage" Version="5.4.0" />
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
     <!-- De adăugat la implementarea importatorilor (vezi CLAUDE.md):
          ClosedXML (Excel), net.sf.mpxj-for-csharp (Primavera / MS Project). -->

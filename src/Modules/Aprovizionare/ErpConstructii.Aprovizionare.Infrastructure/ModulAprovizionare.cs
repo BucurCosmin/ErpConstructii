@@ -81,6 +81,9 @@ public sealed partial class ModulAprovizionare : IModul
             .Produces(StatusCodes.Status409Conflict)
             .CerePermisiune(aprobare);
 
+        // Note emise în afara sistemului: interpretare (OCR / Word) → verificare → notă cu originalul arhivat.
+        ImportNotaComanda.Mapeaza(grup);
+
         grup.MapGet("/proiecte/{proiectId:guid}/note-comanda/{id:guid}/document.docx", DescarcaNota)
             .WithName("DescarcaNotaComandaAprovizionare")
             .WithSummary("Generează documentul Word al unei note, indiferent de status")
@@ -265,7 +268,7 @@ public sealed partial class ModulAprovizionare : IModul
         return Results.Created($"/api/aprovizionare/proiecte/{proiectId}/note-comanda/{dto.Id}", dto);
     }
 
-    private static async Task BlocheazaSecventaAsync(
+    internal static async Task BlocheazaSecventaAsync(
         AprovizionareDbContext db,
         IDbContextTransaction tranzactie,
         Guid firmaId,
@@ -354,6 +357,9 @@ public sealed partial class ModulAprovizionare : IModul
             .FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
         if (nota is null)
             return Results.NotFound();
+
+        if (nota.SablonId == Guid.Empty)
+            return Results.Conflict(new { mesaj = "Nota a fost importată fără șablon de firmă; descarcă documentul original." });
 
         var sablon = await sabloane.SablonAsync(nota.SablonId, nota.VersiuneSablon, ct);
         if (sablon is null)

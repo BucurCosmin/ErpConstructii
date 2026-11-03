@@ -7,4 +7,7 @@ public sealed record DateProiectPentruDocument(Guid Id, string Cod, string Denum
 public interface IInterogareProiecte
 {
     Task<DateProiectPentruDocument?> CautaPentruDocumentAsync(Guid proiectId, CancellationToken ct = default);
+
+    /// <summary>Proiectele firmei active care nu sunt închise sau pierdute (ex. pentru potrivirea documentelor importate).</summary>
+    Task<IReadOnlyList<DateProiectPentruDocument>> ListaActiveAsync(CancellationToken ct = default);
 }
