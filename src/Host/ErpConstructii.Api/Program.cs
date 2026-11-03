@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using ErpConstructii.Api.Autentificare;
 using ErpConstructii.Api.Dezvoltare;
 using ErpConstructii.Devize.Import.WinDoc;
@@ -67,6 +68,8 @@ if (esteDezvoltare)
 builder.Services.AdaugaAutentificare(builder.Configuration, esteDezvoltare);
 
 builder.Services.AddAuthorization();
+// Enum-urile circulă ca text în JSON („Intern”, „Oferta”), la fel în cereri și în răspunsuri.
+builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 

@@ -19,6 +19,8 @@ public sealed record CerereCodMfa(string? Cod, string? CodRecuperare);
 /// <param name="Stare">„ok” (sesiune creată) sau „mfa_necesar” (urmează codul din aplicația de autentificare).</param>
 public sealed record RaspunsAutentificare(string Stare);
 
+public sealed record CerereParolaNoua(string ParolaNoua);
+
 public sealed record ConfigurareMfaDto(string Cheie, string UriOtp, bool Activat);
 
 public sealed record MfaActivatDto(IReadOnlyList<string> CoduriRecuperare);
@@ -46,6 +48,7 @@ public static class EndpointuriAutentificare
             p.AddAuthenticationSchemes(IdentityConstants.ApplicationScheme).RequireAuthenticatedUser());
         cont.MapGet("/mfa/configurare", CitesteConfigurareMfa).RequireAuthorization(doarCookie);
         cont.MapPost("/mfa/configurare", ActiveazaMfa).RequireAuthorization(doarCookie);
+        cont.MapPost("/parola-noua", SeteazaParolaNoua).RequireAuthorization(doarCookie);
     }
 
     // ---------------------------------------------------------------- OAuth
@@ -72,6 +75,12 @@ public static class EndpointuriAutentificare
         {
             await sesiuni.SignOutAsync();
             return Refuza(Errors.AccessDenied, "Contul este dezactivat, expirat sau blocat.");
+        }
+
+        // Parola temporară (cont nou sau resetat de administrator) se schimbă înainte de orice altceva.
+        if (cont.TrebuieSchimbataParola)
+        {
+            return Results.Redirect($"{InregistrareAutentificare.RutaSchimbareParola}?ReturnUrl={Uri.EscapeDataString(UrlAutorizare(ctx))}");
         }
 
         if (stare.MfaObligatoriu && !cont.TwoFactorEnabled)
@@ -269,6 +278,45 @@ public static class EndpointuriAutentificare
         // Sesiunea curentă devine una completă (parolă + al doilea factor).
         await sesiuni.SignInWithClaimsAsync(cont, isPersistent: false, [new Claim("amr", AmrMfa)]);
         return Results.Ok(new MfaActivatDto(coduri.ToList()));
+    }
+
+    private static async Task<IResult> SeteazaParolaNoua(
+        HttpContext ctx,
+        CerereParolaNoua cerere,
+        UserManager<ContUtilizator> conturi,
+        SignInManager<ContUtilizator> sesiuni)
+    {
+        var cont = await conturi.GetUserAsync(ctx.User);
+        if (cont is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        // Endpoint-ul servește doar schimbării parolei temporare, imediat după login cu ea.
+        if (!cont.TrebuieSchimbataParola)
+        {
+            return Eroare("Parola nu trebuie schimbată.");
+        }
+
+        if (await conturi.CheckPasswordAsync(cont, cerere.ParolaNoua))
+        {
+            return Eroare("Parola nouă trebuie să fie diferită de cea temporară.");
+        }
+
+        var token = await conturi.GeneratePasswordResetTokenAsync(cont);
+        var rezultat = await conturi.ResetPasswordAsync(cont, token, cerere.ParolaNoua);
+        if (!rezultat.Succeeded)
+        {
+            return Eroare(string.Join(" ", rezultat.Errors.Select(e => TraducereErori.Parola(e))));
+        }
+
+        cont.TrebuieSchimbataParola = false;
+        await conturi.UpdateAsync(cont);
+
+        // Resetarea schimbă security stamp-ul; sesiunea curentă se reface, păstrând al doilea factor dacă a existat.
+        var amr = ctx.User.HasClaim("amr", AmrMfa) ? new[] { new Claim("amr", AmrMfa) } : [];
+        await sesiuni.SignInWithClaimsAsync(cont, isPersistent: false, amr);
+        return Results.Ok(new RaspunsAutentificare("ok"));
     }
 
     // ---------------------------------------------------------------- Utilitare

@@ -40,9 +40,23 @@ public static class DateDemo
         var utilizator = await identitate.Utilizatori.FirstOrDefaultAsync(u => u.Email == EmailDemo, ct);
         if (utilizator is null)
         {
-            utilizator = new Utilizator(EmailDemo, "Andrei Popescu", TipUtilizator.AdministratorFirma);
+            utilizator = new Utilizator(EmailDemo, "Andrei Popescu", TipUtilizator.AdministratorSistem);
             identitate.Utilizatori.Add(utilizator);
         }
+        else if (utilizator.Tip != TipUtilizator.AdministratorSistem)
+        {
+            // Contul demo administrează și firmele (creare firmă nouă), nu doar utilizatorii.
+            utilizator.Modifica(utilizator.Nume, TipUtilizator.AdministratorSistem);
+        }
+
+        // Rolurile predefinite în fiecare firmă demo (ca la crearea unei firme reale).
+        foreach (var firmaId in new[] { FirmaDemoId, FirmaDemoSudId })
+        {
+            var existente = await identitate.Roluri.Where(r => r.FirmaId == firmaId).Select(r => r.Cod).ToListAsync(ct);
+            identitate.Roluri.AddRange(RoluriPredefinite.PentruFirma(firmaId).Where(r => !existente.Contains(r.Cod)));
+        }
+
+        await identitate.SaveChangesAsync(ct);
 
         var toate = RoluriPredefinite.Toate.SelectMany(r => r.ToatePermisiunile()).Distinct().ToList();
         foreach (var firmaId in new[] { FirmaDemoId, FirmaDemoSudId })
@@ -76,8 +90,50 @@ public static class DateDemo
         }
 
         // 4. Date de business, separat pe fiecare firmă (RLS cere firma curentă în context).
-        await DateFirmaAsync(sp, utilizator.Id, FirmaDemoId, ProiecteFirmaDemo, cuDeviz: true, ct);
+        var proiecte = await DateFirmaAsync(sp, utilizator.Id, FirmaDemoId, ProiecteFirmaDemo, cuDeviz: true, ct);
         await DateFirmaAsync(sp, utilizator.Id, FirmaDemoSudId, ProiecteFirmaSud, cuDeviz: false, ct);
+
+        // 5. Colegi demo, cu roluri diferite (pentru ecranul de administrare).
+        await ColegiAsync(sp, identitate, proiecte, ct);
+    }
+
+    private static async Task ColegiAsync(IServiceProvider sp, IdentitateDbContext db, IReadOnlyDictionary<string, Guid> proiecte, CancellationToken ct)
+    {
+        var colegi = new (string Email, string Nume, TipUtilizator Tip, Guid Firma, string Rol, string? Proiect)[]
+        {
+            ("maria.ionescu@erpconstructii.ro", "Maria Ionescu", TipUtilizator.Intern, FirmaDemoId, "ofertant", null),
+            ("radu.marin@erpconstructii.ro", "Radu Marin", TipUtilizator.Intern, FirmaDemoId, "manager_proiect", "P-2026-001"),
+            ("ion.vasile@erpconstructii.ro", "Ion Vasile", TipUtilizator.Santier, FirmaDemoId, "sef_santier", "P-2026-001"),
+            ("elena.dumitru@erpconstructii.ro", "Elena Dumitru", TipUtilizator.Intern, FirmaDemoId, "contabil", null),
+            ("elena.dumitru@erpconstructii.ro", "Elena Dumitru", TipUtilizator.Intern, FirmaDemoSudId, "contabil", null),
+            ("george.stan@erpconstructii.ro", "George Stan", TipUtilizator.Intern, FirmaDemoSudId, "director", null),
+        };
+
+        var conturi = sp.GetRequiredService<ServiciuConturi>();
+        foreach (var c in colegi)
+        {
+            var u = await db.Utilizatori.FirstOrDefaultAsync(x => x.Email == c.Email, ct);
+            var nou = u is null;
+            if (u is null)
+            {
+                u = new Utilizator(c.Email, c.Nume, c.Tip);
+                db.Utilizatori.Add(u);
+            }
+
+            var idUtilizator = u.Id;
+            if (!await db.Atribuiri.AnyAsync(a => a.UtilizatorId == idUtilizator && a.FirmaId == c.Firma, ct))
+            {
+                var rol = await db.Roluri.FirstAsync(r => r.FirmaId == c.Firma && r.Cod == c.Rol, ct);
+                Guid? proiectId = c.Proiect is not null && proiecte.TryGetValue(c.Proiect, out var p) ? p : null;
+                db.Atribuiri.Add(new Atribuire(u.Id, rol.Id, new Domeniu(c.Firma, proiectId), new DateOnly(2026, 2, 1)));
+            }
+
+            await db.SaveChangesAsync(ct);
+            if (nou)
+            {
+                await conturi.CreeazaAsync(u); // parolă temporară; administratorul o poate reseta din aplicație
+            }
+        }
     }
 
     private static async Task AsiguraFirmaAsync(IdentitateDbContext db, Guid id, string denumire, string cui, CancellationToken ct)
@@ -96,7 +152,8 @@ public static class DateDemo
         await db.SaveChangesAsync(ct);
     }
 
-    private static async Task DateFirmaAsync(
+    /// <summary>Creează proiectele firmei (dacă nu are) și întoarce codurile lor cu Id-urile.</summary>
+    private static async Task<IReadOnlyDictionary<string, Guid>> DateFirmaAsync(
         IServiceProvider sp, Guid utilizatorId, Guid firmaId, Func<List<Proiect>> proiecteNoi, bool cuDeviz, CancellationToken ct)
     {
         // Interceptorii RLS și de audit citesc firma și utilizatorul din HttpContext: simulăm o cerere.
@@ -111,21 +168,21 @@ public static class DateDemo
 
         // DbContext-uri noi: conexiunea se deschide (și primește app.firma_id) după schimbarea contextului.
         await using var proiecte = ActivatorUtilities.CreateInstance<ProiecteDbContext>(sp, sp.GetRequiredService<DbContextOptions<ProiecteDbContext>>());
-        if (await proiecte.Proiecte.AnyAsync(ct))
+        if (!await proiecte.Proiecte.AnyAsync(ct))
         {
-            return;
+            var lista = proiecteNoi();
+            proiecte.Proiecte.AddRange(lista);
+            await proiecte.SaveChangesAsync(ct);
+
+            if (cuDeviz)
+            {
+                await using var devize = ActivatorUtilities.CreateInstance<DevizeDbContext>(sp, sp.GetRequiredService<DbContextOptions<DevizeDbContext>>());
+                devize.Versiuni.Add(DevizOferta(lista[0].Id));
+                await devize.SaveChangesAsync(ct);
+            }
         }
 
-        var lista = proiecteNoi();
-        proiecte.Proiecte.AddRange(lista);
-        await proiecte.SaveChangesAsync(ct);
-
-        if (cuDeviz)
-        {
-            await using var devize = ActivatorUtilities.CreateInstance<DevizeDbContext>(sp, sp.GetRequiredService<DbContextOptions<DevizeDbContext>>());
-            devize.Versiuni.Add(DevizOferta(lista[0].Id));
-            await devize.SaveChangesAsync(ct);
-        }
+        return await proiecte.Proiecte.AsNoTracking().ToDictionaryAsync(p => p.Cod, p => p.Id, ct);
     }
 
     private static List<Proiect> ProiecteFirmaDemo() =>

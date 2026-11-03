@@ -133,3 +133,86 @@ export interface PrevizualizareImport {
   probleme: ProblemaImport[]
   poateFiConfirmat: boolean
 }
+
+// ---------------------------------------------------------------- Administrare
+
+export type TipUtilizator = 'AdministratorSistem' | 'AdministratorFirma' | 'Intern' | 'Santier' | 'Auditor' | 'ContServiciu'
+
+export interface PermisiuneCatalog {
+  cod: string
+  denumire: string
+}
+
+export interface ModulCatalog {
+  cod: string
+  denumire: string
+  permisiuni: PermisiuneCatalog[]
+}
+
+export interface CatalogPermisiuni {
+  module: ModulCatalog[]
+  dateSensibile: PermisiuneCatalog[]
+}
+
+export interface UtilizatorLista {
+  id: string
+  nume: string
+  email: string
+  tip: TipUtilizator
+  activ: boolean
+  expiraLa: string | null
+  areAcces: boolean
+  mfaActivat: boolean
+  blocat: boolean
+  trebuieSchimbataParola: boolean
+  roluri: string[]
+}
+
+export interface AtribuireUtilizator {
+  id: string
+  rolId: string
+  rol: string
+  proiectId: string | null
+  valabilDe: string
+  valabilPana: string | null
+  stare: 'activa' | 'viitoare' | 'incheiata'
+}
+
+export interface UtilizatorDetalii {
+  utilizator: UtilizatorLista
+  atribuiri: AtribuireUtilizator[]
+  poateModificaContul: boolean
+  alteFirme: number
+}
+
+export interface CreeazaUtilizator {
+  email: string
+  nume: string
+  tip: TipUtilizator
+  rolId: string
+  proiectId: string | null
+  valabilDe: string | null
+}
+
+export interface UtilizatorCreat {
+  id: string
+  parolaTemporara: string | null
+  existent: boolean
+}
+
+export interface RolFirma {
+  id: string
+  cod: string
+  denumire: string
+  permisiuni: string[]
+  predefinit: boolean
+  utilizatori: number
+}
+
+export interface FirmaAdmin {
+  id: string
+  denumire: string
+  cui: string | null
+  activa: boolean
+  utilizatori: number
+}

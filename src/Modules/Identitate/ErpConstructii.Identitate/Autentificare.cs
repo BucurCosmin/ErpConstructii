@@ -70,8 +70,8 @@ public static class PoliticaMfa
 {
     private static readonly string[] Prefixe =
     [
-        $"{Permisiuni.Pentru(ModulErp.Financiar, Actiune.Vizualizare).Split('.')[0]}.",
-        $"{Permisiuni.Pentru(ModulErp.Administrare, Actiune.Vizualizare).Split('.')[0]}.",
+        $"{Permisiuni.CodModul(ModulErp.Financiar)}.",
+        $"{Permisiuni.CodModul(ModulErp.Administrare)}.",
     ];
 
     public static bool EsteObligatorie(TipUtilizator tip, IEnumerable<string> permisiuni)

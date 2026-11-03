@@ -52,6 +52,12 @@ public static class RoluriPredefinite
             []),
     ];
 
+    /// <summary>Rolurile unei firme noi, copiate din cele predefinite (REQ-DRP-02).</summary>
+    public static IEnumerable<Rol> PentruFirma(Guid firmaId) =>
+        Toate.Select(d => new Rol(firmaId, d.Cod, d.Denumire, d.ToatePermisiunile()));
+
+    public static DefinitieRol? Gaseste(string cod) => Toate.FirstOrDefault(r => r.Cod == cod);
+
     private static DefinitieRol Rol(
         string cod,
         string denumire,

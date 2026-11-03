@@ -19,10 +19,10 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 
 | ID | Cerință | Faza | Stare |
 |---|---|---|---|
-| REQ-UTL-01 | Tipuri de utilizatori: administrator sistem, administrator firmă, intern (birou), șantier (mobil), auditor, cont de serviciu. Fără conturi pentru externi (subantreprenori, beneficiar/diriginte) în această etapă. | 0 | 🟡 |
+| REQ-UTL-01 | Tipuri de utilizatori: administrator sistem, administrator firmă, intern (birou), șantier (mobil), auditor, cont de serviciu. Fără conturi pentru externi (subantreprenori, beneficiar/diriginte) în această etapă. | 0 | ✅ |
 | REQ-UTL-02 | Autentificare: ASP.NET Core Identity + OpenIddict; access token 5–15 min, refresh token rotit; MFA (TOTP) obligatoriu pentru administratori și rolurile financiare. | 0 | ✅ |
 | REQ-UTL-03 | Mobil: dispozitiv înregistrat și aprobat, PIN/biometrie, date offline criptate (SQLCipher), revocare la distanță cu ștergerea datelor locale. | 2 | ⬜ |
-| REQ-UTL-04 | Auditor: cont doar-citire cu dată de expirare. | 1 | 🟡 |
+| REQ-UTL-04 | Auditor: cont doar-citire cu dată de expirare. | 1 | ✅ |
 | REQ-UTL-05 | Firme mari: SSO (Entra ID / LDAP) și provizionare SCIM. | ulterior | ⬜ |
 | REQ-DRP-01 | Permisiune = resursă + acțiune (vizualizare, creare, editare, anulare, aprobare, export). Fiecare endpoint de business cere o permisiune. | 0 | ✅ |
 | REQ-DRP-02 | Roluri predefinite (matricea rol × modul din document), copiate în firmă și ajustabile de administratorul firmei. | 0 | ✅ |
@@ -32,7 +32,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-DRP-06 | Separarea atribuțiilor: cine creează o comandă, plată sau situație nu o poate aproba. | 1 | ✅ (regula) |
 | REQ-DRP-07 | Starea documentului bate rolul: aprobat/facturat = needitabil pentru oricine. | 0 | ✅ |
 | REQ-DRP-08 | Izolarea firmelor impusă de PostgreSQL (RLS); rolul aplicației nu are BYPASSRLS și nu e proprietar pe tabele. | 0 | 🟡 |
-| REQ-DRP-09 | Permisiunile efective se calculează la login, se țin în cache, cache invalidat la schimbarea atribuirilor. | 0 | 🟡 |
+| REQ-DRP-09 | Permisiunile efective se calculează la login, se țin în cache, cache invalidat la schimbarea atribuirilor. | 0 | ✅ |
 
 ## DEV / IMP — Devize și import
 

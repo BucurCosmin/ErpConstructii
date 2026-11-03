@@ -93,7 +93,7 @@ public sealed class ModulIdentitate : IModul
             return Results.Ok(acordate);
         });
 
-        // TODO faza 0: administrare utilizatori, roluri, atribuiri (permisiunea administrare.*),
-        // cu invalidarea cache-ului de permisiuni după fiecare schimbare.
+        // Administrarea utilizatorilor, rolurilor, atribuirilor și firmelor.
+        EndpointuriAdministrare.Mapeaza(rute);
     }
 }

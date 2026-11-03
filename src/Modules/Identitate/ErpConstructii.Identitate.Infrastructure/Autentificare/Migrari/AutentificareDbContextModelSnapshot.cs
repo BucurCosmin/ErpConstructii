@@ -82,6 +82,10 @@ namespace ErpConstructii.Identitate.Infrastructure.Autentificare.Migrari
                         .HasColumnType("text")
                         .HasColumnName("security_stamp");
 
+                    b.Property<bool>("TrebuieSchimbataParola")
+                        .HasColumnType("boolean")
+                        .HasColumnName("trebuie_schimbata_parola");
+
                     b.Property<bool>("TwoFactorEnabled")
                         .HasColumnType("boolean")
                         .HasColumnName("two_factor_enabled");

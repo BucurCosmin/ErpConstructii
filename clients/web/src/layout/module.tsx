@@ -197,9 +197,7 @@ export const module: ModulAplicatie[] = [
     icon: <SettingOutlined />,
     grup: 'sistem',
     permisiune: 'administrare.vizualizare',
-    faza: 'Faza 0',
-    descriere: 'Utilizatori, roluri și atribuiri pe firmă/proiect, setările firmei (cote, serii de numerotare), jurnal de audit.',
-    cerinte: ['REQ-UTL-01', 'REQ-DRP-02', 'REQ-DRP-03', 'REQ-GEN-05'],
+    implementat: true,
   },
 ]
 

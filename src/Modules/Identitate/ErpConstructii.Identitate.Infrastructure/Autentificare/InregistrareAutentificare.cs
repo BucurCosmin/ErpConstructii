@@ -20,6 +20,7 @@ public static class InregistrareAutentificare
 {
     public const string RutaLogin = "/autentificare";
     public const string RutaConfigurareMfa = "/autentificare/configurare-mfa";
+    public const string RutaSchimbareParola = "/autentificare/schimbare-parola";
 
     public static IServiceCollection AdaugaAutentificare(
         this IServiceCollection servicii,
@@ -30,6 +31,7 @@ public static class InregistrareAutentificare
             ?? throw new InvalidOperationException("Lipsește ConnectionStrings:Erp.");
 
         servicii.AddScoped<ContextSesiune>();
+        servicii.AddScoped<ServiciuConturi>();
         servicii.AddDbContext<AutentificareDbContext>(o =>
         {
             o.UseNpgsql(connectionString, npgsql =>

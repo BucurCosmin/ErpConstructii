@@ -1,5 +1,5 @@
 import dayjs from 'dayjs'
-import type { StareProiect, TipVersiuneDeviz, VersiuneDeviz } from '../api/tipuri'
+import type { StareProiect, TipUtilizator, TipVersiuneDeviz, VersiuneDeviz } from '../api/tipuri'
 
 const lei = new Intl.NumberFormat('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const leiCompact = new Intl.NumberFormat('ro-RO', { notation: 'compact', maximumFractionDigits: 1 })
@@ -42,4 +42,13 @@ export function timpScurs(inceput: string | null, termen: string | null, azi = d
   if (total <= 0) return null
   const scurs = azi.diff(dayjs(inceput), 'day')
   return Math.max(0, Math.min(100, Math.round((scurs / total) * 100)))
+}
+
+export const tipuriUtilizator: Record<TipUtilizator, { eticheta: string; descriere: string }> = {
+  AdministratorSistem: { eticheta: 'Administrator de sistem', descriere: 'Administrează toate firmele și conturile.' },
+  AdministratorFirma: { eticheta: 'Administrator firmă', descriere: 'Administrează utilizatorii și rolurile firmei.' },
+  Intern: { eticheta: 'Intern (birou)', descriere: 'Lucrează în aplicația web.' },
+  Santier: { eticheta: 'Șantier (mobil)', descriere: 'Lucrează în principal din aplicația mobilă.' },
+  Auditor: { eticheta: 'Auditor', descriere: 'Cont doar pentru citire, cu dată de expirare.' },
+  ContServiciu: { eticheta: 'Cont de serviciu', descriere: 'Pentru integrări automate.' },
 }

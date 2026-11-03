@@ -51,7 +51,7 @@ public static class Permisiuni
     public const string DatePersonale = "date.personale";
 
     public static string Pentru(ModulErp modul, Actiune actiune) =>
-        $"{Nume(modul)}.{Nume(actiune)}";
+        $"{CodModul(modul)}.{Nume(actiune)}";
 
     public static IEnumerable<string> DinNivel(ModulErp modul, NivelAcces nivel)
     {
@@ -74,7 +74,8 @@ public static class Permisiuni
         }
     }
 
-    private static string Nume(ModulErp modul) => modul switch
+    /// <summary>Prefixul permisiunilor unui modul (ex. „hr” pentru HrSalarii).</summary>
+    public static string CodModul(ModulErp modul) => modul switch
     {
         ModulErp.HrSalarii => "hr",
         _ => modul.ToString().ToLowerInvariant(),

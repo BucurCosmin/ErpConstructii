@@ -28,7 +28,9 @@ npm run dev
 
 **Cont demo (doar Development):** `demo@erpconstructii.ro` / `Demo-Constructii-2026`. La primul login se cere activarea
 verificării în doi pași (cod QR pentru Google/Microsoft Authenticator). Contul are acces la două firme demo
-(„Construct Demo SRL” și „Construct Demo Sud SRL”), cu selectorul de firmă din antet.
+(„Construct Demo SRL” și „Construct Demo Sud SRL”), cu selectorul de firmă din antet, și este administrator de sistem
+(poate crea firme). Colegii demo (Maria Ionescu, Radu Marin etc.) au parole temporare: din Administrare → Utilizatori →
+fișa utilizatorului → „Resetează parola” obții una pe care o poți folosi la login.
 
 ## Documentație
 

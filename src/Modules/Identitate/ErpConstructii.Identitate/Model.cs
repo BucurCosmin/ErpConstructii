@@ -39,7 +39,19 @@ public sealed class Utilizator : Entitate
     public DateOnly? ExpiraLa { get; private set; }
 
     public void Dezactiveaza() => Activ = false;
+    public void Activeaza() => Activ = true;
     public void SeteazaExpirare(DateOnly? data) => ExpiraLa = data;
+
+    public void Modifica(string nume, TipUtilizator tip)
+    {
+        if (string.IsNullOrWhiteSpace(nume))
+        {
+            throw new ArgumentException("Numele este obligatoriu.", nameof(nume));
+        }
+
+        Nume = nume.Trim();
+        Tip = tip;
+    }
 }
 
 /// <summary>Rol al unei firme (copiat din rolurile predefinite și ajustabil).</summary>
@@ -61,6 +73,16 @@ public sealed class Rol : Entitate
     public string Cod { get; private set; } = string.Empty;
     public string Denumire { get; private set; } = string.Empty;
     public IReadOnlyList<string> Permisiuni => _permisiuni;
+
+    public void Redenumeste(string denumire)
+    {
+        if (string.IsNullOrWhiteSpace(denumire))
+        {
+            throw new ArgumentException("Denumirea rolului este obligatorie.", nameof(denumire));
+        }
+
+        Denumire = denumire.Trim();
+    }
 
     public void InlocuiestePermisiuni(IEnumerable<string> permisiuni)
     {
@@ -105,4 +127,32 @@ public sealed class Atribuire : Entitate
     public DateOnly? ValabilPana { get; private set; }
 
     public bool EsteValabila(DateOnly zi) => zi >= ValabilDe && (ValabilPana is null || zi <= ValabilPana);
+
+    /// <summary>
+    /// Retrage atribuirea începând de azi. Istoricul se păstrează: o atribuire deja începută se încheie
+    /// ieri (rămâne în evidență, pentru audit); una care nu a început încă nu a produs efecte și se șterge.
+    /// </summary>
+    public RezultatRevocare Revoca(DateOnly azi)
+    {
+        if (ValabilDe >= azi)
+        {
+            return RezultatRevocare.DeSters;
+        }
+
+        var ieri = azi.AddDays(-1);
+        if (ValabilPana is not null && ValabilPana <= ieri)
+        {
+            return RezultatRevocare.DejaIncheiata;
+        }
+
+        ValabilPana = ieri;
+        return RezultatRevocare.Incheiata;
+    }
+}
+
+public enum RezultatRevocare
+{
+    Incheiata,
+    DeSters,
+    DejaIncheiata,
 }

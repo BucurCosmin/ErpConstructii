@@ -13,6 +13,9 @@ public sealed class ContUtilizator : IdentityUser<Guid>
 {
     /// <summary>Ultima firmă activă, propusă la următorul login.</summary>
     public Guid? UltimaFirmaId { get; set; }
+
+    /// <summary>Parolă temporară (cont nou sau resetat de administrator): se schimbă la primul login.</summary>
+    public bool TrebuieSchimbataParola { get; set; }
 }
 
 /// <summary>

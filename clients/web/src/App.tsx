@@ -12,6 +12,8 @@ import { TabloDeBord } from './pagini/TabloDeBord'
 import { Autentificare } from './pagini/autentificare/Autentificare'
 import { Callback } from './pagini/autentificare/Callback'
 import { ConfigurareMfa } from './pagini/autentificare/ConfigurareMfa'
+import { SchimbareParola } from './pagini/autentificare/SchimbareParola'
+import { Administrare } from './pagini/administrare/Administrare'
 import { DetaliiDeviz } from './pagini/devize/DetaliiDeviz'
 import { DetaliiProiect } from './pagini/proiecte/DetaliiProiect'
 import { ListaProiecte } from './pagini/proiecte/ListaProiecte'
@@ -30,6 +32,7 @@ const router = createBrowserRouter([
   { path: 'autentificare', element: <Autentificare /> },
   { path: 'autentificare/configurare-mfa', element: <ConfigurareMfa /> },
   { path: 'autentificare/callback', element: <Callback /> },
+  { path: 'autentificare/schimbare-parola', element: <SchimbareParola /> },
   {
     element: <AplicatieLayout />,
     children: [
@@ -38,6 +41,7 @@ const router = createBrowserRouter([
       { path: 'proiecte/:proiectId', element: <DetaliiProiect /> },
       { path: 'proiecte/:proiectId/devize/:versiuneId', element: <DetaliiDeviz /> },
       { path: 'ofertare', element: <Ofertare /> },
+      { path: 'administrare/:tab?', element: <Administrare /> },
       ...module.filter((m) => !m.implementat).map((m) => ({ path: m.cale.slice(1), element: <ModulInDezvoltare modul={m} /> })),
       {
         path: '*',

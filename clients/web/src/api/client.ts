@@ -62,6 +62,11 @@ export const api = {
   post: async <T>(url: string, corp: unknown) =>
     trateaza<T>(await trimite(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corp) })),
 
+  put: async <T>(url: string, corp: unknown) =>
+    trateaza<T>(await trimite(url, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corp) })),
+
+  delete: async <T>(url: string) => trateaza<T>(await trimite(url, { method: 'DELETE' })),
+
   postFisier: async <T>(url: string, fisier: File) => {
     const date = new FormData()
     date.append('fisier', fisier)
