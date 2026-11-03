@@ -62,6 +62,9 @@ namespace ErpConstructii.Identitate.Infrastructure.Migrari
                     b.HasKey("Id")
                         .HasName("pk_atribuiri");
 
+                    b.HasIndex("FirmaId")
+                        .HasDatabaseName("ix_atribuiri_firma_id");
+
                     b.HasIndex("RolId")
                         .HasDatabaseName("ix_atribuiri_rol_id");
 
@@ -69,6 +72,34 @@ namespace ErpConstructii.Identitate.Infrastructure.Migrari
                         .HasDatabaseName("ix_atribuiri_utilizator_id_firma_id");
 
                     b.ToTable("atribuiri", "identitate");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Identitate.Firma", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<string>("Cui")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("cui");
+
+                    b.Property<string>("Denumire")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("denumire");
+
+                    b.HasKey("Id")
+                        .HasName("pk_firme");
+
+                    b.ToTable("firme", "identitate");
                 });
 
             modelBuilder.Entity("ErpConstructii.Identitate.Rol", b =>
@@ -154,6 +185,13 @@ namespace ErpConstructii.Identitate.Infrastructure.Migrari
 
             modelBuilder.Entity("ErpConstructii.Identitate.Atribuire", b =>
                 {
+                    b.HasOne("ErpConstructii.Identitate.Firma", null)
+                        .WithMany()
+                        .HasForeignKey("FirmaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_atribuiri_firme_firma_id");
+
                     b.HasOne("ErpConstructii.Identitate.Rol", null)
                         .WithMany()
                         .HasForeignKey("RolId")
@@ -167,6 +205,16 @@ namespace ErpConstructii.Identitate.Infrastructure.Migrari
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_atribuiri_utilizatori_utilizator_id");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Identitate.Rol", b =>
+                {
+                    b.HasOne("ErpConstructii.Identitate.Firma", null)
+                        .WithMany()
+                        .HasForeignKey("FirmaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_roluri_firme_firma_id");
                 });
 #pragma warning restore 612, 618
         }

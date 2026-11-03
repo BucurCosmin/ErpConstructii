@@ -1,8 +1,10 @@
+using ErpConstructii.Identitate.Infrastructure.Autentificare;
 using ErpConstructii.Infrastructure;
 using ErpConstructii.SharedKernel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -10,7 +12,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpConstructii.Identitate.Infrastructure;
 
-public sealed record ProfilDto(Guid Id, string Email, string Nume, string Tip, Guid? FirmaActiva);
+public sealed record FirmaDto(Guid Id, string Denumire, string? Cui);
+
+public sealed record ProfilDto(
+    Guid Id,
+    string Email,
+    string Nume,
+    string Tip,
+    Guid? FirmaActiva,
+    IReadOnlyList<FirmaDto> Firme,
+    bool MfaActivat);
 
 public sealed class ModulIdentitate : IModul
 {
@@ -28,8 +39,14 @@ public sealed class ModulIdentitate : IModul
     {
         var grup = rute.MapGroup("/identitate").WithTags("Identitate");
 
-        // Profilul utilizatorului curent (antetul aplicației web).
-        grup.MapGet("/eu", async (IdentitateDbContext db, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct) =>
+        // Profilul utilizatorului curent și firmele lui (antetul aplicației web, selectorul de firmă).
+        grup.MapGet("/eu", async (
+            IdentitateDbContext db,
+            UserManager<ContUtilizator> conturi,
+            IUtilizatorCurent utilizator,
+            IFirmaCurenta firma,
+            ICeas ceas,
+            CancellationToken ct) =>
         {
             if (utilizator.UtilizatorId is not { } id)
             {
@@ -37,9 +54,21 @@ public sealed class ModulIdentitate : IModul
             }
 
             var u = await db.Utilizatori.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
-            return u is null
-                ? Results.NotFound()
-                : Results.Ok(new ProfilDto(u.Id, u.Email, u.Nume, u.Tip.ToString(), firma.FirmaId));
+            if (u is null)
+            {
+                return Results.NotFound();
+            }
+
+            var atribuiri = await db.Atribuiri.AsNoTracking().Where(a => a.UtilizatorId == id).ToListAsync(ct);
+            var idFirme = AccesFirme.Accesibile(atribuiri, ceas.Azi).ToList();
+            var firme = await db.Firme.AsNoTracking()
+                .Where(f => idFirme.Contains(f.Id) && f.Activa)
+                .OrderBy(f => f.Denumire)
+                .Select(f => new FirmaDto(f.Id, f.Denumire, f.Cui))
+                .ToListAsync(ct);
+            var cont = await conturi.FindByIdAsync(id.ToString());
+
+            return Results.Ok(new ProfilDto(u.Id, u.Email, u.Nume, u.Tip.ToString(), firma.FirmaId, firme, cont?.TwoFactorEnabled ?? false));
         });
 
         // Permisiunile utilizatorului curent pe firma activă: frontend-ul le folosește

@@ -31,12 +31,20 @@ export interface CreeazaProiect {
   adresaSantier: string
 }
 
+export interface Firma {
+  id: string
+  denumire: string
+  cui: string | null
+}
+
 export interface Profil {
   id: string
   email: string
   nume: string
   tip: string
   firmaActiva: string | null
+  firme: Firma[]
+  mfaActivat: boolean
 }
 
 export type TipVersiuneDeviz = 'Oferta' | 'Contract' | 'BugetExecutie' | 'ActAditional'

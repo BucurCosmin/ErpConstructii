@@ -42,9 +42,11 @@ dotnet ef migrations add Initial \
   -c ProiecteDbContext -o Migrari
 ```
 
-Interfața web: `cd clients/web && npm run dev` (http://localhost:5173, proxy spre API). În Development, API-ul creează date demo (`Dezvoltare/DateDemo.cs`), iar aplicația web își ia identitatea demo din `GET /dev/sesiune`.
+Interfața web: `cd clients/web && npm run dev` (http://localhost:5173; proxy Vite spre API pentru `/api`, `/connect`, `/.well-known`). În Development, API-ul creează date demo (`Dezvoltare/DateDemo.cs`): contul `demo@erpconstructii.ro` / `Demo-Constructii-2026`, două firme.
 
-În Development, autentificarea se face prin headere: `X-Dev-Utilizator: <guid>` și `X-Dev-Firma: <guid>`.
+**Autentificare (D-07, D-19):** server OAuth2/OIDC în aplicație (Identity + OpenIddict, `Identitate.Infrastructure/Autentificare`). Flux Authorization Code + PKCE; pagina de login e în aplicația web (`/autentificare`), care creează cookie-ul de sesiune prin `/api/cont/*`, apoi `/connect/authorize` emite codul. Access token 10 min, refresh token rotit. Claim-uri: `sub` (utilizator), `firma_id` (firma activă). Schimbarea firmei: refresh token + parametrul `firma_id`. MFA TOTP obligatoriu după `PoliticaMfa`. Producția cere certificatele `Autentificare:Certificate:Semnare|Criptare:Cale/Parola` și clienții în `Autentificare:Clienti`.
+
+Pentru teste cu curl, în Development API-ul acceptă și headerele `X-Dev-Utilizator: <guid>` și `X-Dev-Firma: <guid>` (schema „Dev”, neînregistrată în alte medii).
 
 ## Structura
 
@@ -68,7 +70,7 @@ db/                                  roluri PostgreSQL, șablon RLS, script baz�
 docs/                                cerințe, decizii
 ```
 
-Module existente: Identitate, Proiecte, Devize (+ Import.WinDoc), Contracte (doar calcul), Grafic (+ Import.Primavera, Import.Excel), Facturi (doar logică + contract ANAF), Formulare (+ Infrastructure Word/PDF).
+Module existente: Identitate (+ server de autentificare), Proiecte, Devize (+ Import.WinDoc), Contracte (doar calcul), Grafic (+ Import.Primavera, Import.Excel), Facturi (doar logică + contract ANAF), Formulare (+ Infrastructure Word/PDF).
 
 ## Reguli de arhitectură (nu le încălca)
 
@@ -101,7 +103,7 @@ Module existente: Identitate, Proiecte, Devize (+ Import.WinDoc), Contracte (doa
 
 1. Build și teste verzi (vezi „Primul pas”).
 2. ~~Migrările inițiale pentru Identitate, Proiecte, Devize, cu RLS (`MigrariRls.AplicaRls`).~~ Rămâne: test de integrare (Testcontainers PostgreSQL): o firmă nu vede datele alteia, nici cu interogări fără `WHERE`.
-3. Autentificare reală: ASP.NET Core Identity + OpenIddict (D-07), MFA TOTP, claim `firma_id` pentru firma activă și schimbarea firmei active. Elimini `throw`-ul din `Program.cs` pentru non-Development.
+3. ~~Autentificare reală: Identity + OpenIddict, MFA TOTP, claim `firma_id`, schimbarea firmei active.~~ Rămân: clientul OAuth pentru mobil (`erp-mobil`, redirect cu schemă proprie), curățarea periodică a token-urilor expirate (OpenIddict + Quartz), resetarea parolei (necesită serviciu de email), rate limiting pe `/api/cont/*`.
 4. Administrarea utilizatorilor, rolurilor și atribuirilor: la crearea unei firme se copiază rolurile din `RoluriPredefinite`, iar cache-ul de permisiuni se invalidează la schimbări.
 5. Jurnalul de audit append-only (schema `audit`), scris din `InterceptorAudit`.
 6. Modulul Documente (arhivă de fișiere: SHA-256, imuabil), folosit de importul de devize (`FisierSursaId`) și de formulare.

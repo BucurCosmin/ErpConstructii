@@ -4,15 +4,17 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   QuestionCircleOutlined,
+  SafetyOutlined,
   SearchOutlined,
   SwapOutlined,
   UserOutlined,
 } from '@ant-design/icons'
-import { Avatar, Badge, Button, Dropdown, Input, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd'
+import { App, Avatar, Badge, Button, Dropdown, Input, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd'
 import type { MenuProps } from 'antd'
+import { useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router'
-import { sesiuneCurenta } from '../api/client'
+import { iesire, schimbaFirma } from '../api/autentificare'
 import { usePermisiuni, useProfil } from '../api/interogari'
 import { grupuri, module } from './module'
 
@@ -25,7 +27,25 @@ export function AplicatieLayout() {
   const { token } = theme.useToken()
   const profil = useProfil()
   const permisiuni = usePermisiuni()
-  const sesiune = sesiuneCurenta()
+  const clientInterogari = useQueryClient()
+  const { message } = App.useApp()
+  const [schimbaFirmaInCurs, setSchimbaFirmaInCurs] = useState(false)
+
+  // Firma activă e în token: serverul emite token-uri noi, apoi toate datele se reîncarcă.
+  const laSchimbareaFirmei = async (firmaId: string) => {
+    setSchimbaFirmaInCurs(true)
+    try {
+      await schimbaFirma(firmaId)
+      clientInterogari.clear()
+      navigheaza('/')
+      const firma = profil.data?.firme.find((f) => f.id === firmaId)
+      message.success(`Lucrezi acum în ${firma?.denumire ?? 'firma selectată'}.`)
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSchimbaFirmaInCurs(false)
+    }
+  }
 
   const elementeMeniu = useMemo<MenuProps['items']>(() => {
     const acordate = new Set(permisiuni.data ?? [])
@@ -115,10 +135,13 @@ export function AplicatieLayout() {
           />
 
           <Select
-            value={sesiune?.firmaId}
-            style={{ minWidth: 220 }}
+            value={profil.data?.firmaActiva ?? undefined}
+            style={{ minWidth: 240 }}
             suffixIcon={<SwapOutlined />}
-            options={sesiune ? [{ value: sesiune.firmaId, label: sesiune.firmaNume }] : []}
+            loading={profil.isLoading || schimbaFirmaInCurs}
+            disabled={schimbaFirmaInCurs}
+            options={profil.data?.firme.map((f) => ({ value: f.id, label: f.denumire }))}
+            onChange={laSchimbareaFirmei}
             aria-label="Firma activă"
           />
 
@@ -147,10 +170,19 @@ export function AplicatieLayout() {
             <Dropdown
               menu={{
                 items: [
-                  { key: 'profil', icon: <UserOutlined />, label: 'Profilul meu' },
+                  { key: 'profil', icon: <UserOutlined />, label: 'Profilul meu', disabled: true },
+                  {
+                    key: 'mfa',
+                    icon: <SafetyOutlined />,
+                    label: profil.data?.mfaActivat ? 'Verificare în doi pași: activă' : 'Verificare în doi pași: inactivă',
+                    disabled: true,
+                  },
                   { type: 'divider' },
-                  { key: 'iesire', icon: <LogoutOutlined />, label: 'Ieșire', disabled: true },
+                  { key: 'iesire', icon: <LogoutOutlined />, label: 'Ieșire', danger: true },
                 ],
+                onClick: ({ key }) => {
+                  if (key === 'iesire') void iesire()
+                },
               }}
               placement="bottomRight"
             >

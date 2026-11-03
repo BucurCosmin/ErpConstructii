@@ -3,9 +3,7 @@
     Gestionare centralizată a versiunilor de pachete (Central Package Management).
     În .csproj se scrie doar <PackageReference Include="..." /> fără versiune.
 
-    ATENȚIE: versiunile de mai jos au fost scrise fără acces la nuget.org (mediul de
-    generare bloca feed-ul). Primul pas în Claude Code: `dotnet restore`, apoi
-    actualizează la ultimele versiuni stabile compatibile cu .NET 10.
+    Versiuni verificate cu nuget.org la 2026-11-03 (ultimele stabile compatibile cu .NET 10).
   -->
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
@@ -16,6 +14,10 @@
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14" />
     <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+    <!-- Autentificare (D-07) -->
+    <PackageVersion Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.14" />
+    <PackageVersion Include="OpenIddict.AspNetCore" Version="7.7.2" />
+    <PackageVersion Include="OpenIddict.EntityFrameworkCore" Version="7.7.2" />
     <!-- API -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
     <!-- Documente -->

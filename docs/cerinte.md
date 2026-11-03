@@ -20,7 +20,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | ID | Cerință | Faza | Stare |
 |---|---|---|---|
 | REQ-UTL-01 | Tipuri de utilizatori: administrator sistem, administrator firmă, intern (birou), șantier (mobil), auditor, cont de serviciu. Fără conturi pentru externi (subantreprenori, beneficiar/diriginte) în această etapă. | 0 | 🟡 |
-| REQ-UTL-02 | Autentificare: ASP.NET Core Identity + OpenIddict; access token 5–15 min, refresh token rotit; MFA (TOTP) obligatoriu pentru administratori și rolurile financiare. | 0 | ⬜ |
+| REQ-UTL-02 | Autentificare: ASP.NET Core Identity + OpenIddict; access token 5–15 min, refresh token rotit; MFA (TOTP) obligatoriu pentru administratori și rolurile financiare. | 0 | ✅ |
 | REQ-UTL-03 | Mobil: dispozitiv înregistrat și aprobat, PIN/biometrie, date offline criptate (SQLCipher), revocare la distanță cu ștergerea datelor locale. | 2 | ⬜ |
 | REQ-UTL-04 | Auditor: cont doar-citire cu dată de expirare. | 1 | 🟡 |
 | REQ-UTL-05 | Firme mari: SSO (Entra ID / LDAP) și provizionare SCIM. | ulterior | ⬜ |

@@ -15,9 +15,20 @@ public sealed class IdentitateDbContext(DbContextOptions<IdentitateDbContext> op
 
     protected override string Schema => NumeSchema;
 
+    public DbSet<Firma> Firme => Set<Firma>();
     public DbSet<Utilizator> Utilizatori => Set<Utilizator>();
     public DbSet<Rol> Roluri => Set<Rol>();
     public DbSet<Atribuire> Atribuiri => Set<Atribuire>();
+}
+
+internal sealed class ConfigurareFirma : IEntityTypeConfiguration<Firma>
+{
+    public void Configure(EntityTypeBuilder<Firma> b)
+    {
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Denumire).HasMaxLength(300).IsRequired();
+        b.Property(x => x.Cui).HasMaxLength(20);
+    }
 }
 
 internal sealed class ConfigurareUtilizator : IEntityTypeConfiguration<Utilizator>
@@ -40,6 +51,7 @@ internal sealed class ConfigurareRol : IEntityTypeConfiguration<Rol>
         b.Property(x => x.Cod).HasMaxLength(60).IsRequired();
         b.Property(x => x.Denumire).HasMaxLength(200).IsRequired();
         b.HasIndex(x => new { x.FirmaId, x.Cod }).IsUnique();
+        b.HasOne<Firma>().WithMany().HasForeignKey(x => x.FirmaId).OnDelete(DeleteBehavior.Restrict);
         // Lista de permisiuni ca text[] în PostgreSQL (Npgsql mapează nativ colecțiile primitive).
         b.Property<List<string>>("_permisiuni").HasColumnName("permisiuni");
         b.Ignore(x => x.Permisiuni);
@@ -54,5 +66,6 @@ internal sealed class ConfigurareAtribuire : IEntityTypeConfiguration<Atribuire>
         b.HasIndex(x => new { x.UtilizatorId, x.FirmaId });
         b.HasOne<Utilizator>().WithMany().HasForeignKey(x => x.UtilizatorId);
         b.HasOne<Rol>().WithMany().HasForeignKey(x => x.RolId);
+        b.HasOne<Firma>().WithMany().HasForeignKey(x => x.FirmaId).OnDelete(DeleteBehavior.Restrict);
     }
 }

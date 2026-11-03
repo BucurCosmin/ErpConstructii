@@ -18,3 +18,10 @@ body,
   text-align: right;
   white-space: nowrap;
 }
+
+/* Pe ecrane înguste, pagina de login arată doar formularul. */
+@media (max-width: 900px) {
+  .panou-prezentare {
+    display: none !important;
+  }
+}

@@ -4,10 +4,12 @@ using ErpConstructii.Devize.Import.WinDoc;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Formulare.Infrastructure;
 using ErpConstructii.Identitate.Infrastructure;
+using ErpConstructii.Identitate.Infrastructure.Autentificare;
 using ErpConstructii.Infrastructure;
 using ErpConstructii.Proiecte.Infrastructure;
 using ErpConstructii.SharedKernel;
 using Microsoft.AspNetCore.Authentication;
+using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,22 +41,30 @@ foreach (var modul in module)
 builder.Services.AdaugaImportatorWinDoc();
 
 // ---------------------------------------------------------------------------
-// Autentificare.
-// Development: schema „Dev” citește utilizatorul și firma din headere (doar pentru teste locale).
-// Producție: TODO faza 0 — server de identitate ASP.NET Core Identity + OpenIddict
-// (vezi docs/decizii.md, D-07). Până atunci aplicația refuză să pornească în afara Development.
+// Autentificare (D-07, REQ-UTL-02).
+// Serverul OAuth2/OIDC e în aplicație (ASP.NET Core Identity + OpenIddict, modulul Identitate).
+// API-ul acceptă access token-uri emise de el. În Development, pentru teste cu curl, se acceptă
+// și headerele X-Dev-Utilizator / X-Dev-Firma (schema „Dev”, înregistrată DOAR în Development).
 // ---------------------------------------------------------------------------
-if (builder.Environment.IsDevelopment())
+const string schemaErp = "Erp";
+var esteDezvoltare = builder.Environment.IsDevelopment();
+
+var autentificare = builder.Services.AddAuthentication(o =>
 {
-    builder.Services
-        .AddAuthentication(AutentificareDev.Schema)
-        .AddScheme<AuthenticationSchemeOptions, AutentificareDev>(AutentificareDev.Schema, null);
-}
-else
+    o.DefaultScheme = schemaErp;
+    o.DefaultChallengeScheme = schemaErp;
+    o.DefaultForbidScheme = schemaErp;
+});
+autentificare.AddPolicyScheme(schemaErp, "ERP", o => o.ForwardDefaultSelector = ctx =>
+    esteDezvoltare && ctx.Request.Headers.ContainsKey("X-Dev-Utilizator")
+        ? AutentificareDev.Schema
+        : OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme);
+if (esteDezvoltare)
 {
-    throw new InvalidOperationException(
-        "Autentificarea de producție (OpenIddict) nu este încă implementată. Vezi CLAUDE.md, faza 0.");
+    autentificare.AddScheme<AuthenticationSchemeOptions, AutentificareDev>(AutentificareDev.Schema, null);
 }
+
+builder.Services.AdaugaAutentificare(builder.Configuration, esteDezvoltare);
 
 builder.Services.AddAuthorization();
 builder.Services.AddOpenApi();
@@ -69,7 +79,6 @@ app.UseAuthorization();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
-    app.MapeazaSesiuneDev();
 
     // Date demo pentru aplicația web. Dacă baza nu e pregătită (migrări nerulate), aplicația pornește oricum.
     try
@@ -82,6 +91,17 @@ if (app.Environment.IsDevelopment())
     }
 }
 
+// Clienții OAuth (aplicația web etc.) din configurare. În Development, o bază nepregătită nu oprește pornirea.
+try
+{
+    await ClientiOAuth.SincronizeazaAsync(app.Services, app.Configuration);
+}
+catch (Exception ex) when (esteDezvoltare && ex is Npgsql.NpgsqlException or InvalidOperationException)
+{
+    app.Logger.LogWarning(ex, "Clienții OAuth nu au putut fi înregistrați. Ai rulat migrările? (vezi README)");
+}
+
+app.MapeazaEndpointuriAutentificare();
 app.MapGet("/sanatate", () => Results.Ok(new { stare = "ok" })).AllowAnonymous();
 
 // Toate rutele de business sunt sub /api și cer autentificare; fiecare endpoint

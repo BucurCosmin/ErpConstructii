@@ -1,13 +1,6 @@
-// Client HTTP comun. În Development, identitatea vine din headerele X-Dev-* (vezi AutentificareDev.cs);
-// în producție va fi un access token OpenIddict (D-07), aceeași interfață pentru apelanți.
+// Client HTTP comun: atașează access token-ul și, la 401, încearcă o reînnoire înainte de a cere login.
 
-export interface SesiuneDev {
-  utilizatorId: string
-  firmaId: string
-  firmaNume: string
-}
-
-let sesiune: SesiuneDev | null = null
+import { cereAutentificare, reinnoieste, tokenCurent } from './autentificare'
 
 export class EroareApi extends Error {
   readonly status: number
@@ -20,32 +13,23 @@ export class EroareApi extends Error {
   }
 }
 
-/** Încarcă identitatea demo. Apelat o dată, la pornirea aplicației. */
-export async function initializeazaSesiunea(): Promise<SesiuneDev> {
-  const r = await fetch('/dev/sesiune')
-  if (!r.ok) {
-    throw new EroareApi(
-      r.status,
-      r.status === 404
-        ? 'Utilizatorul demo nu există. Rulează migrările și repornește API-ul.'
-        : 'API-ul nu răspunde. Pornește-l cu „dotnet run --project src/Host/ErpConstructii.Api”.',
-    )
+async function trimite(url: string, init: RequestInit = {}): Promise<Response> {
+  const cuToken = async (token: string | null) => {
+    const h = new Headers(init.headers)
+    if (token) h.set('Authorization', `Bearer ${token}`)
+    return fetch(url, { ...init, headers: h })
   }
-  sesiune = (await r.json()) as SesiuneDev
-  return sesiune
-}
 
-export function sesiuneCurenta(): SesiuneDev | null {
-  return sesiune
-}
-
-function headere(extra?: HeadersInit): Headers {
-  const h = new Headers(extra)
-  if (sesiune) {
-    h.set('X-Dev-Utilizator', sesiune.utilizatorId)
-    h.set('X-Dev-Firma', sesiune.firmaId)
+  let r = await cuToken(await tokenCurent())
+  if (r.status === 401) {
+    const nou = await reinnoieste()
+    if (!nou) {
+      await cereAutentificare()
+      throw new EroareApi(401, 'Sesiunea a expirat.')
+    }
+    r = await cuToken(nou)
   }
-  return h
+  return r
 }
 
 async function trateaza<T>(r: Response): Promise<T> {
@@ -53,9 +37,7 @@ async function trateaza<T>(r: Response): Promise<T> {
   const corp: unknown = text ? JSON.parse(text) : null
   if (!r.ok) {
     const mesaj =
-      (corp as { mesaj?: string; title?: string } | null)?.mesaj ??
-      (corp as { title?: string } | null)?.title ??
-      mesajImplicit(r.status)
+      (corp as { mesaj?: string } | null)?.mesaj ?? (corp as { title?: string } | null)?.title ?? mesajImplicit(r.status)
     throw new EroareApi(r.status, mesaj, corp)
   }
   return corp as T
@@ -75,20 +57,28 @@ function mesajImplicit(status: number): string {
 }
 
 export const api = {
-  get: async <T>(url: string) => trateaza<T>(await fetch(url, { headers: headere() })),
+  get: async <T>(url: string) => trateaza<T>(await trimite(url)),
 
   post: async <T>(url: string, corp: unknown) =>
-    trateaza<T>(
-      await fetch(url, {
-        method: 'POST',
-        headers: headere({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(corp),
-      }),
-    ),
+    trateaza<T>(await trimite(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corp) })),
 
   postFisier: async <T>(url: string, fisier: File) => {
     const date = new FormData()
     date.append('fisier', fisier)
-    return trateaza<T>(await fetch(url, { method: 'POST', headers: headere(), body: date }))
+    return trateaza<T>(await trimite(url, { method: 'POST', body: date }))
   },
+}
+
+/** Cereri către endpoint-urile de login (/api/cont/*): cu cookie-ul de sesiune, fără token. */
+export const apiCont = {
+  get: async <T>(url: string) => trateaza<T>(await fetch(url, { credentials: 'same-origin' })),
+  post: async <T>(url: string, corp: unknown) =>
+    trateaza<T>(
+      await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corp),
+      }),
+    ),
 }

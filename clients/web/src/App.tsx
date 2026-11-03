@@ -9,6 +9,9 @@ import { module } from './layout/module'
 import { ModulInDezvoltare } from './pagini/ModulInDezvoltare'
 import { Ofertare } from './pagini/Ofertare'
 import { TabloDeBord } from './pagini/TabloDeBord'
+import { Autentificare } from './pagini/autentificare/Autentificare'
+import { Callback } from './pagini/autentificare/Callback'
+import { ConfigurareMfa } from './pagini/autentificare/ConfigurareMfa'
 import { DetaliiDeviz } from './pagini/devize/DetaliiDeviz'
 import { DetaliiProiect } from './pagini/proiecte/DetaliiProiect'
 import { ListaProiecte } from './pagini/proiecte/ListaProiecte'
@@ -23,6 +26,10 @@ const clientInterogari = new QueryClient({
 })
 
 const router = createBrowserRouter([
+  // Paginile de autentificare: fără meniu și fără sesiune.
+  { path: 'autentificare', element: <Autentificare /> },
+  { path: 'autentificare/configurare-mfa', element: <ConfigurareMfa /> },
+  { path: 'autentificare/callback', element: <Callback /> },
   {
     element: <AplicatieLayout />,
     children: [

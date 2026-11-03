@@ -26,6 +26,10 @@ npm install
 npm run dev
 ```
 
+**Cont demo (doar Development):** `demo@erpconstructii.ro` / `Demo-Constructii-2026`. La primul login se cere activarea
+verificării în doi pași (cod QR pentru Google/Microsoft Authenticator). Contul are acces la două firme demo
+(„Construct Demo SRL” și „Construct Demo Sud SRL”), cu selectorul de firmă din antet.
+
 ## Documentație
 
 - [CLAUDE.md](CLAUDE.md): starea proiectului, reguli, convenții, backlog

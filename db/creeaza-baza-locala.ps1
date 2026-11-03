@@ -40,14 +40,21 @@ finally {
 
 # Migrările rulează cu rolul proprietar (parola de dezvoltare din 01-roluri.sql), NU cu erp_app.
 $conexiune = "Host=$Gazda;Port=$Port;Database=erp;Username=erp_owner;Password=erp_owner_dev"
-$module = @("Identitate", "Proiecte", "Devize")
-foreach ($m in $module) {
-    Write-Host "Migrări $m..."
+# (modul, DbContext): un modul poate avea mai multe contexte (Identitate: business + autentificare).
+$contexte = @(
+    @("Identitate", "IdentitateDbContext"),
+    @("Identitate", "AutentificareDbContext"),
+    @("Proiecte", "ProiecteDbContext"),
+    @("Devize", "DevizeDbContext")
+)
+foreach ($c in $contexte) {
+    $m = $c[0]; $context = $c[1]
+    Write-Host "Migrări $context..."
     dotnet ef database update `
         -p (Join-Path $radacina "src\Modules\$m\ErpConstructii.$m.Infrastructure") `
         -s (Join-Path $radacina "src\Host\ErpConstructii.Api") `
-        -c "${m}DbContext" --connection $conexiune
-    if ($LASTEXITCODE -ne 0) { throw "Migrările modulului $m au eșuat." }
+        -c $context --connection $conexiune
+    if ($LASTEXITCODE -ne 0) { throw "Migrările $context au eșuat." }
 }
 
 Write-Host "Gata. Pornește API-ul: dotnet run --project src/Host/ErpConstructii.Api" -ForegroundColor Green

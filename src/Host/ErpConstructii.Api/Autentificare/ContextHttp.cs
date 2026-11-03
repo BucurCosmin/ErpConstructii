@@ -1,23 +1,17 @@
 using System.Security.Claims;
+using ErpConstructii.Identitate;
 using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Api.Autentificare;
 
-/// <summary>Numele claim-urilor proprii din token.</summary>
-public static class ClaimuriErp
-{
-    /// <summary>Firma activă a sesiunii (un utilizator poate avea acces la mai multe firme).</summary>
-    public const string Firma = "firma_id";
-
-    public const string Utilizator = ClaimTypes.NameIdentifier;
-}
-
+/// <summary>Firma activă, din claim-ul <c>firma_id</c> al token-ului.</summary>
 public sealed class FirmaCurentaHttp(IHttpContextAccessor accesor) : IFirmaCurenta
 {
     public Guid? FirmaId =>
         Guid.TryParse(accesor.HttpContext?.User.FindFirstValue(ClaimuriErp.Firma), out var id) ? id : null;
 }
 
+/// <summary>Utilizatorul curent, din claim-ul <c>sub</c> al token-ului.</summary>
 public sealed class UtilizatorCurentHttp(IHttpContextAccessor accesor) : IUtilizatorCurent
 {
     public Guid? UtilizatorId =>

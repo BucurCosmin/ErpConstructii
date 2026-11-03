@@ -1,38 +1,30 @@
 using System.Security.Claims;
-using ErpConstructii.Api.Autentificare;
 using ErpConstructii.Devize;
 using ErpConstructii.Devize.Calcul;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Identitate;
 using ErpConstructii.Identitate.Infrastructure;
+using ErpConstructii.Identitate.Infrastructure.Autentificare;
 using ErpConstructii.Proiecte;
 using ErpConstructii.Proiecte.Infrastructure;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpConstructii.Api.Dezvoltare;
 
 /// <summary>
-/// Date demo DOAR pentru Development: un utilizator cu toate drepturile, o firmă, câteva proiecte
-/// și un deviz-ofertă. Rulează la pornire, o singură dată (se oprește dacă utilizatorul demo există).
-///
-/// Firma nu are încă entitate proprie (vine cu administrarea firmelor, backlog faza 0, pasul 4),
-/// deci folosim un Id fix.
+/// Date demo DOAR pentru Development: două firme, un utilizator cu acces complet la ambele
+/// (cont cu parolă; MFA se configurează la primul login), proiecte și un deviz-ofertă.
+/// Fiecare pas verifică dacă datele există deja, deci se poate rula la fiecare pornire.
 /// </summary>
 public static class DateDemo
 {
     public static readonly Guid FirmaDemoId = Guid.Parse("01900000-0000-7000-8000-000000000001");
-    public const string FirmaDemoNume = "Construct Demo SRL";
+    public static readonly Guid FirmaDemoSudId = Guid.Parse("01900000-0000-7000-8000-000000000002");
     public const string EmailDemo = "demo@erpconstructii.ro";
 
-    public sealed record SesiuneDev(Guid UtilizatorId, Guid FirmaId, string FirmaNume);
-
-    /// <summary>Endpoint anonim folosit de aplicația web în Development ca să afle identitatea demo.</summary>
-    public static void MapeazaSesiuneDev(this WebApplication app) =>
-        app.MapGet("/dev/sesiune", async (IdentitateDbContext db, CancellationToken ct) =>
-        {
-            var u = await db.Utilizatori.AsNoTracking().FirstOrDefaultAsync(x => x.Email == EmailDemo, ct);
-            return u is null ? Results.NotFound() : Results.Ok(new SesiuneDev(u.Id, FirmaDemoId, FirmaDemoNume));
-        }).AllowAnonymous().ExcludeFromDescription();
+    /// <summary>Parola contului demo (doar dezvoltare locală; documentată în README).</summary>
+    public const string ParolaDemo = "Demo-Constructii-2026";
 
     public static async Task SeteazaAsync(IServiceProvider radacina, CancellationToken ct = default)
     {
@@ -40,48 +32,117 @@ public static class DateDemo
         var sp = scope.ServiceProvider;
         var identitate = sp.GetRequiredService<IdentitateDbContext>();
 
-        if (await identitate.Utilizatori.AnyAsync(u => u.Email == EmailDemo, ct))
+        // 1. Firmele.
+        await AsiguraFirmaAsync(identitate, FirmaDemoId, "Construct Demo SRL", "RO11223344", ct);
+        await AsiguraFirmaAsync(identitate, FirmaDemoSudId, "Construct Demo Sud SRL", "RO55667788", ct);
+
+        // 2. Utilizatorul, cu rol complet pe fiecare firmă.
+        var utilizator = await identitate.Utilizatori.FirstOrDefaultAsync(u => u.Email == EmailDemo, ct);
+        if (utilizator is null)
         {
-            return;
+            utilizator = new Utilizator(EmailDemo, "Andrei Popescu", TipUtilizator.AdministratorFirma);
+            identitate.Utilizatori.Add(utilizator);
         }
 
-        // 1. Identitate (schema fără RLS).
-        var utilizator = new Utilizator(EmailDemo, "Andrei Popescu", TipUtilizator.AdministratorFirma);
-        var toate = RoluriPredefinite.Toate.SelectMany(r => r.ToatePermisiunile()).Distinct();
-        var rol = new Rol(FirmaDemoId, "demo_complet", "Acces complet (demo)", toate);
-        identitate.Utilizatori.Add(utilizator);
-        identitate.Roluri.Add(rol);
-        identitate.Atribuiri.Add(new Atribuire(utilizator.Id, rol.Id, new Domeniu(FirmaDemoId), new DateOnly(2026, 1, 1)));
+        var toate = RoluriPredefinite.Toate.SelectMany(r => r.ToatePermisiunile()).Distinct().ToList();
+        foreach (var firmaId in new[] { FirmaDemoId, FirmaDemoSudId })
+        {
+            var rol = await identitate.Roluri.FirstOrDefaultAsync(r => r.FirmaId == firmaId && r.Cod == "demo_complet", ct);
+            if (rol is null)
+            {
+                rol = new Rol(firmaId, "demo_complet", "Acces complet (demo)", toate);
+                identitate.Roluri.Add(rol);
+            }
+
+            var idUtilizator = utilizator.Id;
+            if (!await identitate.Atribuiri.AnyAsync(a => a.UtilizatorId == idUtilizator && a.FirmaId == firmaId, ct))
+            {
+                identitate.Atribuiri.Add(new Atribuire(utilizator.Id, rol.Id, new Domeniu(firmaId), new DateOnly(2026, 1, 1)));
+            }
+        }
+
         await identitate.SaveChangesAsync(ct);
 
-        // 2. Date de business: RLS cere firma curentă. Interceptorii o citesc din HttpContext,
-        // deci simulăm o cerere a utilizatorului demo.
+        // 3. Contul de autentificare (același Id ca utilizatorul).
+        var conturi = sp.GetRequiredService<UserManager<ContUtilizator>>();
+        if (await conturi.FindByIdAsync(utilizator.Id.ToString()) is null)
+        {
+            var cont = new ContUtilizator { Id = utilizator.Id, UserName = EmailDemo, Email = EmailDemo, EmailConfirmed = true };
+            var rezultat = await conturi.CreateAsync(cont, ParolaDemo);
+            if (!rezultat.Succeeded)
+            {
+                throw new InvalidOperationException("Contul demo nu a putut fi creat: " + string.Join("; ", rezultat.Errors.Select(e => e.Description)));
+            }
+        }
+
+        // 4. Date de business, separat pe fiecare firmă (RLS cere firma curentă în context).
+        await DateFirmaAsync(sp, utilizator.Id, FirmaDemoId, ProiecteFirmaDemo, cuDeviz: true, ct);
+        await DateFirmaAsync(sp, utilizator.Id, FirmaDemoSudId, ProiecteFirmaSud, cuDeviz: false, ct);
+    }
+
+    private static async Task AsiguraFirmaAsync(IdentitateDbContext db, Guid id, string denumire, string cui, CancellationToken ct)
+    {
+        var firma = await db.Firme.FirstOrDefaultAsync(f => f.Id == id, ct);
+        if (firma is null)
+        {
+            db.Firme.Add(new Firma(id, denumire, cui));
+        }
+        else if (firma.Denumire != denumire)
+        {
+            // Firma creată automat de migrarea „Firme” pentru datele vechi primește denumirea reală.
+            firma.Modifica(denumire, cui);
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    private static async Task DateFirmaAsync(
+        IServiceProvider sp, Guid utilizatorId, Guid firmaId, Func<List<Proiect>> proiecteNoi, bool cuDeviz, CancellationToken ct)
+    {
+        // Interceptorii RLS și de audit citesc firma și utilizatorul din HttpContext: simulăm o cerere.
         sp.GetRequiredService<IHttpContextAccessor>().HttpContext = new DefaultHttpContext
         {
             User = new ClaimsPrincipal(new ClaimsIdentity(
             [
-                new Claim(ClaimuriErp.Utilizator, utilizator.Id.ToString()),
-                new Claim(ClaimuriErp.Firma, FirmaDemoId.ToString()),
+                new Claim(ClaimuriErp.Utilizator, utilizatorId.ToString()),
+                new Claim(ClaimuriErp.Firma, firmaId.ToString()),
             ], "Demo")),
         };
 
-        var proiecte = sp.GetRequiredService<ProiecteDbContext>();
-        var lista = new List<Proiect>
+        // DbContext-uri noi: conexiunea se deschide (și primește app.firma_id) după schimbarea contextului.
+        await using var proiecte = ActivatorUtilities.CreateInstance<ProiecteDbContext>(sp, sp.GetRequiredService<DbContextOptions<ProiecteDbContext>>());
+        if (await proiecte.Proiecte.AnyAsync(ct))
         {
-            Nou("P-2026-001", "Bloc de locuințe P+8, str. Fabricii 12", "Rezidențial Nord SRL", "RO31234567", "Cluj-Napoca, str. Fabricii 12", new(2026, 3, 1), new(2027, 9, 30), executie: true),
-            Nou("P-2026-002", "Hală logistică 12.000 mp", "LogiPark Invest SA", "RO28765432", "Ploiești, DN1 km 58", new(2026, 5, 15), new(2027, 3, 31), executie: true),
-            Nou("P-2026-003", "Modernizare DJ 107, km 12+000 – 24+500", "Consiliul Județean Alba", "4562201", "Alba, DJ 107", new(2026, 7, 1), new(2027, 11, 30)),
-            Nou("P-2026-004", "Școala gimnazială nr. 5 – reabilitare energetică", "Primăria Municipiului Brașov", "4384206", "Brașov, str. Lungă 150"),
-            Nou("P-2026-005", "Clădire birouri S+P+6", "Urban Office Development SRL", "RO40112233", "București, Bd. Iuliu Maniu 7"),
-            Nou("P-2025-014", "Stație de epurare 5.000 l.e.", "Compania de Apă Someș SA", "RO2761040", "Dej, str. Bistriței 2", new(2025, 4, 1), new(2026, 10, 31), executie: true),
-        };
+            return;
+        }
+
+        var lista = proiecteNoi();
         proiecte.Proiecte.AddRange(lista);
         await proiecte.SaveChangesAsync(ct);
 
-        var devize = sp.GetRequiredService<DevizeDbContext>();
-        devize.Versiuni.Add(DevizOferta(lista[0].Id));
-        await devize.SaveChangesAsync(ct);
+        if (cuDeviz)
+        {
+            await using var devize = ActivatorUtilities.CreateInstance<DevizeDbContext>(sp, sp.GetRequiredService<DbContextOptions<DevizeDbContext>>());
+            devize.Versiuni.Add(DevizOferta(lista[0].Id));
+            await devize.SaveChangesAsync(ct);
+        }
     }
+
+    private static List<Proiect> ProiecteFirmaDemo() =>
+    [
+        Nou("P-2026-001", "Bloc de locuințe P+8, str. Fabricii 12", "Rezidențial Nord SRL", "RO31234567", "Cluj-Napoca, str. Fabricii 12", new(2026, 3, 1), new(2027, 9, 30), executie: true),
+        Nou("P-2026-002", "Hală logistică 12.000 mp", "LogiPark Invest SA", "RO28765432", "Ploiești, DN1 km 58", new(2026, 5, 15), new(2027, 3, 31), executie: true),
+        Nou("P-2026-003", "Modernizare DJ 107, km 12+000 – 24+500", "Consiliul Județean Alba", "4562201", "Alba, DJ 107", new(2026, 7, 1), new(2027, 11, 30)),
+        Nou("P-2026-004", "Școala gimnazială nr. 5 – reabilitare energetică", "Primăria Municipiului Brașov", "4384206", "Brașov, str. Lungă 150"),
+        Nou("P-2026-005", "Clădire birouri S+P+6", "Urban Office Development SRL", "RO40112233", "București, Bd. Iuliu Maniu 7"),
+        Nou("P-2025-014", "Stație de epurare 5.000 l.e.", "Compania de Apă Someș SA", "RO2761040", "Dej, str. Bistriței 2", new(2025, 4, 1), new(2026, 10, 31), executie: true),
+    ];
+
+    private static List<Proiect> ProiecteFirmaSud() =>
+    [
+        Nou("S-2026-001", "Ansamblu rezidențial 4 blocuri P+4", "Sud Residence SRL", "RO39887766", "Craiova, str. Brestei 210", new(2026, 4, 1), new(2028, 3, 31), executie: true),
+        Nou("S-2026-002", "Pod peste râul Jiu, DC 45", "Primăria Comunei Podari", "4554133", "Podari, jud. Dolj"),
+    ];
 
     private static Proiect Nou(
         string cod, string denumire, string beneficiar, string cui, string adresa,
