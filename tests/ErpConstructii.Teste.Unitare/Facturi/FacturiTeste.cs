@@ -46,7 +46,7 @@ public class PotrivireTreiPuncteTeste
     [Fact]
     public void Gaseste_cantitate_peste_receptie_si_articol_necomandat()
     {
-        LinieFactura[] factura = [new("A", 100m, 10.10m), new("B", 45m, 20m), new("C", 1m, 5m)];
+        LinieFacturaPotrivire[] factura = [new("A", 100m, 10.10m), new("B", 45m, 20m), new("C", 1m, 5m)];
 
         var diferente = PotrivireTreiPuncte.Compara(Comanda, Receptii, factura, Toleranta);
 
@@ -58,7 +58,7 @@ public class PotrivireTreiPuncteTeste
     [Fact]
     public void Pret_peste_toleranta()
     {
-        var diferente = PotrivireTreiPuncte.Compara(Comanda, Receptii, [new LinieFactura("A", 100m, 10.50m)], Toleranta);
+        var diferente = PotrivireTreiPuncte.Compara(Comanda, Receptii, [new LinieFacturaPotrivire("A", 100m, 10.50m)], Toleranta);
         var d = Assert.Single(diferente);
         Assert.Equal(TipDiferenta.PretPesteComanda, d.Tip);
     }
@@ -66,6 +66,6 @@ public class PotrivireTreiPuncteTeste
     [Fact]
     public void Factura_conforma_nu_are_diferente()
     {
-        Assert.Empty(PotrivireTreiPuncte.Compara(Comanda, Receptii, [new LinieFactura("A", 100m, 10m), new LinieFactura("B", 40m, 20m)], Toleranta));
+        Assert.Empty(PotrivireTreiPuncte.Compara(Comanda, Receptii, [new LinieFacturaPotrivire("A", 100m, 10m), new LinieFacturaPotrivire("B", 40m, 20m)], Toleranta));
     }
 }

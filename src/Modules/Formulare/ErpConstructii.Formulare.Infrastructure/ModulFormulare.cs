@@ -33,7 +33,12 @@ public sealed class ModulFormulare : IModul
         servicii.AddSingleton<IExtractorText, ExtractorTextWord>();
         if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
         {
-            servicii.AddSingleton<IExtractorText, ExtractorTextOcr>();
+            servicii.AddSingleton<ExtractorTextOcr>();
+            // Lambda-ul e deja în garda de platformă de mai sus; analizorul CA1416 nu o vede în interiorul lambda-ului.
+#pragma warning disable CA1416
+            servicii.AddSingleton<IExtractorText>(sp => sp.GetRequiredService<ExtractorTextOcr>());
+#pragma warning restore CA1416
+            servicii.AddSingleton<IExtractorText, ExtractorTextPdf>();
         }
 
         var urlGotenberg = configurare["Formulare:GotenbergUrl"] ?? "http://localhost:3000";

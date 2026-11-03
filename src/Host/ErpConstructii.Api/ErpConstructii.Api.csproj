@@ -18,5 +18,6 @@
     <ProjectReference Include="..\..\Modules\Formulare\ErpConstructii.Formulare.Infrastructure\ErpConstructii.Formulare.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Parteneri\ErpConstructii.Parteneri.Infrastructure\ErpConstructii.Parteneri.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Aprovizionare\ErpConstructii.Aprovizionare.Infrastructure\ErpConstructii.Aprovizionare.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Facturi\ErpConstructii.Facturi.Infrastructure\ErpConstructii.Facturi.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

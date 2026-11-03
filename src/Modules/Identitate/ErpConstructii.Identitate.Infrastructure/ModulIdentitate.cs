@@ -32,6 +32,7 @@ public sealed class ModulIdentitate : IModul
         servicii.AdaugaDbContextModul<IdentitateDbContext>(configurare, Nume);
         servicii.AddMemoryCache();
         servicii.AddScoped<IServiciuPermisiuni, ServiciuPermisiuni>();
+        servicii.AddScoped<IInterogareFirma, InterogareFirma>();
         servicii.AddScoped<IAuthorizationHandler, HandlerPermisiune>();
     }
 

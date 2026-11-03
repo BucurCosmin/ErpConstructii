@@ -50,6 +50,8 @@ Interfața web: `cd clients/web && npm run dev` (http://localhost:5173; proxy Vi
 
 **Import documente externe (note de comandă scanate / Word):** extractorii (`IExtractorText`, în `Formulare.Infrastructure/Extragere`) produc un `TextDocument` neutru: Word → paragrafe + tabele exacte; PDF / imagini → OCR local Tesseract (`ron+eng`, PDF randat cu PDFium la 300 DPI, liniile tabelelor șterse înainte de OCR, segmentare `SparseText`, cuvinte cu poziții regrupate pe rânduri). `InterpretorNecesarMateriale` (logică pură, Aprovizionare) dă fiecărui câmp o `Certitudine` (Sigur / Nesigur / Lipsa); `PotrivireProiect` propune proiectul din textul „Lucrare”. Confirmarea creează `NotaComanda.Importa`: număr de sistem, `NumarExtern`, originalul în `aprovizionare.documente_originale` (SHA-256 unic pe firmă), stare „în așteptare aprobare”. Modelele OCR: `scripts/descarca-tessdata.ps1` (folderul `tessdata/`, ignorat de git; configurabil cu `Ocr:CaleTessdata`). Testele pe documente reale se fac doar local, cu fișierele din `Sabloane/` (nu în teste unitare).
 
+**Facturi primite:** `POST /api/facturi/primite/import/interpretare` citește XML-ul e-Factura (`InterpretorEFactura`, UBL CIUS-RO, Invoice / CreditNote; arhiva ZIP din SPV despachetată, semnătura ignorată la citire dar arhivată) sau PDF-ul (`ExtractorTextPdf`: textul digital cu PdfPig, OCR doar pentru scanări; apoi `InterpretorFacturaPdf`: CUI-ul diferit de al firmei = furnizorul, coloanele din antetul tabelului, cantitate × preț = valoare, totaluri încrucișate). Confirmarea (`/api/facturi/proiecte/{proiectId}/primite/import`) înregistrează `FacturaPrimita` (imuabilă, proiect obligatoriu); pentru XML serverul recitește XML-ul și ignoră liniile din formular; furnizorul se caută / adaugă prin `IServiciuParteneri`; XML-ul emis către alt CUI decât firma activă (`IInterogareFirma`) e refuzat. Anularea e entitate separată (`AnulareFacturaPrimita`, regula 6). Drepturi: `financiar.*`.
+
 Pentru teste cu curl, în Development API-ul acceptă și headerele `X-Dev-Utilizator: <guid>`, `X-Dev-Firma: <guid>` și opțional `X-Dev-Nume` (schema „Dev”, neînregistrată în alte medii). Pentru testele în browser se folosește un utilizator de test separat, nu contul demo (care are MFA înrolat pe telefonul utilizatorului).
 
 ## Structura
@@ -74,7 +76,7 @@ db/                                  roluri PostgreSQL, șablon RLS, script baz�
 docs/                                cerințe, decizii
 ```
 
-Module existente: Identitate (+ server de autentificare), Proiecte, Parteneri (furnizori, clienți și subantreprenori), Devize (+ Import.WinDoc), Aprovizionare (note de comandă cu numerotare și aprobare), Contracte (doar calcul), Grafic (+ Import.Primavera, Import.Excel), Facturi (doar logică + contract ANAF), Formulare (+ Infrastructure Word/PDF).
+Module existente: Identitate (+ server de autentificare), Proiecte, Parteneri (furnizori, clienți și subantreprenori), Devize (+ Import.WinDoc), Aprovizionare (note de comandă cu numerotare și aprobare), Contracte (doar calcul), Grafic (+ Import.Primavera, Import.Excel), Facturi (facturi primite: import e-Factura XML / ZIP SPV și PDF, înregistrare pe proiect), Formulare (+ Infrastructure Word/PDF).
 
 ## Reguli de arhitectură (nu le încălca)
 

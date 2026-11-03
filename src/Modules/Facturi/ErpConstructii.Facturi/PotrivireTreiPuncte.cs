@@ -4,7 +4,7 @@ public sealed record LinieComanda(string CodArticol, decimal Cantitate, decimal 
 
 public sealed record LinieReceptie(string CodArticol, decimal Cantitate);
 
-public sealed record LinieFactura(string CodArticol, decimal Cantitate, decimal PretUnitar);
+public sealed record LinieFacturaPotrivire(string CodArticol, decimal Cantitate, decimal PretUnitar);
 
 /// <summary>Toleranțe configurabile per firmă (ex. 0,02 = 2%).</summary>
 public sealed record TolerantePotrivire(decimal ProcentPret, decimal ProcentCantitate);
@@ -30,7 +30,7 @@ public static class PotrivireTreiPuncte
     public static IReadOnlyList<DiferentaPotrivire> Compara(
         IReadOnlyList<LinieComanda> comanda,
         IReadOnlyList<LinieReceptie> receptii,
-        IReadOnlyList<LinieFactura> factura,
+        IReadOnlyList<LinieFacturaPotrivire> factura,
         TolerantePotrivire toleranta)
     {
         var diferente = new List<DiferentaPotrivire>();

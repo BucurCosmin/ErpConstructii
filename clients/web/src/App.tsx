@@ -14,6 +14,7 @@ import { Callback } from './pagini/autentificare/Callback'
 import { ConfigurareMfa } from './pagini/autentificare/ConfigurareMfa'
 import { SchimbareParola } from './pagini/autentificare/SchimbareParola'
 import { Administrare } from './pagini/administrare/Administrare'
+import { Facturi } from './pagini/facturi/Facturi'
 import { DetaliiDeviz } from './pagini/devize/DetaliiDeviz'
 import { DetaliiProiect } from './pagini/proiecte/DetaliiProiect'
 import { ListaProiecte } from './pagini/proiecte/ListaProiecte'
@@ -47,6 +48,7 @@ const router = createBrowserRouter([
       { path: 'furnizori', element: <Furnizori /> },
       { path: 'formulare', element: <Formulare /> },
       { path: 'aprovizionare', element: <Aprovizionare /> },
+      { path: 'facturi', element: <Facturi /> },
       { path: 'administrare/:tab?', element: <Administrare /> },
       ...module
         .filter((m) => !m.implementat && !['aprovizionare', 'formulare'].includes(m.cheie))

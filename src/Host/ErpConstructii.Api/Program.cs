@@ -4,6 +4,7 @@ using ErpConstructii.Api.Dezvoltare;
 using ErpConstructii.Aprovizionare.Infrastructure;
 using ErpConstructii.Devize.Import.WinDoc;
 using ErpConstructii.Devize.Infrastructure;
+using ErpConstructii.Facturi.Infrastructure;
 using ErpConstructii.Formulare.Infrastructure;
 using ErpConstructii.Identitate.Infrastructure;
 using ErpConstructii.Identitate.Infrastructure.Autentificare;
@@ -28,6 +29,7 @@ IModul[] module =
     new ModulFormulare(),
     new ModulParteneri(),
     new ModulAprovizionare(),
+    new ModulFacturi(),
 ];
 
 // Context de cerere: firma și utilizatorul curent, citite din token.

@@ -1,7 +1,8 @@
+using ErpConstructii.SharedKernel.Import;
 using System.Globalization;
 using System.Text;
 
-namespace ErpConstructii.Aprovizionare.Import;
+namespace ErpConstructii.Proiecte;
 
 public sealed record ProiectCandidat(Guid Id, string Cod, string Denumire);
 

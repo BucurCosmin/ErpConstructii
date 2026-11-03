@@ -17,8 +17,11 @@ public sealed class ModulParteneri : IModul
 {
     public string Nume => ParteneriDbContext.NumeSchema;
 
-    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare) =>
+    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare)
+    {
         servicii.AdaugaDbContextModul<ParteneriDbContext>(configurare, Nume);
+        servicii.AddScoped<IServiciuParteneri, ServiciuParteneri>();
+    }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
     {

@@ -7,6 +7,7 @@ using ErpConstructii.Identitate.Infrastructure;
 using ErpConstructii.Identitate.Infrastructure.Autentificare;
 using ErpConstructii.Proiecte;
 using ErpConstructii.Proiecte.Infrastructure;
+using ErpConstructii.SharedKernel;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -33,8 +34,8 @@ public static class DateDemo
         var identitate = sp.GetRequiredService<IdentitateDbContext>();
 
         // 1. Firmele.
-        await AsiguraFirmaAsync(identitate, FirmaDemoId, "Construct Demo SRL", "RO11223344", ct);
-        await AsiguraFirmaAsync(identitate, FirmaDemoSudId, "Construct Demo Sud SRL", "RO55667788", ct);
+        await AsiguraFirmaAsync(identitate, FirmaDemoId, "Construct Demo SRL", "RO23456783", ct);
+        await AsiguraFirmaAsync(identitate, FirmaDemoSudId, "Construct Demo Sud SRL", "RO34567892", ct);
 
         // 2. Utilizatorul, cu rol complet pe fiecare firmă.
         var utilizator = await identitate.Utilizatori.FirstOrDefaultAsync(u => u.Email == EmailDemo, ct);
@@ -143,10 +144,16 @@ public static class DateDemo
         {
             db.Firme.Add(new Firma(id, denumire, cui));
         }
-        else if (firma.Denumire != denumire)
+        else
         {
-            // Firma creată automat de migrarea „Firme” pentru datele vechi primește denumirea reală.
-            firma.Modifica(denumire, cui);
+            // Doar ce lipsește sau e greșit: denumirea generată de migrarea „Firme” („Firmă 0190…”) și un CUI invalid.
+            // Ce a modificat utilizatorul în Administrare (denumire, CUI valid) rămâne neatins.
+            var denumireNoua = firma.Denumire.StartsWith("Firmă ", StringComparison.Ordinal) ? denumire : firma.Denumire;
+            var cuiNou = firma.Cui is { } c && ValidareFiscala.EsteCuiValid(c) ? firma.Cui : cui;
+            if (denumireNoua != firma.Denumire || cuiNou != firma.Cui)
+            {
+                firma.Modifica(denumireNoua, cuiNou);
+            }
         }
 
         await db.SaveChangesAsync(ct);

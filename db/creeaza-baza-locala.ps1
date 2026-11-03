@@ -1,4 +1,4 @@
-# Creează baza locală de dezvoltare pe un PostgreSQL instalat (fără Docker) și rulează migrările.
+﻿# Creează baza locală de dezvoltare pe un PostgreSQL instalat (fără Docker) și rulează migrările.
 #
 #   powershell -ExecutionPolicy Bypass -File db\creeaza-baza-locala.ps1
 #
@@ -45,7 +45,11 @@ $contexte = @(
     @("Identitate", "IdentitateDbContext"),
     @("Identitate", "AutentificareDbContext"),
     @("Proiecte", "ProiecteDbContext"),
-    @("Devize", "DevizeDbContext")
+    @("Devize", "DevizeDbContext"),
+    @("Formulare", "FormulareDbContext"),
+    @("Parteneri", "ParteneriDbContext"),
+    @("Aprovizionare", "AprovizionareDbContext"),
+    @("Facturi", "FacturiDbContext")
 )
 foreach ($c in $contexte) {
     $m = $c[0]; $context = $c[1]

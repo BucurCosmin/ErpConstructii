@@ -1,8 +1,7 @@
 import { CheckOutlined, CloseOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography, Upload } from 'antd'
-import type { UploadFile } from 'antd'
+import { Alert, App, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import { useEffect, useState } from 'react'
-import dayjs from 'dayjs'
+import { useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import {
   useAprobaNotaComanda,
@@ -12,11 +11,10 @@ import {
 } from '../../api/aprovizionare'
 import type { FiltreNoteComanda, NotaComanda } from '../../api/aprovizionare'
 import {
-  useImportaFormular,
   useImporturiFormular,
   useSabloaneFormular,
 } from '../../api/formulare'
-import type { DateFormularApi, ImportFormularApi } from '../../api/formulare'
+import type { ImportFormularApi } from '../../api/formulare'
 import { usePermisiuni, useProfil, useProiecte } from '../../api/interogari'
 import type { Proiect } from '../../api/tipuri'
 import { AntetPagina } from '../../layout/AntetPagina'
@@ -32,31 +30,6 @@ interface LinieNotaValues {
 interface NotaValues {
   compartimentSantier: string
   linii: LinieNotaValues[]
-}
-
-interface LinieImport {
-  cod_articol?: string
-  denumire?: string
-  um?: string
-  cantitate?: string
-  pret_unitar?: string
-  valoare?: string
-  articol_deviz?: string
-  termen?: string
-}
-
-interface ImportValues {
-  numar: string
-  data: string
-  proiect_cod: string
-  proiect_denumire?: string
-  furnizor_denumire?: string
-  furnizor_cui?: string
-  data_scadenta?: string
-  total_cu_tva?: string
-  total_fara_tva?: string
-  observatii?: string
-  linii?: LinieImport[]
 }
 
 interface RespingereValues {
@@ -137,6 +110,7 @@ function etichetaStare(stare: NotaComanda['stare']) {
 
 export function Aprovizionare() {
   const { message } = App.useApp()
+  const navigheaza = useNavigate()
   const permisiuni = usePermisiuni()
   const profil = useProfil()
   const proiecte = useProiecte()
@@ -144,15 +118,12 @@ export function Aprovizionare() {
   const emiteNota = useEmiteNotaComanda()
   const aprobaNota = useAprobaNotaComanda()
   const respingeNota = useRespingeNotaComanda()
-  const importa = useImportaFormular()
   const [formNota] = Form.useForm<NotaValues>()
-  const [formImport] = Form.useForm<ImportValues>()
   const [formRespingere] = Form.useForm<RespingereValues>()
   const [formFiltre] = Form.useForm<FiltreNotaValues>()
   const [proiectId, setProiectId] = useState('')
   const [filtreNote, setFiltreNote] = useState<FiltreNoteComanda>({})
   const [notaSelectata, setNotaSelectata] = useState<NotaComanda>()
-  const [fisierImport, setFisierImport] = useState<File>()
   const [tipImport, setTipImport] = useState<'comanda-furnizor' | 'factura-primita'>('comanda-furnizor')
 
   const note = useNoteComanda(filtreNote)
@@ -244,50 +215,6 @@ export function Aprovizionare() {
     }
   }
 
-  const importaDocument = async (valori: ImportValues) => {
-    if (!fisierImport) {
-      message.warning('Alege documentul original PDF sau DOCX.')
-      return
-    }
-
-    const esteFactura = tipImport === 'factura-primita'
-    const date: DateFormularApi = {
-      campuri: {
-        numar: valori.numar,
-        data: valori.data,
-        proiect_cod: valori.proiect_cod,
-        proiect_denumire: valori.proiect_denumire ?? '',
-        furnizor_denumire: esteFactura ? valori.furnizor_denumire ?? '' : '',
-        furnizor_cui: esteFactura ? valori.furnizor_cui ?? '' : '',
-        data_scadenta: esteFactura ? valori.data_scadenta ?? '' : '',
-        total_cu_tva: esteFactura ? valori.total_cu_tva ?? '' : '',
-        total_fara_tva: valori.total_fara_tva ?? '',
-        observatii: valori.observatii ?? '',
-      },
-      tabele: {
-        linii: (valori.linii ?? []).map((linie) => ({
-          cod_articol: linie.cod_articol ?? '',
-          denumire: linie.denumire ?? '',
-          um: linie.um ?? '',
-          cantitate: linie.cantitate ?? '',
-          pret_unitar: linie.pret_unitar ?? '',
-          valoare: linie.valoare ?? '',
-          articol_deviz: linie.articol_deviz ?? '',
-          termen: linie.termen ?? '',
-        })),
-      },
-    }
-
-    try {
-      await importa.mutateAsync({ codTip: tipImport, fisier: fisierImport, date })
-      message.success('Documentul original a fost arhivat ca ciornă „De verificat”.')
-      setFisierImport(undefined)
-      formImport.resetFields()
-    } catch (eroare) {
-      message.error(eroare instanceof Error ? eroare.message : 'Documentul nu a putut fi importat.')
-    }
-  }
-
   const descarcaOriginal = async (document: ImportFormularApi) => {
     try {
       const original = await api.getBinar(`/api/formulare/import/${document.id}/original`)
@@ -297,10 +224,6 @@ export function Aprovizionare() {
     }
   }
 
-  const schimbaTipImport = (tip: 'comanda-furnizor' | 'factura-primita') => {
-    setTipImport(tip)
-    formImport.resetFields()
-  }
 
   const randuriNote = note.data ?? []
 
@@ -564,7 +487,7 @@ export function Aprovizionare() {
                   extra={
                     <Select
                       value={tipImport}
-                      onChange={schimbaTipImport}
+                      onChange={setTipImport}
                       style={{ width: 200 }}
                       options={[
                         { value: 'comanda-furnizor', label: 'Notă de comandă' },
@@ -576,55 +499,13 @@ export function Aprovizionare() {
                   {tipImport === 'comanda-furnizor' ? (
                     <ImportNotaExterna poateCrea={poateCrea} />
                   ) : (
-                  <>
-                  <Alert
-                    type="info"
-                    showIcon
-                    message="Originalul este păstrat nemodificat, iar datele introduse intră ca ciornă „De verificat”."
-                    description="Facturile primite păstrează datele furnizorului."
-                    style={{ marginBottom: 16 }}
-                  />
-                  <Form form={formImport} layout="vertical" initialValues={{ data: dayjs().format('YYYY-MM-DD'), linii: [{}] }} onFinish={importaDocument}>
-                    <Row gutter={16}>
-                      <Col xs={24}>
-                        <Form.Item label="Original PDF sau DOCX" required>
-                          <Upload
-                            accept=".pdf,.docx"
-                            maxCount={1}
-                            fileList={fisierImport ? ([{ uid: fisierImport.name, name: fisierImport.name, status: 'done' }] as UploadFile[]) : []}
-                            beforeUpload={(fisier) => {
-                              setFisierImport(fisier)
-                              return false
-                            }}
-                            onRemove={() => {
-                              setFisierImport(undefined)
-                              return true
-                            }}
-                          >
-                            <Button>Adaugă originalul</Button>
-                          </Upload>
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={6}><Form.Item name="numar" label="Număr document" rules={[{ required: true }]}><Input /></Form.Item></Col>
-                      <Col xs={24} md={6}><Form.Item name="data" label="Data documentului" rules={[{ required: true }]}><Input type="date" /></Form.Item></Col>
-                      <Col xs={24} md={6}><Form.Item name="proiect_cod" label="Cod proiect" rules={[{ required: true }]}><Input /></Form.Item></Col>
-                      <Col xs={24} md={6}><Form.Item name="proiect_denumire" label="Proiect"><Input /></Form.Item></Col>
-                      {tipImport === 'factura-primita' && (
-                        <>
-                          <Col xs={24} md={8}><Form.Item name="furnizor_denumire" label="Furnizor" rules={[{ required: true }]}><Input /></Form.Item></Col>
-                          <Col xs={24} md={8}><Form.Item name="furnizor_cui" label="CUI furnizor"><Input /></Form.Item></Col>
-                          <Col xs={24} md={8}><Form.Item name="data_scadenta" label="Data scadentă"><Input type="date" /></Form.Item></Col>
-                          <Col xs={24} md={8}><Form.Item name="total_cu_tva" label="Total de plată" rules={[{ required: true }]}><Input /></Form.Item></Col>
-                          <Col xs={24} md={8}><Form.Item name="total_fara_tva" label="Total fără TVA"><Input /></Form.Item></Col>
-                        </>
-                      )}
-                      <Col span={24}><Form.Item name="observatii" label="Observații"><Input.TextArea rows={2} /></Form.Item></Col>
-                    </Row>
-                    <Button type="primary" htmlType="submit" loading={importa.isPending} disabled={!poateCrea || !fisierImport}>
-                      Importă ca ciornă de verificat
-                    </Button>
-                  </Form>
-                  </>
+                    <Alert
+                      type="info"
+                      showIcon
+                      title="Facturile primite se importă în modulul Facturi"
+                      description="Acolo se citesc automat din XML-ul e-Factura (sau arhiva ZIP din SPV) ori din PDF / scanare, se înregistrează pe proiect, iar furnizorul se adaugă în nomenclator."
+                      action={<Button type="primary" onClick={() => navigheaza('/facturi?tab=import')}>Deschide importul de facturi</Button>}
+                    />
                   )}
                 </Card>
 

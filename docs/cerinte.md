@@ -105,11 +105,11 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-FCT-04 | Termen: 5 zile lucrătoare de la emitere (facturile din 2026); alertă după 3 zile lucrătoare. | 1 | ✅ |
 | REQ-FCT-05 | PDF pentru client din șablonul Word al firmei; arhivare XML + mesaj semnat ANAF + PDF. | 1 | ⬜ |
 | REQ-FCT-06 | Surse de facturi emise: situații, avansuri, refacturări, vânzări de materiale, storno (cu referință la factura inițială). | 1 | ⬜ |
-| REQ-FCT-07 | Descărcare automată periodică a facturilor primite din SPV; fără dublări. | 1 | 🟡 (contract) |
-| REQ-FCT-08 | Facturi din afara e-Factura: PDF/scan atașat și introducere manuală. | 1 | ⬜ |
+| REQ-FCT-07 | Descărcare automată periodică a facturilor primite din SPV; fără dublări. | 1 | 🟡 (import manual XML / ZIP din SPV; descărcarea automată rămâne) |
+| REQ-FCT-08 | Facturi din afara e-Factura: PDF/scan atașat și introducere manuală. | 1 | ✅ |
 | REQ-FCT-09 | Potrivire în 3 puncte comandă–NIR–factură, cu toleranțe configurabile; diferențele merg la achizitor. | 2 | ✅ (regula) |
 | REQ-FCT-10 | Alocare pe proiect și articol moștenită din comandă; reguli per furnizor pentru facturile fără comandă. | 2 | ⬜ |
-| REQ-FCT-11 | Arhiva originală din SPV păstrată neschimbată. | 1 | ⬜ |
+| REQ-FCT-11 | Arhiva originală din SPV păstrată neschimbată. | 1 | ✅ |
 | REQ-FCT-12 | Până la faza 3: export către programul contabil existent (exportatori ca module + export generic) și import al stării plăților. | 1 | ⬜ |
 
 ## FRM — Formulare și documente Word

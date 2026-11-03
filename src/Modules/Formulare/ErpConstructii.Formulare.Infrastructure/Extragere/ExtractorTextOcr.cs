@@ -46,11 +46,8 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
 {
     private static readonly string[] ExtensiiImagine = [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"];
 
-    public bool Accepta(string numeFisier)
-    {
-        var ext = Path.GetExtension(numeFisier).ToLowerInvariant();
-        return ext == ".pdf" || ExtensiiImagine.Contains(ext);
-    }
+    /// <summary>Imaginile direct; PDF-urile trec întâi prin <see cref="ExtractorTextPdf"/>, care cheamă OCR doar pentru scanări.</summary>
+    public bool Accepta(string numeFisier) => ExtensiiImagine.Contains(Path.GetExtension(numeFisier).ToLowerInvariant());
 
     public Task<RezultatImport<TextDocument>> ExtrageAsync(SursaImport sursa, CancellationToken ct = default) =>
         Task.Run(() => Extrage(sursa, ct), ct);
@@ -93,7 +90,7 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
                 using var original = Pix.LoadFromMemory(imagini[i]);
                 using var pix = o.EliminaLiniiTabel ? FaraLiniiTabel(original) : original.Clone();
                 using var pagina = motor.Process(pix, o.ModSegmentare);
-                randuri.AddRange(GrupeazaPeRanduri(Cuvinte(pagina), i + 1));
+                randuri.AddRange(GrupareRanduri.PeRanduri(Cuvinte(pagina), i + 1));
             }
         }
         catch (IOException ex)
@@ -158,11 +155,9 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
         return faraVerticale.Rotate90(-1);
     }
 
-    private sealed record CuvantPozitionat(string Text, int X0, int X1, int Y0, int Y1, float Incredere);
-
-    private static List<CuvantPozitionat> Cuvinte(Page pagina)
+    private static List<GrupareRanduri.Cuvant> Cuvinte(Page pagina)
     {
-        var cuvinte = new List<CuvantPozitionat>();
+        var cuvinte = new List<GrupareRanduri.Cuvant>();
         using var it = pagina.GetIterator();
         it.Begin();
         do
@@ -170,58 +165,12 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
             var text = it.GetText(PageIteratorLevel.Word)?.Trim();
             if (!string.IsNullOrEmpty(text) && it.TryGetBoundingBox(PageIteratorLevel.Word, out var b))
             {
-                cuvinte.Add(new CuvantPozitionat(text, b.X1, b.X2, b.Y1, b.Y2, it.GetConfidence(PageIteratorLevel.Word)));
+                cuvinte.Add(new GrupareRanduri.Cuvant(text, b.X1, b.X2, b.Y1, b.Y2, it.GetConfidence(PageIteratorLevel.Word)));
             }
         }
         while (it.Next(PageIteratorLevel.Word));
 
         return cuvinte;
-    }
-
-    /// <summary>
-    /// Cuvintele de pe aceeași linie vizuală formează un rând (Tesseract poate separa coloanele unui tabel în blocuri
-    /// diferite; regrupăm după centrul vertical, cu toleranță de jumătate din înălțimea medie a unui cuvânt).
-    /// </summary>
-    private static IEnumerable<RandText> GrupeazaPeRanduri(List<CuvantPozitionat> cuvinte, int pagina)
-    {
-        if (cuvinte.Count == 0)
-        {
-            yield break;
-        }
-
-        var inaltimeMedie = cuvinte.Average(c => c.Y1 - c.Y0);
-        var toleranta = Math.Max(4, inaltimeMedie * 0.5);
-        var randCurent = new List<CuvantPozitionat>();
-        double centruRand = 0;
-
-        foreach (var c in cuvinte.OrderBy(c => (c.Y0 + c.Y1) / 2.0))
-        {
-            var centru = (c.Y0 + c.Y1) / 2.0;
-            if (randCurent.Count > 0 && Math.Abs(centru - centruRand) > toleranta)
-            {
-                yield return CaRand(randCurent, pagina);
-                randCurent = [];
-            }
-
-            randCurent.Add(c);
-            centruRand = randCurent.Average(x => (x.Y0 + x.Y1) / 2.0);
-        }
-
-        if (randCurent.Count > 0)
-        {
-            yield return CaRand(randCurent, pagina);
-        }
-    }
-
-    private static RandText CaRand(List<CuvantPozitionat> cuvinte, int pagina)
-    {
-        var ordonate = cuvinte.OrderBy(c => c.X0).ToList();
-        return new RandText(
-            string.Join(' ', ordonate.Select(c => c.Text)),
-            ordonate.Select(c => new CuvantText(c.Text, c.X0, c.X1, c.Incredere)).ToList(),
-            pagina,
-            cuvinte.Min(c => c.Y0),
-            cuvinte.Max(c => c.Y1));
     }
 
     /// <summary>În dezvoltare, modelele stau în folderul „tessdata” din rădăcina repository-ului.</summary>

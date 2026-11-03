@@ -1,5 +1,6 @@
 using ErpConstructii.Aprovizionare;
 using ErpConstructii.Aprovizionare.Import;
+using ErpConstructii.Proiecte;
 using ErpConstructii.SharedKernel.Import;
 
 namespace ErpConstructii.Teste.Unitare.Aprovizionare;

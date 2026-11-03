@@ -149,14 +149,11 @@ export const module: ModulAplicatie[] = [
   {
     cheie: 'facturi',
     cale: '/facturi',
-    eticheta: 'Facturi și e-Factura',
+    eticheta: 'Facturi primite',
     icon: <FileTextOutlined />,
     grup: 'financiar',
     permisiune: 'financiar.vizualizare',
-    faza: 'Faza 1',
-    descriere:
-      'Facturi emise și primite în format UBL CIUS-RO, trimitere automată în SPV, urmărirea stării, taxare inversă propusă automat.',
-    cerinte: ['REQ-FCT-01', 'REQ-FCT-02', 'REQ-FCT-03', 'REQ-FCT-04', 'REQ-FCT-07'],
+    implementat: true,
   },
   {
     cheie: 'financiar',

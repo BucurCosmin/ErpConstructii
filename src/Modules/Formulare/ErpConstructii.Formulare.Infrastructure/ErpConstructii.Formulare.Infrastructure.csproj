@@ -6,6 +6,7 @@
     <PackageReference Include="DocumentFormat.OpenXml" />
     <PackageReference Include="Tesseract" />
     <PackageReference Include="PDFtoImage" />
+    <PackageReference Include="PdfPig" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
