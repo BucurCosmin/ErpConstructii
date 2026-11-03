@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Modulul Formulare: catalogul tipurilor de formulare, datele unui formular, numerotarea,
+    validarea. Generarea / citirea Word și conversia PDF sunt în Formulare.Infrastructure.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.SharedKernel\ErpConstructii.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

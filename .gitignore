@@ -1,0 +1,20 @@
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+TestResults/
+artifacts/
+appsettings.*.local.json
+*.pfx
+*.p12
+# fișiere reale de la clienți (devize, grafice) NU intră în git; se țin în tests/samples-private
+tests/samples-private/
+
+# frontend
+node_modules/
+dist/
+*.tsbuildinfo
+.env.local

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Teste pentru generarea și citirea formularelor Word (Open XML). Construiesc șablonul în memorie,
+    deci nu au nevoie de fișiere externe.
+    NOTĂ: scrise fără acces la nuget.org; primul `dotnet test` în Claude Code le validează.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="DocumentFormat.OpenXml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Formulare\ErpConstructii.Formulare.Infrastructure\ErpConstructii.Formulare.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

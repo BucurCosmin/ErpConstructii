@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Importator pentru graficele Excel cu șablon (grafice fizice și valorice lunare din
+    documentațiile de atribuire). La implementare se adaugă ClosedXML.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\ErpConstructii.Grafic\ErpConstructii.Grafic.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+<Project>
+  <!--
+    Setări comune pentru toate proiectele din soluție.
+    Orice proiect nou moștenește automat aceste valori; nu le repeta în .csproj.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <!-- Avertismentele sunt erori: calculele financiare nu tolerează null-uri ignorate. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+</Project>

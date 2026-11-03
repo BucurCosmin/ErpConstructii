@@ -1,0 +1,24 @@
+# Infrastructura locală de dezvoltare.
+#   docker compose up -d
+# PostgreSQL: rolurile și drepturile se creează din db/init la prima pornire.
+# Gotenberg: conversie DOCX → PDF cu LibreOffice (decizia D-10).
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: erp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:

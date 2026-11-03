@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Nucleul comun: tipuri de bază folosite de toate modulele.
+    REGULĂ: fără dependențe NuGet și fără referințe la alte proiecte.
+  -->
+</Project>

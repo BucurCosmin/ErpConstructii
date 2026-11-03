@@ -1,0 +1,30 @@
+<Project>
+  <!--
+    Gestionare centralizată a versiunilor de pachete (Central Package Management).
+    În .csproj se scrie doar <PackageReference Include="..." /> fără versiune.
+
+    ATENȚIE: versiunile de mai jos au fost scrise fără acces la nuget.org (mediul de
+    generare bloca feed-ul). Primul pas în Claude Code: `dotnet restore`, apoi
+    actualizează la ultimele versiuni stabile compatibile cu .NET 10.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Persistență -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
+    <!-- API -->
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <!-- Documente -->
+    <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <!-- De adăugat la implementarea importatorilor (vezi CLAUDE.md):
+         ClosedXML (Excel), net.sf.mpxj-for-csharp (Primavera / MS Project). -->
+    <!-- Teste -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>

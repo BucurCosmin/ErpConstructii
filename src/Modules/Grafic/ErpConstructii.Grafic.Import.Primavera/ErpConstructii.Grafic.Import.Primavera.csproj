@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Importator Primavera P6 (.xer, .xml PMXML) — prioritar.
+    La implementare se adaugă pachetul MPXJ pentru .NET (net.sf.mpxj-for-csharp, LGPL;
+    verifică licența și varianta de pachet înainte de integrare) în Directory.Packages.props.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\ErpConstructii.Grafic\ErpConstructii.Grafic.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Modulul Devize: structura de deviz versionată, motorul de calcul (recapitulație) și
+    contractele importatorilor. Fără dependențe de infrastructură: totul se testează unitar.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.SharedKernel\ErpConstructii.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

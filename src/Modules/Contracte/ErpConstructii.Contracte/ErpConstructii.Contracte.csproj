@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Modulul Contracte: contracte cu beneficiarul și subantreprenorii, calculul situațiilor de lucrări
+    și ajustarea prețurilor. Deocamdată doar logica pură (calculatoare); entitățile și
+    infrastructura se adaugă în faza 1 (vezi CLAUDE.md).
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.SharedKernel\ErpConstructii.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

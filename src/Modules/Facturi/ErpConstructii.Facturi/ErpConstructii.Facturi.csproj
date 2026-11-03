@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Modulul Facturi: e-Factura (emise și primite), potrivirea în 3 puncte, exportul către
+    contabilitate. Deocamdată: logica pură și contractul clientului ANAF; infrastructura în faza 1.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.SharedKernel\ErpConstructii.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <!--
+    Host-ul aplicației: un singur proces care încarcă toate modulele (monolit modular).
+    Nu conține logică de business; doar compunere, autentificare și pipeline HTTP.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Identitate\ErpConstructii.Identitate.Infrastructure\ErpConstructii.Identitate.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Proiecte\ErpConstructii.Proiecte.Infrastructure\ErpConstructii.Proiecte.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Devize\ErpConstructii.Devize.Infrastructure\ErpConstructii.Devize.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\Modules\Devize\ErpConstructii.Devize.Import.WinDoc\ErpConstructii.Devize.Import.WinDoc.csproj" />
+    <ProjectReference Include="..\..\Modules\Formulare\ErpConstructii.Formulare.Infrastructure\ErpConstructii.Formulare.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>

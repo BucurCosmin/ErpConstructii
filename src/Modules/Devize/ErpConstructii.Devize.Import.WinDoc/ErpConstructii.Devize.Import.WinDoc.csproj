@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Importator pentru devizele WinDoc (Intelsoft). Depinde DOAR de contractele modulului Devize.
+    Pentru înregistrare în DI se folosește doar Microsoft.Extensions.DependencyInjection.Abstractions
+    (vine prin FrameworkReference ASP.NET în Host; aici e suficientă referința la framework).
+  -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ErpConstructii.Devize\ErpConstructii.Devize.csproj" />
+  </ItemGroup>
+</Project>

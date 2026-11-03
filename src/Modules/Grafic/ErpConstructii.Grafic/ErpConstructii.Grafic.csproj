@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Modulul Grafic de execuție: model canonic al graficului, legarea de articolele de deviz,
+    calculul progresului din cantitățile raportate și prognoza termenelor (drum critic).
+    Logică pură, fără infrastructură.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.SharedKernel\ErpConstructii.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,51 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="CLAUDE.md" />
+    <File Path="README.md" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="docker-compose.yml" />
+    <File Path="docs/cerinte.md" />
+    <File Path="docs/decizii.md" />
+  </Folder>
+  <Folder Name="/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/ErpConstructii.SharedKernel/ErpConstructii.SharedKernel.csproj" />
+    <Project Path="src/BuildingBlocks/ErpConstructii.Infrastructure/ErpConstructii.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Host/">
+    <Project Path="src/Host/ErpConstructii.Api/ErpConstructii.Api.csproj" />
+  </Folder>
+  <Folder Name="/Modules/" />
+  <Folder Name="/Modules/Identitate/">
+    <Project Path="src/Modules/Identitate/ErpConstructii.Identitate/ErpConstructii.Identitate.csproj" />
+    <Project Path="src/Modules/Identitate/ErpConstructii.Identitate.Infrastructure/ErpConstructii.Identitate.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Proiecte/">
+    <Project Path="src/Modules/Proiecte/ErpConstructii.Proiecte/ErpConstructii.Proiecte.csproj" />
+    <Project Path="src/Modules/Proiecte/ErpConstructii.Proiecte.Infrastructure/ErpConstructii.Proiecte.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Devize/">
+    <Project Path="src/Modules/Devize/ErpConstructii.Devize/ErpConstructii.Devize.csproj" />
+    <Project Path="src/Modules/Devize/ErpConstructii.Devize.Infrastructure/ErpConstructii.Devize.Infrastructure.csproj" />
+    <Project Path="src/Modules/Devize/ErpConstructii.Devize.Import.WinDoc/ErpConstructii.Devize.Import.WinDoc.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Contracte/">
+    <Project Path="src/Modules/Contracte/ErpConstructii.Contracte/ErpConstructii.Contracte.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Grafic/">
+    <Project Path="src/Modules/Grafic/ErpConstructii.Grafic/ErpConstructii.Grafic.csproj" />
+    <Project Path="src/Modules/Grafic/ErpConstructii.Grafic.Import.Primavera/ErpConstructii.Grafic.Import.Primavera.csproj" />
+    <Project Path="src/Modules/Grafic/ErpConstructii.Grafic.Import.Excel/ErpConstructii.Grafic.Import.Excel.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Facturi/">
+    <Project Path="src/Modules/Facturi/ErpConstructii.Facturi/ErpConstructii.Facturi.csproj" />
+  </Folder>
+  <Folder Name="/Modules/Formulare/">
+    <Project Path="src/Modules/Formulare/ErpConstructii.Formulare/ErpConstructii.Formulare.csproj" />
+    <Project Path="src/Modules/Formulare/ErpConstructii.Formulare.Infrastructure/ErpConstructii.Formulare.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ErpConstructii.Teste.Unitare/ErpConstructii.Teste.Unitare.csproj" />
+    <Project Path="tests/ErpConstructii.Teste.Formulare/ErpConstructii.Teste.Formulare.csproj" />
+  </Folder>
+</Solution>
