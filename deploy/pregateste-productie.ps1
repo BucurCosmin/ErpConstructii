@@ -41,7 +41,7 @@ $sufixPort = if ($Port -eq 443) { "" } else { ":$Port" }
 $secrete = Join-Path $productie "certificate\secrete.json"
 $info = if (Test-Path $secrete) { Get-Content $secrete -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
 
-function CertificatNou([string] $subiect, [string[]] $extensii, [string] $utilizare, [string] $fisier) {
+function CertificatNou([string] $subiect, [string[]] $extensii, [string[]] $utilizare, [string] $fisier) {
     $parola = ParolaAleatoare
     $argumente = @{
         Subject = $subiect; KeyAlgorithm = "RSA"; KeyLength = 2048; KeyExportPolicy = "Exportable"; KeyUsage = $utilizare
@@ -67,7 +67,7 @@ foreach ($tip in @("Semnare", "Criptare")) {
 $numeHttps = (@("DNS=$Domeniu", "DNS=localhost", "IPAddress=127.0.0.1") + ($ipuriLocale | ForEach-Object { "IPAddress=$_" })) -join "&"
 if (-not $info.PSObject.Properties["Https"] -or $info.HttpsNume -ne $numeHttps) {
     Write-Host "Generez certificatul HTTPS pentru $Domeniu și $($ipuriLocale -join ', ')..."
-    $https = CertificatNou "CN=$Domeniu" @("2.5.29.17={text}$numeHttps", "2.5.29.37={text}1.3.6.1.5.5.7.3.1") "DigitalSignature,KeyEncipherment" "https.pfx"
+    $https = CertificatNou "CN=$Domeniu" @("2.5.29.17={text}$numeHttps", "2.5.29.37={text}1.3.6.1.5.5.7.3.1") @("DigitalSignature", "KeyEncipherment") "https.pfx"
     $info | Add-Member -Force -NotePropertyName Https -NotePropertyValue $https
     $info | Add-Member -Force -NotePropertyName HttpsNume -NotePropertyValue $numeHttps
 }
