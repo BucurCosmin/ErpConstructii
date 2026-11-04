@@ -216,3 +216,94 @@ public class RaportConsumTeste
         Assert.Equal(((Guid?)null, 97.5m, (decimal?)null), (r[3].Cheie, r[3].Consumat, r[3].ProcentConsumat));
     }
 }
+
+public class StornoNirTeste
+{
+    [Fact]
+    public void Stornarea_scoate_exact_valoarea_intrata_nu_CMP_ul()
+    {
+        // Sold 240 buc, 2.760,00 (120 × 10 + 120 × 13). Stornez NIR-ul cu 120 × 13 = 1.560,00 → rămân 120 buc, 1.200,00 (CMP 10).
+        var r = CalculStoc.Storno(new Sold(240, 2760m), 120, 1560m, "Material A");
+        Assert.Equal(new Sold(120, 1200m), r.Valoare);
+    }
+
+    [Fact]
+    public void Stornarea_e_refuzata_daca_materialul_a_plecat_din_gestiune()
+    {
+        var r = CalculStoc.Storno(new Sold(60, 690m), 120, 1200m, "Material A");
+        Assert.True(r.Esec);
+        Assert.Contains("Fă întâi returul", r.Eroare.Mesaj);
+    }
+
+    [Fact]
+    public void Stornarea_intregului_stoc_ia_toata_valoarea_ramasa()
+    {
+        // 120 buc rămase, 1.200,03 (rotunjiri din ieșiri anterioare): stornarea celor 120 buc golește complet soldul.
+        Assert.Equal(Sold.Zero, CalculStoc.Storno(new Sold(120, 1200.03m), 120, 1200m, "Material A").Valoare);
+    }
+
+    [Fact]
+    public void Documentul_de_storno_cere_motiv_si_preia_liniile_receptionate()
+    {
+        var nir = Nir.Emite(2026, 5, new DateOnly(2026, 9, 11), Gestiune.DepozitCentral(), Guid.NewGuid(), "GTX 901", new DateOnly(2026, 9, 10), null, "GAMA",
+            Guid.NewGuid(), "P-2026-001",
+            [new LinieNirCerere(0, Guid.NewGuid(), "MAT-00001", "Ciment", "sac", 120, 120, 10m, null),
+             new LinieNirCerere(2, Guid.NewGuid(), "MAT-00002", "Adeziv", "sac", 40, 0, 45m, "nelivrat")],
+            null, Guid.NewGuid(), "Gestionar").Valoare;
+        Assert.True(StornoNir.Emite(nir, new DateOnly(2026, 9, 12), " ", Guid.NewGuid(), "Gestionar").Esec);
+        var s = StornoNir.Emite(nir, new DateOnly(2026, 9, 12), "Factura anulată de furnizor", Guid.NewGuid(), "Gestionar").Valoare;
+        Assert.Equal((1, 1200m, "NIR/2026/0005"), (s.Linii.Count, s.Valoare, s.NirNumar)); // adezivul nerecepționat nu are ce storna
+    }
+}
+
+public class InventarTeste
+{
+    private static readonly Gestiune Depozit = Gestiune.DepozitCentral();
+    private static readonly ArticolCandidat Ciment = new(Guid.NewGuid(), "MAT-00001", "Ciment", "sac");
+    private static readonly ArticolCandidat Adeziv = new(Guid.NewGuid(), "MAT-00002", "Adeziv", "sac");
+    private static readonly ArticolCandidat Diblu = new(Guid.NewGuid(), "MAT-00003", "Diblu", "buc");
+
+    private static Inventar Deschis() => Inventar.Deschide(2026, 1, new DateOnly(2026, 12, 31), Depozit,
+        [(Ciment, new Sold(100, 1150m)), (Adeziv, new Sold(40, 1800m))], "Ion, Maria", Guid.NewGuid(), "Gestionar").Valoare;
+
+    private static Dictionary<Guid, Sold> Solduri() => new() { [Ciment.Id] = new Sold(100, 1150m), [Adeziv.Id] = new Sold(40, 1800m) };
+
+    [Fact]
+    public void Inventarul_preia_stocul_scriptic_si_nu_se_finalizeaza_nenumarat()
+    {
+        var inv = Deschis();
+        Assert.Equal(("INV/2026/0001", 2, false), (inv.NumarAfisat, inv.Linii.Count, inv.EsteBlocat));
+        var r = inv.Finalizeaza(Solduri(), Guid.NewGuid(), "Director");
+        Assert.True(r.Esec);
+        Assert.Contains("nenumărate", r.Eroare.Mesaj);
+    }
+
+    [Fact]
+    public void Plusul_intra_la_CMP_si_minusul_iese_la_CMP()
+    {
+        // Ciment: numărat 102 față de 100 → plus 2 × 11,50 = 23,00. Adeziv: numărat 38 față de 40 → minus 2 × 45,00 = 90,00.
+        var inv = Deschis();
+        inv.Numara([new(Ciment.Id, 102, null), new(Adeziv.Id, 38, null)], new Dictionary<Guid, ArticolCandidat>());
+        var r = inv.Finalizeaza(Solduri(), Guid.NewGuid(), "Director");
+        Assert.True(r.Succes, r.Eroare.Mesaj);
+        var (plus, minus) = (r.Valoare.Single(x => x.Linie.ArticolId == Ciment.Id), r.Valoare.Single(x => x.Linie.ArticolId == Adeziv.Id));
+        Assert.Equal((23m, new Sold(102, 1173m)), (plus.Linie.ValoareDiferenta!.Value, plus.SoldNou));
+        Assert.Equal((-90m, new Sold(38, 1710m)), (minus.Linie.ValoareDiferenta!.Value, minus.SoldNou));
+        Assert.True(inv.EsteBlocat);
+        Assert.True(inv.Numara([new(Ciment.Id, 1, null)], new Dictionary<Guid, ArticolCandidat>()).Esec); // finalizat → imuabil
+    }
+
+    [Fact]
+    public void Materialul_gasit_fara_evidenta_cere_pret()
+    {
+        // Diblu: 50 buc găsite, fără stoc scriptic (fără CMP): fără preț → eroare; cu 0,40 lei → plus 50 × 0,40 = 20,00.
+        var inv = Deschis();
+        var noi = new Dictionary<Guid, ArticolCandidat> { [Diblu.Id] = Diblu };
+        inv.Numara([new(Ciment.Id, 100, null), new(Adeziv.Id, 40, null), new(Diblu.Id, 50, null)], noi);
+        Assert.Contains("prețul unitar", inv.Finalizeaza(Solduri(), Guid.NewGuid(), "Director").Eroare.Mesaj);
+
+        inv.Numara([new(Diblu.Id, 50, 0.40m)], noi);
+        var r = inv.Finalizeaza(Solduri(), Guid.NewGuid(), "Director");
+        Assert.Equal((1, 20m, new Sold(50, 20m)), (r.Valoare.Count, r.Valoare[0].Linie.ValoareDiferenta!.Value, r.Valoare[0].SoldNou)); // doar diblul are diferență
+    }
+}

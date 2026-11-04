@@ -23,6 +23,9 @@ public interface IInterogareFacturiPrimite
     /// <summary>Facturile neanulate și nestornate care au cel puțin o linie „intră în stoc”, cele mai noi primele.</summary>
     Task<IReadOnlyList<FacturaPentruReceptie>> CuMaterialeDeStocAsync(CancellationToken ct = default);
 
+    /// <summary>Id-urile facturilor anulate (pentru semnalarea NIR-urilor care trebuie stornate).</summary>
+    Task<IReadOnlySet<Guid>> FacturiAnulateAsync(CancellationToken ct = default);
+
     /// <summary>Factura, dacă există, nu e anulată și are linii de stoc.</summary>
     Task<FacturaPentruReceptie?> PentruReceptieAsync(Guid facturaId, CancellationToken ct = default);
 }

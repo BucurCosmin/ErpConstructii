@@ -89,6 +89,8 @@ internal static class EndpointuriConsum
         var santier = await db.Gestiuni.FirstOrDefaultAsync(x => x.ProiectId == proiectId, ct);
         if (santier is null)
             return Results.BadRequest(new { mesaj = "Proiectul nu are încă materiale în șantier: transferă-le întâi din depozit." });
+        if (await ModulStocuri.InventarDeschisAsync(db, ct, santier.Id) is { } blocat)
+            return Results.Conflict(new { mesaj = blocat });
 
         // Același material pe mai multe articole: ieșirile se calculează pe rând din același sold.
         var linii = new List<LinieConsum>();
@@ -177,6 +179,8 @@ internal static class EndpointuriConsum
             return Results.BadRequest(new { mesaj = "Proiectul nu are materiale în șantier." });
         if (depozit is null)
             return Results.NotFound(new { mesaj = "Depozitul nu există." });
+        if (await ModulStocuri.InventarDeschisAsync(db, ct, santier.Id, depozit.Id) is { } blocat)
+            return Results.Conflict(new { mesaj = blocat });
 
         var linii = new List<LinieTransfer>();
         var miscari = new List<(SoldStoc Sursa, Sold Ramas, Guid ArticolId, decimal Cantitate, decimal Valoare)>();

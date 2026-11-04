@@ -16,6 +16,9 @@ internal sealed class InterogareFacturiPrimite(FacturiDbContext db) : IInterogar
         return f is null ? null : CuLiniiDeStoc(f);
     }
 
+    public async Task<IReadOnlySet<Guid>> FacturiAnulateAsync(CancellationToken ct = default) =>
+        (await db.Anulari.AsNoTracking().Select(a => a.FacturaId).ToListAsync(ct)).ToHashSet();
+
     private IQueryable<FacturaPrimita> Neanulate() =>
         db.FacturiPrimite.AsNoTracking().Where(f => !db.Anulari.Any(a => a.FacturaId == f.Id));
 

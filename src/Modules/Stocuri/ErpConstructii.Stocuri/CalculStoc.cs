@@ -27,6 +27,22 @@ public static class CalculStoc
         return Rezultat.Ok(new Sold(sold.Cantitate + cantitate, sold.Valoare + Rotunjire.Lei.Aplica(valoare)));
     }
 
+    /// <summary>
+    /// Stornarea unei intrări: iese exact cantitatea și valoarea intrate (nu la CMP). Dacă nu rămâne nimic din articol, ia
+    /// toată valoarea rămasă; valoarea nu poate depăși soldul (s-ar ajunge la valoare negativă).
+    /// </summary>
+    public static Rezultat<Sold> Storno(Sold sold, decimal cantitate, decimal valoare, string articol)
+    {
+        if (cantitate > sold.Cantitate)
+            return Rezultat.Esuat<Sold>(Eroare.Validare(
+                $"„{articol}”: în gestiune au rămas {sold.Cantitate:0.####} din {cantitate:0.####} recepționate (restul a fost transferat sau consumat). Fă întâi returul în depozit."));
+        if (cantitate == sold.Cantitate)
+            return Rezultat.Ok(Sold.Zero);
+        if (valoare > sold.Valoare)
+            return Rezultat.Esuat<Sold>(Eroare.Validare($"„{articol}”: valoarea de stornat ({valoare:N2}) depășește valoarea din stoc ({sold.Valoare:N2})."));
+        return Rezultat.Ok(new Sold(sold.Cantitate - cantitate, sold.Valoare - valoare));
+    }
+
     /// <returns>Soldul rămas și valoarea ieșirii (cantitate × CMP).</returns>
     public static Rezultat<(Sold Ramas, decimal ValoareIesire)> Iesire(Sold sold, decimal cantitate, string articol)
     {

@@ -46,7 +46,10 @@ public sealed record ReceptieCerere(Guid FacturaId, Guid GestiuneId, DateOnly Da
 public sealed record LinieNirDto(string ArticolCod, string Denumire, string UnitateMasura, decimal CantitateFactura, decimal CantitateReceptionata, decimal? PretUnitar, decimal? Valoare, string? Observatii);
 
 public sealed record NirDto(Guid Id, string Numar, DateOnly Data, string Gestiune, Guid FacturaId, string FacturaNumar, string FurnizorDenumire, string ProiectCod,
-    IReadOnlyList<LinieNirDto> Linii, decimal? Valoare, bool AreDiferente, string ReceptionatDe, string? Observatii);
+    IReadOnlyList<LinieNirDto> Linii, decimal? Valoare, bool AreDiferente, string ReceptionatDe, string? Observatii,
+    StornoDto? Storno = null, bool FacturaAnulata = false);
+
+public sealed record StornoDto(DateOnly Data, string Motiv, string StornatDe);
 
 public sealed record LinieTransferCerere(Guid ArticolId, decimal Cantitate);
 
@@ -105,6 +108,9 @@ public sealed class ModulStocuri : IModul
             .Produces<TransferDto>(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(creare);
         // Consum pe articolele devizului, retur în depozit, consum real față de bugetul de materiale.
         EndpointuriConsum.Mapeaza(g);
+
+        // Inventarul gestiunilor și stornarea NIR-urilor.
+        EndpointuriInventar.Mapeaza(g);
 
         g.MapGet("/transferuri", ListaTransferuri).WithName("ListaTransferuri").WithSummary("Bonurile de transfer").Produces<IReadOnlyList<TransferDto>>().CerePermisiune(vizualizare);
     }
@@ -200,7 +206,7 @@ public sealed class ModulStocuri : IModul
         StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
     {
         var preturi = await VedePreturiAsync(permisiuni, utilizator, firma, ct);
-        var receptionate = (await db.Nir.AsNoTracking().Select(n => n.FacturaId).ToListAsync(ct)).ToHashSet();
+        var receptionate = (await db.Nir.AsNoTracking().Where(n => !db.StornariNir.Any(s => s.NirId == n.Id)).Select(n => n.FacturaId).ToListAsync(ct)).ToHashSet();
         var lista = await facturi.CuMaterialeDeStocAsync(ct);
         return Results.Ok(lista.Where(f => !receptionate.Contains(f.Id))
             .Select(f => new FacturaDeReceptionatDto(f.Id, f.Numar, f.DataEmitere, f.FurnizorDenumire, f.ProiectCod, f.Linii.Count,
@@ -248,11 +254,13 @@ public sealed class ModulStocuri : IModul
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await BlocheazaStoculAsync(db, tranzactie, fid, ct);
 
-        if (await db.Nir.AnyAsync(n => n.FacturaId == f.Id, ct))
+        if (await db.Nir.AnyAsync(n => n.FacturaId == f.Id && !db.StornariNir.Any(s => s.NirId == n.Id), ct))
             return Results.Conflict(new { mesaj = $"Factura {f.Numar} a fost deja recepționată." });
         var gestiune = await db.Gestiuni.FirstOrDefaultAsync(x => x.Id == cerere.GestiuneId, ct);
         if (gestiune is null)
             return Results.NotFound(new { mesaj = "Depozitul nu există." });
+        if (await InventarDeschisAsync(db, ct, gestiune.Id) is { } blocat)
+            return Results.Conflict(new { mesaj = blocat });
 
         // Articolele: cele alese sau create acum; legătura text factură → articol se memorează pe furnizor.
         var liniiNir = new List<LinieNirCerere>();
@@ -317,11 +325,19 @@ public sealed class ModulStocuri : IModul
     }
 
     private static async Task<IResult> ListaNir(
-        StocuriDbContext db, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
+        StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma,
+        CancellationToken ct)
     {
         var preturi = await VedePreturiAsync(permisiuni, utilizator, firma, ct);
         var lista = await db.Nir.AsNoTracking().OrderByDescending(n => n.An).ThenByDescending(n => n.Numar).Take(500).ToListAsync(ct);
-        return Results.Ok(lista.Select(n => Dto(n, preturi)).ToList());
+        var ids = lista.Select(n => n.Id).ToList();
+        var stornari = await db.StornariNir.AsNoTracking().Where(s => ids.Contains(s.NirId)).ToDictionaryAsync(s => s.NirId, ct);
+        var anulate = await facturi.FacturiAnulateAsync(ct);
+        return Results.Ok(lista.Select(n => Dto(n, preturi) with
+        {
+            Storno = stornari.TryGetValue(n.Id, out var s) ? new StornoDto(s.Data, s.Motiv, s.StornatDeNume) : null,
+            FacturaAnulata = anulate.Contains(n.FacturaId),
+        }).ToList());
     }
 
     // ---------------------------------------------------------------- transferuri în șantier
@@ -348,6 +364,8 @@ public sealed class ModulStocuri : IModul
         if (sursa is null)
             return Results.NotFound(new { mesaj = "Depozitul sursă nu există." });
         var destinatie = await db.Gestiuni.FirstOrDefaultAsync(x => x.ProiectId == proiectId, ct);
+        if (await InventarDeschisAsync(db, ct, sursa.Id, destinatie?.Id ?? Guid.Empty) is { } blocat)
+            return Results.Conflict(new { mesaj = blocat });
         if (destinatie is null)
         {
             destinatie = Gestiune.Santier(proiect.Id, proiect.Cod, proiect.Denumire);
@@ -432,6 +450,17 @@ public sealed class ModulStocuri : IModul
         await comanda.ExecuteScalarAsync(ct);
     }
 
+    /// <summary>Mesajul de blocare dacă una dintre gestiuni are un inventar deschis (numărătoarea în curs), altfel null.</summary>
+    internal static async Task<string?> InventarDeschisAsync(StocuriDbContext db, CancellationToken ct, params Guid[] gestiuni)
+    {
+        var inv = await db.Inventare.AsNoTracking()
+            .Where(i => gestiuni.Contains(i.GestiuneId) && i.Stare == StareInventar.Deschis)
+            .Select(i => new { i.An, i.Numar, i.GestiuneDenumire }).FirstOrDefaultAsync(ct);
+        return inv is null
+            ? null
+            : $"Gestiunea „{inv.GestiuneDenumire}” are inventarul INV/{inv.An}/{inv.Numar:D4} deschis: mișcările sunt blocate până la finalizarea lui.";
+    }
+
     internal static async Task<SoldStoc> SoldAsync(StocuriDbContext db, Guid gestiuneId, Guid articolId, CancellationToken ct)
     {
         var sold = db.Solduri.Local.FirstOrDefault(s => s.GestiuneId == gestiuneId && s.ArticolId == articolId)
@@ -470,7 +499,7 @@ public sealed class ModulStocuri : IModul
 
     private static GestiuneDto Dto(Gestiune g) => new(g.Id, g.Cod, g.Denumire, g.Tip.ToString(), g.ProiectId, g.Activa);
 
-    private static NirDto Dto(Nir n, bool preturi) => new(n.Id, n.NumarAfisat, n.Data, n.GestiuneDenumire, n.FacturaId, n.FacturaNumar, n.FurnizorDenumire, n.ProiectCod,
+    internal static NirDto Dto(Nir n, bool preturi) => new(n.Id, n.NumarAfisat, n.Data, n.GestiuneDenumire, n.FacturaId, n.FacturaNumar, n.FurnizorDenumire, n.ProiectCod,
         n.Linii.Select(l => new LinieNirDto(l.ArticolCod, l.Denumire, l.UnitateMasura, l.CantitateFactura, l.CantitateReceptionata,
             preturi ? l.PretUnitar : null, preturi ? l.Valoare : null, l.Observatii)).ToList(),
         preturi ? n.Valoare : null, n.AreDiferente, n.ReceptionatDeNume, n.Observatii);

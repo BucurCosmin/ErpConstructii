@@ -58,6 +58,20 @@ public static class ClientiOAuth
             }
             else
             {
+                // Adresele de întoarcere se adaugă la cele existente, nu le înlocuiesc: instanța de dezvoltare (localhost) și cea
+                // de producție (domeniul public) folosesc aceeași bază și fiecare își păstrează adresele.
+                var actual = new OpenIddictApplicationDescriptor();
+                await aplicatii.PopulateAsync(actual, existent, ct);
+                foreach (var uri in actual.RedirectUris)
+                {
+                    descriptor.RedirectUris.Add(uri);
+                }
+
+                foreach (var uri in actual.PostLogoutRedirectUris)
+                {
+                    descriptor.PostLogoutRedirectUris.Add(uri);
+                }
+
                 await aplicatii.UpdateAsync(existent, descriptor, ct);
             }
         }

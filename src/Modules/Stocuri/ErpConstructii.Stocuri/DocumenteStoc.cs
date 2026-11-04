@@ -197,6 +197,9 @@ public enum TipMiscare
     IesireTransfer,
     IntrareTransfer,
     IesireConsum,
+    IesireStornoNir,
+    PlusInventar,
+    MinusInventar,
 }
 
 /// <param name="ArticolDevizCheie">Cheia stabilă a articolului de deviz pe care se consumă (D-05); null = cheltuieli generale de șantier.</param>

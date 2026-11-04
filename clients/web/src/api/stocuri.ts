@@ -36,7 +36,7 @@ export interface SoldStoc {
 export interface MiscareStoc {
   id: string
   data: string
-  tip: 'IntrareNir' | 'IesireTransfer' | 'IntrareTransfer' | 'IesireConsum'
+  tip: 'IntrareNir' | 'IesireTransfer' | 'IntrareTransfer' | 'IesireConsum' | 'IesireStornoNir' | 'PlusInventar' | 'MinusInventar'
   documentNumar: string
   documentId: string
   cantitate: number
@@ -93,6 +93,8 @@ export interface Nir {
   areDiferente: boolean
   receptionatDe: string
   observatii: string | null
+  storno: { data: string; motiv: string; stornatDe: string } | null
+  facturaAnulata: boolean
 }
 
 export interface TransferStoc {
@@ -260,4 +262,72 @@ export const useReturneaza = () => {
       api.post<TransferStoc>(`/api/stocuri/proiecte/${proiectId}/retururi`, c),
     onSuccess: () => reincarca(qc),
   })
+}
+
+// ---------------------------------------------------------------- storno NIR, inventar
+
+export const useStorneazaNir = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...c }: { id: string; data: string; motiv: string }) => api.post<Nir>(`/api/stocuri/nir/${id}/storno`, c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export interface LinieInventar {
+  articolId: string
+  articolCod: string
+  denumire: string
+  unitateMasura: string
+  cantitateScriptica: number
+  valoareScriptica: number | null
+  cantitateFaptica: number | null
+  diferenta: number | null
+  pretUnitarPlus: number | null
+  valoareDiferenta: number | null
+}
+
+export interface Inventar {
+  id: string
+  numar: string
+  data: string
+  gestiuneId: string
+  gestiune: string
+  stare: 'Deschis' | 'Finalizat'
+  comisie: string | null
+  linii: LinieInventar[]
+  numarate: number
+  valoarePlusuri: number | null
+  valoareMinusuri: number | null
+  deschisDe: string
+  finalizatDe: string | null
+}
+
+export const useInventare = () => useQuery({ queryKey: ['stocuri', 'inventare'], queryFn: () => api.get<Inventar[]>('/api/stocuri/inventare') })
+
+export const useDeschideInventar = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (c: { gestiuneId: string; data: string; comisie: string | null }) => api.post<Inventar>('/api/stocuri/inventare', c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export const useNumaraInventar = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, linii }: { id: string; linii: { articolId: string; cantitateFaptica: number | null; pretUnitarPlus: number | null }[] }) =>
+      api.put<Inventar>(`/api/stocuri/inventare/${id}/numarare`, { linii }),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export const useFinalizeazaInventar = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (id: string) => api.post<Inventar>(`/api/stocuri/inventare/${id}/finalizare`, {}), onSuccess: () => reincarca(qc) })
+}
+
+export const useRenuntaInventar = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (id: string) => api.delete<void>(`/api/stocuri/inventare/${id}`), onSuccess: () => reincarca(qc) })
 }

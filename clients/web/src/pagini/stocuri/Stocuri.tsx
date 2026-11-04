@@ -13,12 +13,14 @@ import {
   useModificaArticol,
   useNir,
   useSoldStoc,
+  useStorneazaNir,
 } from '../../api/stocuri'
 import type { ArticolStoc, FacturaDeReceptionat, MiscareStoc, Nir, SoldStoc } from '../../api/stocuri'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { ReceptieFactura } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
+import { InventarGestiune } from './InventarGestiune'
 import { TransferSantier } from './TransferSantier'
 
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
@@ -27,6 +29,9 @@ const tipMiscare: Record<MiscareStoc['tip'], { text: string; culoare: string }> 
   IntrareNir: { text: 'Intrare (NIR)', culoare: 'green' },
   IesireTransfer: { text: 'Ieșire (transfer)', culoare: 'orange' },
   IntrareTransfer: { text: 'Intrare (transfer)', culoare: 'blue' },
+  IesireStornoNir: { text: 'Storno NIR', culoare: 'volcano' },
+  PlusInventar: { text: 'Plus inventar', culoare: 'cyan' },
+  MinusInventar: { text: 'Minus inventar', culoare: 'magenta' },
 }
 
 /** Tabelul de sold: cantitate, CMP, valoare; clic pe rând → fișa de magazie. */
@@ -140,10 +145,15 @@ function MaterialeInSantier() {
   )
 }
 
-function Receptii({ poateCrea }: { poateCrea: boolean }) {
+function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: boolean }) {
+  const { message } = App.useApp()
   const deFacut = useFacturiDeReceptionat()
   const nir = useNir()
+  const storneaza = useStorneazaNir()
   const [facturaId, setFacturaId] = useState<string>()
+  const [deStornat, setDeStornat] = useState<Nir>()
+  const [formStorno] = Form.useForm<{ motiv: string }>()
+  const deStornatAnulate = (nir.data ?? []).filter((n) => n.facturaAnulata && !n.storno)
   return (
     <Space orientation="vertical" style={{ width: '100%' }} size="large">
       <Card title={`Facturi de recepționat${deFacut.data ? ` (${deFacut.data.length})` : ''}`}>
@@ -169,6 +179,11 @@ function Receptii({ poateCrea }: { poateCrea: boolean }) {
           ]}
         />
       </Card>
+      {deStornatAnulate.length > 0 && (
+        <Alert type="warning" showIcon
+          title={`Facturi anulate cu NIR activ: ${deStornatAnulate.map((n) => `${n.numar} (factura ${n.facturaNumar})`).join(', ')}.`}
+          description="Materialele lor sunt încă în stoc. Stornează NIR-ul (după returul în depozit, dacă au plecat deja în șantier)." />
+      )}
       <Card title="NIR-uri emise">
         <Table<Nir>
           rowKey="id"
@@ -200,12 +215,45 @@ function Receptii({ poateCrea }: { poateCrea: boolean }) {
             { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
             { title: 'Depozit', dataIndex: 'gestiune', width: 180 },
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
-            { title: '', width: 120, render: (_, n) => n.areDiferente && <Tag color="red">cu diferențe</Tag> },
+            {
+              title: '', width: 200,
+              render: (_, n) => (
+                <Space size={4} wrap>
+                  {n.areDiferente && <Tag color="red">cu diferențe</Tag>}
+                  {n.storno && <Tag color="volcano" title={`${dayjs(n.storno.data).format('DD.MM.YYYY')}: ${n.storno.motiv} (${n.storno.stornatDe})`}>stornat</Tag>}
+                  {n.facturaAnulata && !n.storno && <Tag color="orange">factură anulată</Tag>}
+                </Space>
+              ),
+            },
             { title: 'Recepționat de', dataIndex: 'receptionatDe', width: 160 },
+            {
+              title: '', width: 110,
+              render: (_, n) => !n.storno && poateAnula && (
+                <Button size="small" danger onClick={(e) => { e.stopPropagation(); setDeStornat(n) }}>Stornează</Button>
+              ),
+            },
           ]}
         />
       </Card>
       <ReceptieFactura facturaId={facturaId} onInchide={() => setFacturaId(undefined)} />
+      <Modal open={!!deStornat} title={deStornat && `Stornează ${deStornat.numar} (factura ${deStornat.facturaNumar})`} okText="Stornează" okButtonProps={{ danger: true }}
+        cancelText="Renunță" onCancel={() => setDeStornat(undefined)} onOk={() => formStorno.submit()} confirmLoading={storneaza.isPending} destroyOnHidden>
+        <Alert type="warning" showIcon style={{ marginBottom: 12 }}
+          title="Materialele recepționate ies din depozit la valoarea cu care au intrat. Dacă factura nu e anulată, va putea fi recepționată din nou." />
+        <Form form={formStorno} layout="vertical" name="storno" onFinish={async (v) => {
+          try {
+            await storneaza.mutateAsync({ id: deStornat!.id, data: dayjs().format('YYYY-MM-DD'), motiv: v.motiv.trim() })
+            message.success(`${deStornat!.numar} a fost stornat.`)
+            setDeStornat(undefined)
+          } catch (e) {
+            message.error((e as Error).message)
+          }
+        }}>
+          <Form.Item name="motiv" label="Motivul stornării" rules={[{ required: true, whitespace: true, message: 'Motivul este obligatoriu.' }]}>
+            <Input.TextArea rows={3} maxLength={1000} placeholder="ex. factura a fost anulată de furnizor / recepție înregistrată greșit" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Space>
   )
 }
@@ -269,6 +317,8 @@ export function Stocuri() {
   const [parametri, setParametri] = useSearchParams()
   const poateCrea = permisiuni.data?.includes('aprovizionare.creare') ?? false
   const poateEdita = permisiuni.data?.includes('aprovizionare.editare') ?? false
+  const poateAnula = permisiuni.data?.includes('aprovizionare.anulare') ?? false
+  const poateAproba = permisiuni.data?.includes('aprovizionare.aprobare') ?? false
   const tab = parametri.get('tab') ?? 'depozite'
 
   return (
@@ -284,10 +334,11 @@ export function Stocuri() {
         items={[
           { key: 'depozite', label: 'Stoc în depozite', children: <StocDepozite poateEdita={poateEdita} /> },
           { key: 'santier', label: 'Materiale în șantier', children: <MaterialeInSantier /> },
-          { key: 'receptii', label: 'Recepții (NIR)', children: <Receptii poateCrea={poateCrea} /> },
+          { key: 'receptii', label: 'Recepții (NIR)', children: <Receptii poateCrea={poateCrea} poateAnula={poateAnula} /> },
           { key: 'transfer', label: 'Transfer / retur', children: <TransferSantier poateCrea={poateCrea} /> },
           { key: 'consum', label: 'Consum în șantier', children: <ConsumSantier poateCrea={poateCrea} /> },
           { key: 'consum-articole', label: 'Consum pe articole', children: <ConsumPeArticoleRaport /> },
+          { key: 'inventar', label: 'Inventar', children: <InventarGestiune poateEdita={poateEdita} poateAproba={poateAproba} /> },
           { key: 'nomenclator', label: 'Nomenclator materiale', children: <Nomenclator poateEdita={poateEdita} /> },
         ]}
       />

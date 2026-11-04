@@ -16,6 +16,8 @@ public sealed class StocuriDbContext(DbContextOptions<StocuriDbContext> optiuni)
     public DbSet<Nir> Nir => Set<Nir>();
     public DbSet<TransferStoc> Transferuri => Set<TransferStoc>();
     public DbSet<BonConsum> BonuriConsum => Set<BonConsum>();
+    public DbSet<StornoNir> StornariNir => Set<StornoNir>();
+    public DbSet<Inventar> Inventare => Set<Inventar>();
     public DbSet<MiscareStoc> Miscari => Set<MiscareStoc>();
     public DbSet<SoldStoc> Solduri => Set<SoldStoc>();
 }
@@ -76,7 +78,7 @@ internal sealed class ConfigurareNir : IEntityTypeConfiguration<Nir>
         b.Ignore(x => x.Linii);
         b.Ignore(x => x.AreDiferente);
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
-        b.HasIndex(x => new { x.FirmaId, x.FacturaId }).IsUnique(); // o singură recepție pe factură
+        b.HasIndex(x => new { x.FirmaId, x.FacturaId }); // o singură recepție activă pe factură (verificată sub blocarea stocului; după storno se poate recepționa din nou)
     }
 }
 
@@ -116,6 +118,42 @@ internal sealed class ConfigurareBonConsum : IEntityTypeConfiguration<BonConsum>
         b.Ignore(x => x.Linii);
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
         b.HasIndex(x => new { x.FirmaId, x.ProiectId, x.Data });
+    }
+}
+
+internal sealed class ConfigurareStornoNir : IEntityTypeConfiguration<StornoNir>
+{
+    public void Configure(EntityTypeBuilder<StornoNir> b)
+    {
+        b.ToTable("storno_nir");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.NirNumar).HasMaxLength(30).IsRequired();
+        b.Property(x => x.Motiv).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.Valoare).HasPrecision(18, 2);
+        b.Property(x => x.StornatDeNume).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.Linii);
+        b.HasIndex(x => new { x.FirmaId, x.NirId }).IsUnique(); // un NIR se stornează o singură dată
+    }
+}
+
+internal sealed class ConfigurareInventar : IEntityTypeConfiguration<Inventar>
+{
+    public void Configure(EntityTypeBuilder<Inventar> b)
+    {
+        b.ToTable("inventare");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.GestiuneDenumire).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Stare).HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.Comisie).HasMaxLength(500);
+        b.Property(x => x.DeschisDeNume).HasMaxLength(200).IsRequired();
+        b.Property(x => x.FinalizatDeNume).HasMaxLength(200);
+        b.Ignore(x => x.NumarAfisat);
+        b.Ignore(x => x.Linii);
+        b.Ignore(x => x.EsteBlocat);
+        b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
+        b.HasIndex(x => new { x.FirmaId, x.GestiuneId }).IsUnique().HasFilter("stare = 'Deschis'"); // un singur inventar deschis pe gestiune
     }
 }
 

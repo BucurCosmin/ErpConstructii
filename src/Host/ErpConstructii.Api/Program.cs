@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using ErpConstructii.Api.Autentificare;
 using ErpConstructii.Api.Dezvoltare;
 using ErpConstructii.Aprovizionare.Infrastructure;
@@ -14,9 +15,14 @@ using ErpConstructii.Parteneri.Infrastructure;
 using ErpConstructii.Proiecte.Infrastructure;
 using ErpConstructii.SharedKernel;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.HttpOverrides;
 using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Secretele mediului (certificatele token-urilor, parola bazei) stau într-un fișier local, ignorat de git:
+// appsettings.{Mediu}.local.json lângă aplicație (scris de deploy/pregateste-productie.ps1).
+builder.Configuration.AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.local.json", optional: true, reloadOnChange: false);
 
 // ---------------------------------------------------------------------------
 // Modulele aplicației. Un modul nou se adaugă AICI și ca referință în .csproj.
@@ -81,9 +87,40 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 
+// În producție aplicația stă în spatele unui reverse proxy (Caddy, HTTPS) pe aceeași mașină: schema (https) și IP-ul
+// clientului vin din X-Forwarded-*. Se acceptă doar de la proxy-uri locale (implicit: loopback).
+builder.Services.Configure<ForwardedHeadersOptions>(o => o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto);
+
+// Limitarea încercărilor de autentificare pe IP (aplicația e expusă pe internet): login, MFA și emiterea token-urilor.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+    {
+        var cale = ctx.Request.Path.Value ?? string.Empty;
+        var sensibil = cale.StartsWith("/api/cont/autentificare", StringComparison.OrdinalIgnoreCase) ||
+                       cale.StartsWith("/connect/token", StringComparison.OrdinalIgnoreCase);
+        if (!sensibil)
+        {
+            return RateLimitPartition.GetNoLimiter("liber");
+        }
+
+        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "necunoscut";
+        var limita = builder.Configuration.GetValue("Securitate:IncercariAutentificarePeMinut", 20);
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions { PermitLimit = limita, Window = TimeSpan.FromMinutes(1) });
+    });
+    o.OnRejected = async (ctx, ct) =>
+    {
+        ctx.HttpContext.Response.ContentType = "application/json";
+        await ctx.HttpContext.Response.WriteAsync("{\"mesaj\":\"Prea multe încercări de autentificare. Reîncearcă peste un minut.\"}", ct);
+    };
+});
+
 var app = builder.Build();
 
+app.UseForwardedHeaders();
 app.UseExceptionHandler();
+app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
