@@ -1,16 +1,16 @@
-﻿# Oprește instanța de producție pornită cu deploy\porneste-productie.ps1.
+﻿# Oprește instanța de producție pornită cu deploy\porneste-productie.ps1 (și un Caddy rămas de la versiunea veche).
 param([switch] $Liniste)
 
 $productie = Join-Path (Split-Path -Parent $PSScriptRoot) "productie"
 $fisier = Join-Path $productie "procese.json"
+$oprit = $false
 if (Test-Path $fisier) {
     $procese = Get-Content $fisier -Raw | ConvertFrom-Json
-    foreach ($id in @($procese.Caddy, $procese.Api)) {
-        if ($id) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+    foreach ($nume in $procese.PSObject.Properties.Name) {
+        Stop-Process -Id $procese.$nume -Force -ErrorAction SilentlyContinue
     }
     Remove-Item $fisier
-    if (-not $Liniste) { Write-Host "Producția a fost oprită." }
+    $oprit = $true
 }
-elseif (-not $Liniste) {
-    Write-Host "Producția nu rulează (nu există productie\procese.json)."
-}
+Get-Process caddy -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+if (-not $Liniste) { Write-Host $(if ($oprit) { "Producția a fost oprită." } else { "Producția nu rula." }) }

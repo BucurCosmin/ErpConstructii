@@ -119,6 +119,16 @@ builder.Services.AddRateLimiter(o =>
 var app = builder.Build();
 
 app.UseForwardedHeaders();
+
+// Producția: API-ul servește și aplicația web compilată (folderul din „Web:Radacina”), pe aceeași origine (D-19),
+// fără reverse proxy. În dezvoltare, aplicația web rulează separat (Vite, cu proxy spre API).
+var radacinaWeb = app.Configuration["Web:Radacina"] is { Length: > 0 } rw && Directory.Exists(rw) ? Path.GetFullPath(rw) : null;
+if (radacinaWeb is not null)
+{
+    var fisiere = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(radacinaWeb);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fisiere });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = fisiere });
+}
 app.UseExceptionHandler();
 app.UseRateLimiter();
 app.UseAuthentication();
@@ -158,6 +168,25 @@ var api = app.MapGroup("/api").RequireAuthorization();
 foreach (var modul in module)
 {
     modul.MapeazaEndpointuri(api);
+}
+
+// Rutele aplicației web (React Router) cad pe index.html; rutele API inexistente rămân 404.
+if (radacinaWeb is not null)
+{
+    var index = Path.Combine(radacinaWeb, "index.html");
+    app.MapFallback(async ctx =>
+    {
+        var cale = ctx.Request.Path.Value ?? string.Empty;
+        if (cale.StartsWith("/api", StringComparison.OrdinalIgnoreCase) || cale.StartsWith("/connect", StringComparison.OrdinalIgnoreCase) ||
+            cale.StartsWith("/.well-known", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        ctx.Response.ContentType = "text/html; charset=utf-8";
+        await ctx.Response.SendFileAsync(index);
+    }).AllowAnonymous();
 }
 
 await app.RunAsync();
