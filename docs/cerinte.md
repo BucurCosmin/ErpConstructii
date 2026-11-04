@@ -97,6 +97,15 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-APV-06 | Notele de comandă către furnizori (formularul GC 007: furnizor, lucrare, materiale cu UM / cantitate / termen) au număr de sistem NC/AAAA/NNNN; cele emise pe hârtie se importă (PDF / scanare / Word) cu numărul original păstrat și originalul arhivat. Furnizorul se caută în nomenclator după CUI sau denumire și se adaugă dacă lipsește. | 1 | ✅ (import; emiterea din sistem rămâne) |
 | REQ-APV-07 | Dosarele scanate (factură + e-Factura + notă de comandă + aviz + certificate în același PDF) se împart pe pagini: fiecare document se citește doar din paginile lui, iar din importul facturii se pot importa nota de comandă / necesarul din același fișier. | 1 | ✅ |
 
+## STC — Stocuri
+
+| ID | Cerință | Faza | Stare |
+|---|---|---|---|
+| REQ-STC-01 | Liniile facturilor primite se marchează „intră în stoc” (implicit toate; serviciile se debifează). Gestionarul recepționează factura într-un depozit (NIR/AAAA/NNNN): confirmă cantitățile primite (diferențele cer observație), leagă fiecare linie de un material din nomenclator (propus după alegerile anterioare pe furnizor) și materialele intră în stoc la prețul facturii. O singură recepție pe factură. | 2 | ✅ |
+| REQ-STC-02 | Gestiuni: depozite configurabile (implicit „Depozit central”) și o gestiune „Materiale în șantier” pe proiect, creată la primul transfer. Bonul de transfer (BT/AAAA/NNNN) mută materiale din depozit în șantier la cost mediu ponderat; stocul nu devine negativ. | 2 | ✅ |
+| REQ-STC-03 | Soldul pe gestiune (cantitate, CMP, valoare) și fișa de magazie; valorile se văd doar cu dreptul „prețuri de cost”. | 2 | ✅ |
+| REQ-STC-04 | Consumul din șantier pe articol de deviz (bon de consum), retururi în depozit, inventar și e-Transport pentru transferurile cu risc fiscal. | 2 | ⬜ |
+
 ## FCT — Facturi
 
 | ID | Cerință | Faza | Stare |

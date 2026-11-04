@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Modules\Formulare\ErpConstructii.Formulare\ErpConstructii.Formulare.csproj" />
     <ProjectReference Include="..\..\src\Modules\Parteneri\ErpConstructii.Parteneri\ErpConstructii.Parteneri.csproj" />
     <ProjectReference Include="..\..\src\Modules\Aprovizionare\ErpConstructii.Aprovizionare\ErpConstructii.Aprovizionare.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Stocuri\ErpConstructii.Stocuri\ErpConstructii.Stocuri.csproj" />
     <ProjectReference Include="..\..\src\Modules\Proiecte\ErpConstructii.Proiecte\ErpConstructii.Proiecte.csproj" />
   </ItemGroup>
 </Project>

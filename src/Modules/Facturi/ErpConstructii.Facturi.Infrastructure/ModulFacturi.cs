@@ -64,7 +64,7 @@ public sealed record InterpretareFacturaDto(
 /// <summary>Ce conține o pagină a PDF-ului (dosarele scanate au la un loc factura, nota de comandă, avizul, certificatele).</summary>
 public sealed record PaginaDocumentDto(int Pagina, string Tip, string Descriere, string? Numar, DateOnly? Data);
 
-public sealed record LinieFacturaCerere(string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal ValoareFaraTva, decimal CotaTva);
+public sealed record LinieFacturaCerere(string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal ValoareFaraTva, decimal CotaTva, bool IntraInStoc = true);
 
 /// <summary>Datele verificate de utilizator. Pentru XML e-Factura serverul recitește XML-ul (documentul oficial) și ignoră liniile trimise.</summary>
 public sealed record ConfirmaFacturaCerere(
@@ -122,8 +122,11 @@ public sealed class ModulFacturi : IModul
 
     public string Nume => FacturiDbContext.NumeSchema;
 
-    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare) =>
+    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare)
+    {
         servicii.AdaugaDbContextModul<FacturiDbContext>(configurare, Nume);
+        servicii.AddScoped<IInterogareFacturiPrimite, InterogareFacturiPrimite>();
+    }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
     {
@@ -361,7 +364,7 @@ public sealed class ModulFacturi : IModul
                 cerere.Numar ?? string.Empty, cerere.DataEmitere, cerere.DataScadenta, cerere.Moneda ?? "RON", null,
                 cerere.FurnizorDenumire ?? string.Empty, cerere.FurnizorCui, proiect.Id, proiect.Cod,
                 (cerere.Linii ?? []).Select(l => new LinieFactura(l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.PretUnitar,
-                    l.ValoareFaraTva, l.CotaTva, VerificareTotaluriFactura.TvaLinie(l.ValoareFaraTva, l.CotaTva))).ToList(),
+                    l.ValoareFaraTva, l.CotaTva, VerificareTotaluriFactura.TvaLinie(l.ValoareFaraTva, l.CotaTva), l.IntraInStoc)).ToList(),
                 cerere.TotalFaraTva, cerere.TotalTva, cerere.TotalDePlata, cerere.Referinta, cerere.Observatii);
         }
 
@@ -428,9 +431,11 @@ public sealed class ModulFacturi : IModul
         c.FurnizorCui.Valoare,
         proiect.Id,
         proiect.Cod,
-        c.Linii.Select(l => new LinieFactura(
+        // XML: liniile oficiale din XML; din formular se ia doar bifa „intră în stoc”, pe poziție.
+        c.Linii.Select((l, i) => new LinieFactura(
             l.Denumire.Valoare ?? string.Empty, l.UnitateMasura.Valoare ?? string.Empty, l.Cantitate.Valoare, l.PretUnitar.Valoare,
-            l.ValoareFaraTva.Valoare, l.CotaTva.Valoare, VerificareTotaluriFactura.TvaLinie(l.ValoareFaraTva.Valoare, l.CotaTva.Valoare))).ToList(),
+            l.ValoareFaraTva.Valoare, l.CotaTva.Valoare, VerificareTotaluriFactura.TvaLinie(l.ValoareFaraTva.Valoare, l.CotaTva.Valoare),
+            cerere.Linii is { } lc && i < lc.Count ? lc[i].IntraInStoc : true)).ToList(),
         c.TotalFaraTva.Valoare,
         c.TotalTva.Valoare,
         c.TotalDePlata.Valoare,

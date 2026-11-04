@@ -41,6 +41,10 @@
     <Project Path="src/Modules/Grafic/ErpConstructii.Grafic.Import.Primavera/ErpConstructii.Grafic.Import.Primavera.csproj" />
     <Project Path="src/Modules/Grafic/ErpConstructii.Grafic.Import.Excel/ErpConstructii.Grafic.Import.Excel.csproj" />
   </Folder>
+  <Folder Name="/Modules/Stocuri/">
+    <Project Path="src/Modules/Stocuri/ErpConstructii.Stocuri.Infrastructure/ErpConstructii.Stocuri.Infrastructure.csproj" />
+    <Project Path="src/Modules/Stocuri/ErpConstructii.Stocuri/ErpConstructii.Stocuri.csproj" />
+  </Folder>
   <Folder Name="/Modules/Facturi/">
     <Project Path="src/Modules/Facturi/ErpConstructii.Facturi.Infrastructure/ErpConstructii.Facturi.Infrastructure.csproj" />
     <Project Path="src/Modules/Facturi/ErpConstructii.Facturi/ErpConstructii.Facturi.csproj" />

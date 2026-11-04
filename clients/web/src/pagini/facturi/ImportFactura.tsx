@@ -43,6 +43,8 @@ interface LinieFormular {
   pretUnitar?: number | null
   valoareFaraTva?: number | null
   cotaProcent?: number | null
+  /** Materialul intră în stoc (recepție de către gestionar); serviciile se debifează. */
+  intraInStoc?: boolean
   citit?: { denumire: CampCitit<string>; cantitate: CampCitit<number>; pretUnitar: CampCitit<number>; valoareFaraTva: CampCitit<number>; cotaTva: CampCitit<number> }
 }
 
@@ -143,6 +145,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
               pretUnitar: l.pretUnitar.valoare,
               valoareFaraTva: l.valoareFaraTva.valoare,
               cotaProcent: l.cotaTva.valoare === null ? null : rotunjeste(l.cotaTva.valoare * 100),
+              intraInStoc: true,
               citit: l,
             }))
           : [{}],
@@ -191,6 +194,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
             pretUnitar: Number(l.pretUnitar ?? 0),
             valoareFaraTva: Number(l.valoareFaraTva),
             cotaTva: Number(l.cotaProcent ?? 0) / 100,
+            intraInStoc: l.intraInStoc !== false,
           })),
           totalFaraTva: Number(v.totalFaraTva ?? 0),
           totalTva: Number(v.totalTva ?? 0),
@@ -404,6 +408,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
                 <Col flex="110px">Preț unitar</Col>
                 <Col flex="120px">Valoare</Col>
                 <Col flex="76px">TVA %</Col>
+                <Col flex="52px"><Tooltip title="Intră în stoc (recepție NIR de către gestionar). Debifează serviciile: transport, taxe, refacturări.">Stoc</Tooltip></Col>
                 {!esteXml && <Col flex="32px" />}
               </Row>
               <Form.List name="linii">
@@ -445,6 +450,11 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
                               <InputNumber min={0} max={100} style={{ width: '100%' }} disabled={esteXml} />
                             </Form.Item>
                           </Col>
+                          <Col flex="52px" style={{ textAlign: 'center' }}>
+                            <Form.Item name={[name, 'intraInStoc']} valuePropName="checked" initialValue>
+                              <Checkbox disabled={false} />
+                            </Form.Item>
+                          </Col>
                           {!esteXml && (
                             <Col flex="32px">
                               <Tooltip title="Șterge linia">
@@ -455,7 +465,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
                         </Row>
                       )
                     })}
-                    {!esteXml && <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} block>Adaugă linie</Button>}
+                    {!esteXml && <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({ intraInStoc: true })} block>Adaugă linie</Button>}
                   </>
                 )}
               </Form.List>

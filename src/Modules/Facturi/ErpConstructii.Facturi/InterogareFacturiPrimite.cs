@@ -1,0 +1,28 @@
+namespace ErpConstructii.Facturi;
+
+/// <param name="Index">Poziția liniei în factură (0, 1, …): cheia liniei la recepție.</param>
+public sealed record LinieFacturaPentruReceptie(int Index, string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal ValoareFaraTva);
+
+/// <summary>O factură primită, neanulată, cu liniile ei marcate „intră în stoc”.</summary>
+public sealed record FacturaPentruReceptie(
+    Guid Id,
+    string Numar,
+    DateOnly DataEmitere,
+    Guid? FurnizorId,
+    string FurnizorDenumire,
+    Guid ProiectId,
+    string ProiectCod,
+    IReadOnlyList<LinieFacturaPentruReceptie> Linii);
+
+/// <summary>
+/// Contractul public al modulului Facturi pentru Stocuri (regula 1): facturile cu materiale de recepționat.
+/// Lucrează pe firma activă (RLS).
+/// </summary>
+public interface IInterogareFacturiPrimite
+{
+    /// <summary>Facturile neanulate și nestornate care au cel puțin o linie „intră în stoc”, cele mai noi primele.</summary>
+    Task<IReadOnlyList<FacturaPentruReceptie>> CuMaterialeDeStocAsync(CancellationToken ct = default);
+
+    /// <summary>Factura, dacă există, nu e anulată și are linii de stoc.</summary>
+    Task<FacturaPentruReceptie?> PentruReceptieAsync(Guid facturaId, CancellationToken ct = default);
+}

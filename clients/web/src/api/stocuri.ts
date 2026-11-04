@@ -1,0 +1,178 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api } from './client'
+
+export interface Gestiune {
+  id: string
+  cod: string
+  denumire: string
+  tip: 'Depozit' | 'Santier'
+  proiectId: string | null
+  activa: boolean
+}
+
+export interface ArticolStoc {
+  id: string
+  cod: string
+  denumire: string
+  unitateMasura: string
+  activ: boolean
+}
+
+/** Rând de sold; `cmp` și `valoare` sunt null fără dreptul „prețuri de cost”. */
+export interface SoldStoc {
+  gestiuneId: string
+  gestiuneDenumire: string
+  gestiuneTip: 'Depozit' | 'Santier'
+  proiectId: string | null
+  articolId: string
+  articolCod: string
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  cmp: number | null
+  valoare: number | null
+}
+
+export interface MiscareStoc {
+  id: string
+  data: string
+  tip: 'IntrareNir' | 'IesireTransfer' | 'IntrareTransfer'
+  documentNumar: string
+  documentId: string
+  cantitate: number
+  valoare: number | null
+}
+
+export interface FacturaDeReceptionat {
+  facturaId: string
+  numar: string
+  data: string
+  furnizorDenumire: string
+  proiectCod: string
+  linii: number
+  valoare: number | null
+}
+
+export interface PropunereReceptie {
+  facturaId: string
+  numar: string
+  data: string
+  furnizorId: string | null
+  furnizorDenumire: string
+  proiectCod: string
+  linii: {
+    indexFactura: number
+    denumire: string
+    unitateMasura: string
+    cantitate: number
+    pretUnitar: number | null
+    valoare: number | null
+    articol: { id: string; cod: string; denumire: string; unitateMasura: string; sursa: 'AliasFurnizor' | 'Alias' | 'Denumire' } | null
+  }[]
+}
+
+export interface ReceptieCerere {
+  facturaId: string
+  gestiuneId: string
+  data: string
+  linii: { indexFactura: number; articolId: string | null; articolNouDenumire: string | null; articolNouUm: string | null; cantitateReceptionata: number; observatii: string | null }[]
+  observatii: string | null
+}
+
+export interface Nir {
+  id: string
+  numar: string
+  data: string
+  gestiune: string
+  facturaId: string
+  facturaNumar: string
+  furnizorDenumire: string
+  proiectCod: string
+  linii: { articolCod: string; denumire: string; unitateMasura: string; cantitateFactura: number; cantitateReceptionata: number; pretUnitar: number | null; valoare: number | null; observatii: string | null }[]
+  valoare: number | null
+  areDiferente: boolean
+  receptionatDe: string
+  observatii: string | null
+}
+
+export interface TransferStoc {
+  id: string
+  numar: string
+  data: string
+  gestiuneSursa: string
+  gestiuneDestinatie: string
+  proiectId: string
+  proiectCod: string
+  linii: { articolCod: string; denumire: string; unitateMasura: string; cantitate: number; pretUnitar: number | null; valoare: number | null }[]
+  valoare: number | null
+  emisDe: string
+  observatii: string | null
+}
+
+const chei = {
+  toate: ['stocuri'] as const,
+  gestiuni: ['stocuri', 'gestiuni'] as const,
+  articole: ['stocuri', 'articole'] as const,
+  sold: (f: object) => ['stocuri', 'sold', f] as const,
+  deReceptionat: ['stocuri', 'receptii'] as const,
+  nir: ['stocuri', 'nir'] as const,
+  transferuri: ['stocuri', 'transferuri'] as const,
+}
+
+const interogare = (f: Record<string, string | undefined>) => {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(f)) if (v) p.set(k, v)
+  const q = p.toString()
+  return q ? `?${q}` : ''
+}
+
+export const useGestiuni = () => useQuery({ queryKey: chei.gestiuni, queryFn: () => api.get<Gestiune[]>('/api/stocuri/gestiuni') })
+export const useArticoleStoc = () => useQuery({ queryKey: chei.articole, queryFn: () => api.get<ArticolStoc[]>('/api/stocuri/articole') })
+export const useSoldStoc = (f: { gestiuneId?: string; tip?: string; proiectId?: string; cauta?: string }) =>
+  useQuery({ queryKey: chei.sold(f), queryFn: () => api.get<SoldStoc[]>(`/api/stocuri/sold${interogare(f)}`) })
+export const useFisaMagazie = (gestiuneId?: string, articolId?: string) =>
+  useQuery({
+    queryKey: ['stocuri', 'miscari', gestiuneId, articolId],
+    queryFn: () => api.get<MiscareStoc[]>(`/api/stocuri/gestiuni/${gestiuneId}/articole/${articolId}/miscari`),
+    enabled: !!gestiuneId && !!articolId,
+  })
+export const useFacturiDeReceptionat = () =>
+  useQuery({ queryKey: chei.deReceptionat, queryFn: () => api.get<FacturaDeReceptionat[]>('/api/stocuri/receptii/de-facut') })
+export const usePropunereReceptie = (facturaId?: string) =>
+  useQuery({
+    queryKey: ['stocuri', 'propunere', facturaId],
+    queryFn: () => api.get<PropunereReceptie>(`/api/stocuri/receptii/de-facut/${facturaId}`),
+    enabled: !!facturaId,
+  })
+export const useNir = () => useQuery({ queryKey: chei.nir, queryFn: () => api.get<Nir[]>('/api/stocuri/nir') })
+export const useTransferuri = () => useQuery({ queryKey: chei.transferuri, queryFn: () => api.get<TransferStoc[]>('/api/stocuri/transferuri') })
+
+/** După orice operație de stoc se reîncarcă tot modulul (solduri, liste, propuneri). */
+const reincarca = (qc: ReturnType<typeof useQueryClient>) => qc.invalidateQueries({ queryKey: chei.toate })
+
+export const useReceptioneaza = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (c: ReceptieCerere) => api.post<Nir>('/api/stocuri/receptii', c), onSuccess: () => reincarca(qc) })
+}
+
+export const useTransfera = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, ...c }: { proiectId: string; gestiuneSursaId: string; data: string; linii: { articolId: string; cantitate: number }[]; observatii: string | null }) =>
+      api.post<TransferStoc>(`/api/stocuri/proiecte/${proiectId}/transferuri`, c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export const useCreeazaDepozit = () => {
+  const qc = useQueryClient()
+  return useMutation({ mutationFn: (c: { cod: string; denumire: string }) => api.post<Gestiune>('/api/stocuri/gestiuni', c), onSuccess: () => reincarca(qc) })
+}
+
+export const useModificaArticol = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...c }: { id: string; denumire: string; unitateMasura: string; activ: boolean }) => api.put<void>(`/api/stocuri/articole/${id}`, c),
+    onSuccess: () => reincarca(qc),
+  })
+}

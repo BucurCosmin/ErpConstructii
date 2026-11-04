@@ -17,6 +17,7 @@ public enum SursaFactura
 
 
 /// <param name="CotaTva">Cota din document, ca fracție (0,21 pentru 21%); niciodată o constantă din cod (regula 5).</param>
+/// <param name="IntraInStoc">Materialul intră în stoc (recepție / NIR în modulul Stocuri); serviciile (transport, taxe) nu.</param>
 public sealed record LinieFactura(
     string Denumire,
     string UnitateMasura,
@@ -24,7 +25,8 @@ public sealed record LinieFactura(
     decimal PretUnitar,
     decimal ValoareFaraTva,
     decimal CotaTva,
-    decimal ValoareTva);
+    decimal ValoareTva,
+    bool IntraInStoc = true);
 
 /// <summary>Datele unei facturi primite, verificate de utilizator, la înregistrare.</summary>
 public sealed record DateFacturaPrimita(

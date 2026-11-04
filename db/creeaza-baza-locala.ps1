@@ -49,7 +49,8 @@ $contexte = @(
     @("Formulare", "FormulareDbContext"),
     @("Parteneri", "ParteneriDbContext"),
     @("Aprovizionare", "AprovizionareDbContext"),
-    @("Facturi", "FacturiDbContext")
+    @("Facturi", "FacturiDbContext"),
+    @("Stocuri", "StocuriDbContext")
 )
 foreach ($c in $contexte) {
     $m = $c[0]; $context = $c[1]

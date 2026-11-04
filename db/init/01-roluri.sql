@@ -15,7 +15,7 @@ GRANT CREATE ON DATABASE erp TO erp_owner;
 DO $$
 DECLARE s text;
 BEGIN
-  FOREACH s IN ARRAY ARRAY['identitate', 'proiecte', 'devize', 'formulare', 'parteneri', 'aprovizionare', 'facturi', 'audit'] LOOP
+  FOREACH s IN ARRAY ARRAY['identitate', 'proiecte', 'devize', 'formulare', 'parteneri', 'aprovizionare', 'facturi', 'stocuri', 'audit'] LOOP
     EXECUTE format('CREATE SCHEMA IF NOT EXISTS %I AUTHORIZATION erp_owner', s);
     EXECUTE format('GRANT USAGE ON SCHEMA %I TO erp_app', s);
     -- Tabelele create de erp_owner în viitor primesc automat drepturile pentru erp_app.

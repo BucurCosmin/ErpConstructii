@@ -21,6 +21,7 @@ import { ListaProiecte } from './pagini/proiecte/ListaProiecte'
 import { Furnizori } from './pagini/furnizori/Furnizori'
 import { Formulare } from './pagini/formulare/Formulare'
 import { Aprovizionare } from './pagini/aprovizionare/Aprovizionare'
+import { Stocuri } from './pagini/stocuri/Stocuri'
 import { tema } from './tema'
 
 dayjs.locale('ro')
@@ -48,6 +49,7 @@ const router = createBrowserRouter([
       { path: 'furnizori', element: <Furnizori /> },
       { path: 'formulare', element: <Formulare /> },
       { path: 'aprovizionare', element: <Aprovizionare /> },
+      { path: 'stocuri', element: <Stocuri /> },
       { path: 'facturi', element: <Facturi /> },
       { path: 'administrare/:tab?', element: <Administrare /> },
       ...module

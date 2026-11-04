@@ -10,6 +10,8 @@ export interface LinieFactura {
   valoareFaraTva: number
   cotaTva: number
   valoareTva: number
+  /** Intră în stoc (recepție NIR); false pentru servicii. */
+  intraInStoc?: boolean
 }
 
 export interface FacturaPrimita {
