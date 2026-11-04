@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import {
-  useAprobaNotaComanda,
-  useEmiteNotaComanda,
-  useNoteComanda,
-  useRespingeNotaComanda,
+  useAprobaNecesarMateriale,
+  useEmiteNecesarMateriale,
+  useNecesareMateriale,
+  useRespingeNecesarMateriale,
 } from '../../api/aprovizionare'
-import type { FiltreNoteComanda, NotaComanda } from '../../api/aprovizionare'
+import type { FiltreNecesareMateriale, NecesarMateriale } from '../../api/aprovizionare'
 import {
   useImporturiFormular,
   useSabloaneFormular,
@@ -18,37 +18,39 @@ import type { ImportFormularApi } from '../../api/formulare'
 import { usePermisiuni, useProfil, useProiecte } from '../../api/interogari'
 import type { Proiect } from '../../api/tipuri'
 import { AntetPagina } from '../../layout/AntetPagina'
-import { ImportNotaExterna } from './ImportNotaExterna'
+import { ImportNecesarExtern } from './ImportNecesarExtern'
+import { ImportNotaComanda } from './ImportNotaComanda'
+import { ListaNoteComanda } from './ListaNoteComanda'
 
-interface LinieNotaValues {
+interface LinieNecesarValues {
   denumire: string
   unitateMasura: string
   cantitate: string
   observatii?: string
 }
 
-interface NotaValues {
+interface NecesarValues {
   compartimentSantier: string
-  linii: LinieNotaValues[]
+  linii: LinieNecesarValues[]
 }
 
 interface RespingereValues {
   motiv: string
 }
 
-interface FiltreNotaValues {
+interface FiltreNecesarValues {
   proiectId?: string
   lucrare?: string
   material?: string
   dataDe?: string
   dataPanaLa?: string
-  stare?: NotaComanda['stare']
+  stare?: NecesarMateriale['stare']
   numar?: string
   intocmit?: string
   aprobatDe?: string
 }
 
-function LiniiNota() {
+function LiniiNecesar() {
   return (
     <Form.List name="linii">
       {(fields, { add, remove }) => (
@@ -97,7 +99,7 @@ function descarca(blob: Blob, nume: string) {
   URL.revokeObjectURL(url)
 }
 
-function etichetaStare(stare: NotaComanda['stare']) {
+function etichetaStare(stare: NecesarMateriale['stare']) {
   switch (stare) {
     case 'InAsteptareAprobare':
       return <Tag color="gold">În așteptare aprobare</Tag>
@@ -115,25 +117,25 @@ export function Aprovizionare() {
   const profil = useProfil()
   const proiecte = useProiecte()
   const sabloane = useSabloaneFormular()
-  const emiteNota = useEmiteNotaComanda()
-  const aprobaNota = useAprobaNotaComanda()
-  const respingeNota = useRespingeNotaComanda()
-  const [formNota] = Form.useForm<NotaValues>()
+  const emiteNota = useEmiteNecesarMateriale()
+  const aprobaNota = useAprobaNecesarMateriale()
+  const respingeNota = useRespingeNecesarMateriale()
+  const [formNota] = Form.useForm<NecesarValues>()
   const [formRespingere] = Form.useForm<RespingereValues>()
-  const [formFiltre] = Form.useForm<FiltreNotaValues>()
+  const [formFiltre] = Form.useForm<FiltreNecesarValues>()
   const [proiectId, setProiectId] = useState('')
-  const [filtreNote, setFiltreNote] = useState<FiltreNoteComanda>({})
-  const [notaSelectata, setNotaSelectata] = useState<NotaComanda>()
-  const [tipImport, setTipImport] = useState<'comanda-furnizor' | 'factura-primita'>('comanda-furnizor')
+  const [filtreNote, setFiltreNote] = useState<FiltreNecesareMateriale>({})
+  const [notaSelectata, setNotaSelectata] = useState<NecesarMateriale>()
+  const [tipImport, setTipImport] = useState<'necesar-materiale' | 'nota-comanda' | 'factura-primita'>('necesar-materiale')
 
-  const note = useNoteComanda(filtreNote)
+  const note = useNecesareMateriale(filtreNote)
   const importuriFormular = useImporturiFormular()
   const proiect = proiecte.data?.find((p: Proiect) => p.id === proiectId)
-  const sablonActiv = sabloane.data?.some((sablon) => sablon.codTip === 'comanda-furnizor' && sablon.activ) ?? false
+  const sablonActiv = sabloane.data?.some((sablon) => sablon.codTip === 'necesar-materiale' && sablon.activ) ?? false
   const poateCrea = permisiuni.data?.includes('aprovizionare.creare') ?? false
   const poateAproba = permisiuni.data?.includes('aprovizionare.aprobare') ?? false
 
-  const aplicaFiltreNote = (valori: FiltreNotaValues) => {
+  const aplicaFiltreNote = (valori: FiltreNecesarValues) => {
     setFiltreNote({
       proiectId: valori.proiectId || undefined,
       lucrare: valori.lucrare?.trim() || undefined,
@@ -151,7 +153,7 @@ export function Aprovizionare() {
     if (!proiectId && proiecte.data?.length) setProiectId(proiecte.data[0].id)
   }, [proiectId, proiecte.data])
 
-  const emite = async (valori: NotaValues) => {
+  const emite = async (valori: NecesarValues) => {
     if (!proiectId) {
       message.warning('Selectează proiectul / șantierul.')
       return
@@ -170,18 +172,18 @@ export function Aprovizionare() {
         })),
       })
       formNota.resetFields()
-      message.success(`Nota ${nota.numar} a fost emisă și trimisă spre aprobare.`)
+      message.success(`Necesarul ${nota.numar} a fost emis și trimis spre aprobare.`)
     } catch (eroare) {
-      message.error(eroare instanceof Error ? eroare.message : 'Nota nu a putut fi emisă.')
+      message.error(eroare instanceof Error ? eroare.message : 'Necesarul nu a putut fi emis.')
     }
   }
 
-  const aproba = async (nota: NotaComanda) => {
+  const aproba = async (nota: NecesarMateriale) => {
     try {
       await aprobaNota.mutateAsync({ proiectId: nota.proiectId, id: nota.id })
-      message.success(`Nota ${nota.numar} a fost aprobată.`)
+      message.success(`Necesarul ${nota.numar} a fost aprobat.`)
     } catch (eroare) {
-      message.error(eroare instanceof Error ? eroare.message : 'Nota nu a putut fi aprobată.')
+      message.error(eroare instanceof Error ? eroare.message : 'Necesarul nu a putut fi aprobat.')
     }
   }
 
@@ -189,26 +191,26 @@ export function Aprovizionare() {
     if (!notaSelectata) return
     try {
       await respingeNota.mutateAsync({ proiectId: notaSelectata.proiectId, id: notaSelectata.id, motiv: valori.motiv.trim() })
-      message.success(`Nota ${notaSelectata.numar} a fost respinsă.`)
+      message.success(`Necesarul ${notaSelectata.numar} a fost respins.`)
       setNotaSelectata(undefined)
       formRespingere.resetFields()
     } catch (eroare) {
-      message.error(eroare instanceof Error ? eroare.message : 'Nota nu a putut fi respinsă.')
+      message.error(eroare instanceof Error ? eroare.message : 'Necesarul nu a putut fi respins.')
     }
   }
 
-  const descarcaNota = async (nota: NotaComanda) => {
+  const descarcaNota = async (nota: NecesarMateriale) => {
     try {
-      const document = await api.getBinar(`/api/aprovizionare/proiecte/${nota.proiectId}/note-comanda/${nota.id}/document.docx`)
+      const document = await api.getBinar(`/api/aprovizionare/proiecte/${nota.proiectId}/necesare-materiale/${nota.id}/document.docx`)
       descarca(document, `${nota.numar.replace(/[^a-zA-Z0-9_-]/g, '_')}.docx`)
     } catch (eroare) {
       message.error(eroare instanceof Error ? eroare.message : 'Documentul nu a putut fi generat.')
     }
   }
 
-  const descarcaOriginalNota = async (nota: NotaComanda) => {
+  const descarcaOriginalNota = async (nota: NecesarMateriale) => {
     try {
-      const original = await api.getBinar(`/api/aprovizionare/proiecte/${nota.proiectId}/note-comanda/${nota.id}/original`)
+      const original = await api.getBinar(`/api/aprovizionare/proiecte/${nota.proiectId}/necesare-materiale/${nota.id}/original`)
       descarca(original, `original-${nota.numar.replace(/[^a-zA-Z0-9_-]/g, '_')}`)
     } catch (eroare) {
       message.error(eroare instanceof Error ? eroare.message : 'Originalul nu a putut fi descărcat.')
@@ -231,19 +233,19 @@ export function Aprovizionare() {
     <>
       <AntetPagina
         titlu="Aprovizionare"
-        subtitlu="Emite, filtrează și arhivează note de comandă pentru proiecte; importă documente externe."
+        subtitlu="Necesare de materiale (cererile șantierelor, cu aprobare), note de comandă către furnizori și importul documentelor emise pe hârtie."
         cale={[{ titlu: 'Acasă', la: '/' }, { titlu: 'Aprovizionare' }]}
       />
 
       <Tabs
         items={[
           {
-            key: 'emise',
-            label: 'Note comandă emise',
+            key: 'necesare',
+            label: 'Necesare de materiale',
             children: (
               <Space direction="vertical" style={{ width: '100%' }} size="large">
-                <Card title="Note comandă emise">
-                  {note.error && <Alert type="error" showIcon message="Notele de comandă nu au putut fi încărcate." description={note.error.message} />}
+                <Card title="Necesare de materiale">
+                  {note.error && <Alert type="error" showIcon message="Necesarele de materiale nu au putut fi încărcate." description={note.error.message} />}
                   <Form form={formFiltre} layout="vertical" onFinish={aplicaFiltreNote}>
                     <Row gutter={12}>
                       <Col xs={24} md={8}>
@@ -292,7 +294,7 @@ export function Aprovizionare() {
                       </Col>
                       <Col xs={12} md={4}>
                         <Form.Item name="numar" label="Număr">
-                          <Input maxLength={30} placeholder="NC/AAAA/NNNN" />
+                          <Input maxLength={30} placeholder="NM/AAAA/NNNN" />
                         </Form.Item>
                       </Col>
                       <Col xs={24} md={8}>
@@ -320,7 +322,7 @@ export function Aprovizionare() {
                       </Col>
                     </Row>
                   </Form>
-                  <Table<NotaComanda>
+                  <Table<NecesarMateriale>
                     rowKey="id"
                     loading={note.isLoading}
                     dataSource={randuriNote}
@@ -340,7 +342,7 @@ export function Aprovizionare() {
                               </Col>
                             )}
                           </Row>
-                          <Table<NotaComanda['linii'][number]>
+                          <Table<NecesarMateriale['linii'][number]>
                             rowKey={(linie) => `${linie.denumire}-${linie.unitateMasura}`}
                             dataSource={nota.linii}
                             pagination={false}
@@ -362,12 +364,12 @@ export function Aprovizionare() {
                         title: 'Număr',
                         dataIndex: 'numar',
                         width: 170,
-                        render: (numar: string, nota: NotaComanda) => (
+                        render: (numar: string, nota: NecesarMateriale) => (
                           <Space orientation="vertical" size={0}>
                             <span>{numar}</span>
                             {nota.sursa === 'Import' && (
-                              <Tooltip title="Notă emisă în afara sistemului; numărul de pe documentul original">
-                                <Tag color="purple" style={{ marginInlineEnd: 0 }}>importată{nota.numarExtern ? ` · nr. ${nota.numarExtern}` : ''}</Tag>
+                              <Tooltip title="Necesar emis în afara sistemului; numărul de pe documentul original">
+                                <Tag color="purple" style={{ marginInlineEnd: 0 }}>importat{nota.numarExtern ? ` · nr. ${nota.numarExtern}` : ''}</Tag>
                               </Tooltip>
                             )}
                           </Space>
@@ -375,12 +377,12 @@ export function Aprovizionare() {
                       },
                       { title: 'Data', dataIndex: 'data', width: 110, responsive: ['sm'], render: (data: string) => new Date(`${data}T00:00:00`).toLocaleDateString('ro-RO') },
                       { title: 'Lucrare', dataIndex: 'lucrare', width: 260, responsive: ['md'], ellipsis: true },
-                      { title: 'Status', dataIndex: 'stare', width: 180, render: (stare: NotaComanda['stare']) => etichetaStare(stare) },
+                      { title: 'Status', dataIndex: 'stare', width: 180, render: (stare: NecesarMateriale['stare']) => etichetaStare(stare) },
                       {
                         title: 'Acțiuni',
                         key: 'actiuni',
                         width: 240,
-                        render: (_, nota: NotaComanda) => (
+                        render: (_, nota: NecesarMateriale) => (
                           <Space wrap>
                             {poateAproba && nota.stare === 'InAsteptareAprobare' && nota.emitentId !== profil.data?.id && (
                               <>
@@ -415,15 +417,15 @@ export function Aprovizionare() {
             ),
           },
           {
-            key: 'noua',
-            label: 'Notă de comandă',
+            key: 'necesar-nou',
+            label: 'Necesar nou',
             children: (
               <Space direction="vertical" style={{ width: '100%' }} size="large">
                 {!sablonActiv && (
                   <Alert
                     type="warning"
                     showIcon
-                    message="Nu există un șablon activ pentru nota de comandă."
+                    message="Nu există un șablon activ pentru necesarul de materiale."
                     description="Încarcă documentul „Necesar materiale” din Formulare și documente înainte de emitere."
                   />
                 )}
@@ -450,12 +452,12 @@ export function Aprovizionare() {
                     )}
                   </Row>
                 </Card>
-                <Card title="Notă nouă de comandă">
+                <Card title="Necesar de materiale nou">
                   <Alert
                     type="info"
                     showIcon
                     message="Numărul și data se generează automat la emitere."
-                    description="Lucrarea este preluată din proiect, iar compartimentul / șantierul se completează manual. Nota nu are furnizor și intră în lista de așteptare pentru aprobare."
+                    description="Lucrarea este preluată din proiect, iar compartimentul / șantierul se completează manual. Necesarul nu are furnizor; după aprobare, aprovizionarea emite notele de comandă către furnizori."
                     style={{ marginBottom: 16 }}
                   />
                   <Form form={formNota} layout="vertical" initialValues={{ linii: [{}] }} onFinish={emite}>
@@ -466,7 +468,7 @@ export function Aprovizionare() {
                     >
                       <Input maxLength={300} />
                     </Form.Item>
-                    <LiniiNota />
+                    <LiniiNecesar />
                     <Form.Item style={{ marginTop: 16, marginBottom: 0 }}>
                       <Button type="primary" htmlType="submit" loading={emiteNota.isPending} disabled={!poateCrea || !proiectId || !sablonActiv}>
                         Emite și trimite spre aprobare
@@ -476,6 +478,11 @@ export function Aprovizionare() {
                 </Card>
               </Space>
             ),
+          },
+          {
+            key: 'note-comanda',
+            label: 'Note de comandă',
+            children: <ListaNoteComanda />,
           },
           {
             key: 'import',
@@ -488,16 +495,19 @@ export function Aprovizionare() {
                     <Select
                       value={tipImport}
                       onChange={setTipImport}
-                      style={{ width: 200 }}
+                      style={{ width: 220 }}
                       options={[
-                        { value: 'comanda-furnizor', label: 'Notă de comandă' },
+                        { value: 'necesar-materiale', label: 'Necesar de materiale' },
+                        { value: 'nota-comanda', label: 'Notă de comandă' },
                         { value: 'factura-primita', label: 'Factură primită' },
                       ]}
                     />
                   }
                 >
-                  {tipImport === 'comanda-furnizor' ? (
-                    <ImportNotaExterna poateCrea={poateCrea} />
+                  {tipImport === 'necesar-materiale' ? (
+                    <ImportNecesarExtern poateCrea={poateCrea} />
+                  ) : tipImport === 'nota-comanda' ? (
+                    <ImportNotaComanda poateCrea={poateCrea} />
                   ) : (
                     <Alert
                       type="info"
@@ -524,7 +534,7 @@ export function Aprovizionare() {
                     }}
                     pagination={{ pageSize: 10, hideOnSinglePage: true }}
                     columns={[
-                      { title: 'Tip', dataIndex: 'codTip', render: (cod: string) => cod === 'factura-primita' ? 'Factură primită' : 'Notă de comandă' },
+                      { title: 'Tip', dataIndex: 'codTip', render: (cod: string) => cod === 'factura-primita' ? 'Factură primită' : 'Necesar de materiale' },
                       { title: 'Număr fișier', dataIndex: 'numeFisier', ellipsis: true },
                       { title: 'SHA-256', dataIndex: 'hashSha256', ellipsis: true },
                       { title: 'Stare', dataIndex: 'stare', render: (stare: string) => <Tag color="gold">{stare}</Tag> },
@@ -544,7 +554,7 @@ export function Aprovizionare() {
       />
 
       <Modal
-        title={`Respinge nota ${notaSelectata?.numar ?? ''}`}
+        title={`Respinge necesarul ${notaSelectata?.numar ?? ''}`}
         open={Boolean(notaSelectata)}
         onCancel={() => {
           setNotaSelectata(undefined)
@@ -552,7 +562,7 @@ export function Aprovizionare() {
         }}
         onOk={() => void formRespingere.submit()}
         confirmLoading={respingeNota.isPending}
-        okText="Respinge nota"
+        okText="Respinge necesarul"
         cancelText="Anulează"
         okButtonProps={{ danger: true }}
       >

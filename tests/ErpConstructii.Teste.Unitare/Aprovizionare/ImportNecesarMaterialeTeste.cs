@@ -265,13 +265,13 @@ public class PotrivireProiectTeste
     }
 }
 
-public class NotaComandaImportataTeste
+public class NecesarMaterialeImportatTeste
 {
     private static readonly Guid Importator = Guid.NewGuid();
-    private static readonly LinieNotaComanda[] Linii = [new("Plasa sudata", "buc", 70m, string.Empty, null)];
+    private static readonly LinieNecesarMateriale[] Linii = [new("Plasa sudata", "buc", 70m, string.Empty, null)];
 
-    private static ErpConstructii.SharedKernel.Rezultat<NotaComanda> Importa(string? numarExtern = "81", Guid? document = null) =>
-        NotaComanda.Importa(2026, 12, numarExtern, Guid.NewGuid(), "P-2026-007", "Hală depozitare", "Șantier Medgidia",
+    private static ErpConstructii.SharedKernel.Rezultat<NecesarMateriale> Importa(string? numarExtern = "81", Guid? document = null) =>
+        NecesarMateriale.Importa(2026, 12, numarExtern, Guid.NewGuid(), "P-2026-007", "Hală depozitare", "Șantier Medgidia",
             new DateOnly(2026, 10, 8), Importator, "Maria Ionescu", Guid.Empty, 0, Linii, document ?? Guid.NewGuid());
 
     [Fact]
@@ -279,10 +279,10 @@ public class NotaComandaImportataTeste
     {
         var nota = Importa().Valoare;
 
-        Assert.Equal("NC/2026/0012", nota.NumarAfisat);
+        Assert.Equal("NM/2026/0012", nota.NumarAfisat);
         Assert.Equal("81", nota.NumarExtern);
         Assert.Equal(new DateOnly(2026, 10, 8), nota.Data);
-        Assert.Equal(SursaNotaComanda.Import, nota.Sursa);
+        Assert.Equal(SursaDocument.Import, nota.Sursa);
         Assert.NotNull(nota.DocumentOriginalId);
     }
 
@@ -291,7 +291,7 @@ public class NotaComandaImportataTeste
     {
         var nota = Importa().Valoare;
 
-        Assert.Equal(StareNotaComanda.InAsteptareAprobare, nota.Stare);
+        Assert.Equal(StareNecesarMateriale.InAsteptareAprobare, nota.Stare);
         Assert.False(nota.Aproba(Importator, "Maria Ionescu", DateTimeOffset.UtcNow).Succes);
         Assert.True(nota.Aproba(Guid.NewGuid(), "Radu Marin", DateTimeOffset.UtcNow).Succes);
     }

@@ -57,7 +57,12 @@ public sealed record InterpretareFacturaDto(
     FurnizorGasitDto? FurnizorInNomenclator,
     ProiectPropusDto? ProiectPropus,
     IReadOnlyList<ProblemaDto> Probleme,
-    string? FacturaExistenta);
+    string? FacturaExistenta,
+    IReadOnlyList<PaginaDocumentDto> Pagini,
+    IReadOnlyList<int> PaginiFactura);
+
+/// <summary>Ce conține o pagină a PDF-ului (dosarele scanate au la un loc factura, nota de comandă, avizul, certificatele).</summary>
+public sealed record PaginaDocumentDto(int Pagina, string Tip, string Descriere, string? Numar, DateOnly? Data);
 
 public sealed record LinieFacturaCerere(string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal ValoareFaraTva, decimal CotaTva);
 
@@ -235,7 +240,7 @@ public sealed class ModulFacturi : IModul
         }
 
         var firma = await firme.FirmaActivaAsync(ct);
-        var (citita, dinOcr, problemaCitire) = await InterpreteazaAsync(sursa!, extractori, firma?.Cui, ct);
+        var (citita, dinOcr, problemaCitire, pagini) = await InterpreteazaAsync(sursa!, extractori, firma?.Cui, ct);
         if (citita is null)
         {
             return Results.BadRequest(new { mesaj = problemaCitire });
@@ -255,7 +260,8 @@ public sealed class ModulFacturi : IModul
                 "Firma activă nu are CUI completat (Administrare → Datele firmei); nu pot verifica cumpărătorul."));
         }
 
-        var furnizor = citita.FurnizorCui.Valoare is { } cui ? await parteneri.CautaDupaCuiAsync(cui, ct) : null;
+        // După CUI sau, dacă nu există, după denumire (furnizor adăugat din nota de comandă, încă fără CUI).
+        var furnizor = await parteneri.CautaFurnizorAsync(citita.FurnizorCui.Valoare, citita.FurnizorDenumire.Valoare, ct);
         var candidati = (await proiecte.ListaActiveAsync(ct)).Select(p => new ProiectCandidat(p.Id, p.Cod, p.Denumire)).ToList();
         var propunere = PotrivireProiect.Propune(citita.Referinta, candidati);
         var existenta = await FacturaExistentaAsync(db, DocumentFactura.Amprenta(sursa!.Continut), citita.FurnizorCui.Valoare, citita.Numar.Valoare, citita.DataEmitere.Valoare, ct);
@@ -280,7 +286,9 @@ public sealed class ModulFacturi : IModul
             furnizor is null ? null : new FurnizorGasitDto(furnizor.Id, furnizor.Denumire, furnizor.Cui),
             propunere is null ? null : new ProiectPropusDto(propunere.Proiect.Id, propunere.Proiect.Cod, propunere.Proiect.Denumire, propunere.Scor, propunere.Certitudine.ToString()),
             probleme.Select(p => new ProblemaDto(p.Severitate.ToString(), p.Locatie, p.Mesaj)).ToList(),
-            existenta));
+            existenta,
+            pagini.Select(p => new PaginaDocumentDto(p.Pagina, p.Tip.ToString(), p.Descriere, p.Numar, p.Data)).ToList(),
+            pagini.Where(p => p.Tip == TipPaginaFactura(pagini)).Select(p => p.Pagina).ToList()));
     }
 
     private static async Task<IResult> Confirma(
@@ -334,7 +342,7 @@ public sealed class ModulFacturi : IModul
         if (esteXml)
         {
             // e-Factura: documentul oficial e XML-ul; datele lui au prioritate față de cele trimise din formular.
-            var (citita, _, problema) = await InterpreteazaAsync(sursa!, extractori, firma?.Cui, ct);
+            var (citita, _, problema, _) = await InterpreteazaAsync(sursa!, extractori, firma?.Cui, ct);
             if (citita is null)
             {
                 return Results.BadRequest(new { mesaj = problema });
@@ -363,14 +371,15 @@ public sealed class ModulFacturi : IModul
             return Results.Conflict(new { mesaj = $"Factura a fost deja înregistrată: {existenta}." });
         }
 
-        // Furnizorul în nomenclator: găsit după CUI sau adăugat (la cerere) cu datele minime din factură.
+        // Furnizorul în nomenclator: găsit după CUI sau denumire (cel găsit după denumire, fără CUI, primește CUI-ul facturii)
+        // ori adăugat (la cerere) cu datele minime din factură.
         Guid? furnizorId = null;
-        if (!string.IsNullOrWhiteSpace(dateFactura.FurnizorCui))
+        var gasit = await parteneri.CautaFurnizorAsync(dateFactura.FurnizorCui, dateFactura.FurnizorDenumire, ct);
+        if (gasit is not null && (gasit.Cui is not null || string.IsNullOrWhiteSpace(dateFactura.FurnizorCui)))
         {
-            furnizorId = (await parteneri.CautaDupaCuiAsync(dateFactura.FurnizorCui, ct))?.Id;
+            furnizorId = gasit.Id;
         }
-
-        if (furnizorId is null && cerere.AdaugaFurnizorInNomenclator)
+        else if (gasit is not null || cerere.AdaugaFurnizorInNomenclator)
         {
             var r = await parteneri.AsiguraFurnizorAsync(dateFactura.FurnizorDenumire, dateFactura.FurnizorCui, platitorTva: dateFactura.TotalTva != 0, ct);
             if (!r.Succes)
@@ -428,7 +437,14 @@ public sealed class ModulFacturi : IModul
         c.Referinta,
         cerere.Observatii);
 
-    private static async Task<(FacturaCitita? Factura, bool DinOcr, string? Problema)> InterpreteazaAsync(
+    /// <summary>
+    /// Paginile din care se citește factura: vizualizarea e-Factura din SPV (conținutul legal, același format la toți
+    /// furnizorii); în lipsa ei, factura tipărită de furnizor.
+    /// </summary>
+    private static TipPagina TipPaginaFactura(IReadOnlyList<PaginaClasificata> pagini) =>
+        pagini.Any(p => p.Tip == TipPagina.EFactura) ? TipPagina.EFactura : TipPagina.Factura;
+
+    private static async Task<(FacturaCitita? Factura, bool DinOcr, string? Problema, IReadOnlyList<PaginaClasificata> Pagini)> InterpreteazaAsync(
         SursaImport sursa, IEnumerable<IExtractorText> extractori, string? cuiFirma, CancellationToken ct)
     {
         if (EsteXmlSauZip(sursa))
@@ -436,27 +452,52 @@ public sealed class ModulFacturi : IModul
             var xml = sursa.Extensie == ".zip" ? XmlDinArhiva(sursa.Continut) : sursa.Continut;
             if (xml is null)
             {
-                return (null, false, "Arhiva nu conține un XML e-Factura.");
+                return (null, false, "Arhiva nu conține un XML e-Factura.", []);
             }
 
             var r = InterpretorEFactura.Interpreteaza(xml);
-            return r.Valoare is null ? (null, false, r.Probleme.FirstOrDefault()?.Mesaj) : (r.Valoare, false, null);
+            return r.Valoare is null ? (null, false, r.Probleme.FirstOrDefault()?.Mesaj, []) : (r.Valoare, false, null, []);
         }
 
         var extractor = extractori.FirstOrDefault(e => e.Accepta(sursa.NumeFisier));
         if (extractor is null)
         {
-            return (null, false, "Format nesuportat pentru citire automată.");
+            return (null, false, "Format nesuportat pentru citire automată.", []);
         }
 
         var text = await extractor.ExtrageAsync(sursa, ct);
         if (text.Valoare is null)
         {
-            return (null, false, text.Probleme.FirstOrDefault()?.Mesaj ?? "Documentul nu poate fi citit.");
+            return (null, false, text.Probleme.FirstOrDefault()?.Mesaj ?? "Documentul nu poate fi citit.", []);
         }
 
-        var factura = InterpretorFacturaPdf.Interpreteaza(text.Valoare, cuiFirma);
-        return (factura with { Probleme = [.. text.Probleme, .. factura.Probleme] }, text.Valoare.DinOcr, null);
+        // Dosar scanat (factură + e-Factura + notă de comandă + aviz…): factura se citește doar din paginile ei.
+        var pagini = ClasificarePagini.Clasifica(text.Valoare);
+        var document = text.Valoare;
+        var probleme = text.Probleme.ToList();
+        if (pagini.Count > 1)
+        {
+            var tip = TipPaginaFactura(pagini);
+            if (ClasificarePagini.Pagini(document, pagini, tip) is { } doarFactura)
+            {
+                document = doarFactura;
+                var folosite = pagini.Where(p => p.Tip == tip).Select(p => p.Pagina).ToList();
+                var altele = pagini.Where(p => p.Tip != tip).ToList();
+                probleme.Add(new ProblemaImport(Severitate.Informare, "pagini",
+                    $"PDF-ul are {pagini.Count} pagini; factura a fost citită din {(folosite.Count == 1 ? "pagina" : "paginile")} {string.Join(", ", folosite)}" +
+                    (altele.Count == 0 ? "." : $". Mai conține: {string.Join("; ", altele.Select(p => $"p. {p.Pagina} – {p.Descriere}"))}.")));
+            }
+            else
+            {
+                probleme.Add(new ProblemaImport(Severitate.Avertisment, "pagini",
+                    $"Nu am găsit pagina facturii între cele {pagini.Count} pagini; verifică documentul."));
+            }
+        }
+
+        var factura = InterpretorVizualizareEFactura.EsteVizualizare(document)
+            ? InterpretorVizualizareEFactura.Interpreteaza(document, cuiFirma)
+            : InterpretorFacturaPdf.Interpreteaza(document, cuiFirma);
+        return (factura with { Probleme = [.. probleme, .. factura.Probleme] }, document.DinOcr, null, pagini);
     }
 
     /// <summary>Arhiva descărcată din SPV conține XML-ul facturii și „semnatura_*.xml” (semnătura ANAF).</summary>

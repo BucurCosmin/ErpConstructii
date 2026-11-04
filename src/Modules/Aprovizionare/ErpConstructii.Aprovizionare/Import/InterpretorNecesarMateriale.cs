@@ -6,7 +6,7 @@ using ErpConstructii.SharedKernel.Import;
 namespace ErpConstructii.Aprovizionare.Import;
 
 /// <summary>
-/// Interpretează formularul „Necesar materiale” / notă de comandă emis în afara sistemului (REQ-FRM-08, REQ-FRM-10):
+/// Interpretează formularul „Necesar materiale” emis în afara sistemului (REQ-FRM-08, REQ-FRM-10):
 /// antetul (Nr., Data, Compartiment/Șantier, Lucrare) și tabelul de materiale (Nr. crt., Denumire, UM, Cantitate, Observații).
 ///
 /// Funcție pură peste <see cref="TextDocument"/>: aceeași logică pentru Word (tabele exacte) și pentru scanări
@@ -37,7 +37,7 @@ public static partial class InterpretorNecesarMateriale
 
     private enum Coloana { Nr, Denumire, Um, Cantitate, Observatii }
 
-    public static NotaComandaCitita Interpreteaza(TextDocument document)
+    public static NecesarMaterialeCitit Interpreteaza(TextDocument document)
     {
         var probleme = new List<ProblemaImport>();
         var randuri = document.Randuri;
@@ -69,7 +69,7 @@ public static partial class InterpretorNecesarMateriale
             }
         }
 
-        return new NotaComandaCitita(numar, data, compartiment, lucrare, linii, probleme, document.DinOcr);
+        return new NecesarMaterialeCitit(numar, data, compartiment, lucrare, linii, probleme, document.DinOcr);
     }
 
     // ------------------------------------------------------------------ antet

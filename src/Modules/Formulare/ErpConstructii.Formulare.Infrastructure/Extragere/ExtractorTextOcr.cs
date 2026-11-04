@@ -1,5 +1,7 @@
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
 using ErpConstructii.SharedKernel.Import;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PDFtoImage;
@@ -28,8 +30,14 @@ public sealed class OptiuniOcr
     /// <summary>Șterge liniile tabelelor înainte de OCR (grila încurcă recunoașterea textului din celule).</summary>
     public bool EliminaLiniiTabel { get; set; } = true;
 
-    /// <summary>Câte pagini se citesc dintr-un document (notele au de regulă o pagină).</summary>
-    public int PaginiMaxime { get; set; } = 5;
+    /// <summary>
+    /// Câte pagini se citesc dintr-un document. Dosarele de factură scanate au des factura, e-Factura, nota de comandă,
+    /// avizul și certificatele în același PDF.
+    /// </summary>
+    public int PaginiMaxime { get; set; } = 20;
+
+    /// <summary>Cât timp se păstrează textul recunoscut al unui fișier (același fișier citit pentru factură și pentru nota de comandă).</summary>
+    public TimeSpan DurataCache { get; set; } = TimeSpan.FromMinutes(30);
 }
 
 /// <summary>
@@ -42,15 +50,35 @@ public sealed class OptiuniOcr
 [SupportedOSPlatform("windows")]
 [SupportedOSPlatform("linux")]
 [SupportedOSPlatform("macos")]
-public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<ExtractorTextOcr> logger) : IExtractorText
+public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<ExtractorTextOcr> logger, IMemoryCache? cache = null) : IExtractorText
 {
     private static readonly string[] ExtensiiImagine = [".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"];
+
+    /// <summary>
+    /// Sub atâtea cuvinte „bune” (încredere ≥ 80, cel puțin 3 litere), pagina e probabil rotită (ex. e-Factura tipărită
+    /// pe orizontală și scanată pe verticală) sau goală: se încearcă rotirile de ±90°.
+    /// </summary>
+    private const int PragCuvinteBune = 12;
 
     /// <summary>Imaginile direct; PDF-urile trec întâi prin <see cref="ExtractorTextPdf"/>, care cheamă OCR doar pentru scanări.</summary>
     public bool Accepta(string numeFisier) => ExtensiiImagine.Contains(Path.GetExtension(numeFisier).ToLowerInvariant());
 
-    public Task<RezultatImport<TextDocument>> ExtrageAsync(SursaImport sursa, CancellationToken ct = default) =>
-        Task.Run(() => Extrage(sursa, ct), ct);
+    public async Task<RezultatImport<TextDocument>> ExtrageAsync(SursaImport sursa, CancellationToken ct = default)
+    {
+        var cheie = "ocr:" + Convert.ToHexString(SHA256.HashData(sursa.Continut)) + sursa.Extensie;
+        if (cache?.TryGetValue(cheie, out RezultatImport<TextDocument>? citit) == true && citit is not null)
+        {
+            return citit;
+        }
+
+        var rezultat = await Task.Run(() => Extrage(sursa, ct), ct);
+        if (rezultat.Valoare is not null)
+        {
+            cache?.Set(cheie, rezultat, optiuni.Value.DurataCache);
+        }
+
+        return rezultat;
+    }
 
     private RezultatImport<TextDocument> Extrage(SursaImport sursa, CancellationToken ct)
     {
@@ -65,7 +93,7 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
         {
             logger.LogError("Modelele OCR lipsesc din {Cale}. Rulează scripts/descarca-tessdata.ps1.", cale);
             return RezultatImport<TextDocument>.Esuat(
-                "Recunoașterea textului (OCR) nu este instalată pe server. Completează nota manual sau cere administratorului să instaleze modelele OCR.");
+                "Recunoașterea textului (OCR) nu este instalată pe server. Completează datele manual sau cere administratorului să instaleze modelele OCR.");
         }
 
         List<byte[]> imagini;
@@ -89,8 +117,15 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
                 ct.ThrowIfCancellationRequested();
                 using var original = Pix.LoadFromMemory(imagini[i]);
                 using var pix = o.EliminaLiniiTabel ? FaraLiniiTabel(original) : original.Clone();
-                using var pagina = motor.Process(pix, o.ModSegmentare);
-                randuri.AddRange(GrupareRanduri.PeRanduri(Cuvinte(pagina), i + 1));
+                var cuvinte = Citeste(motor, pix, o.ModSegmentare);
+                if (CuvinteBune(cuvinte) < PragCuvinteBune && OrientareMaiBuna(motor, pix, CuvinteBune(cuvinte)) is { } rotire and not 0)
+                {
+                    using var rotita = pix.Rotate90(rotire);
+                    cuvinte = Citeste(motor, rotita, o.ModSegmentare);
+                    logger.LogDebug("Pagina {Pagina} din {Fisier} a fost rotită ({Rotire}).", i + 1, sursa.NumeFisier, rotire);
+                }
+
+                randuri.AddRange(GrupareRanduri.PeRanduri(cuvinte, i + 1));
             }
         }
         catch (IOException ex)
@@ -107,7 +142,7 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
         if (randuri.Count == 0)
         {
             probleme.Add(new ProblemaImport(Severitate.Avertisment, "fișier",
-                "Nu am putut citi text din document (scanare neclară sau pagină goală). Completează nota manual."));
+                "Nu am putut citi text din document (scanare neclară sau pagină goală). Completează datele manual."));
         }
         else
         {
@@ -153,6 +188,37 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
         using var rotita = faraOrizontale.Rotate90(1);
         using var faraVerticale = rotita.RemoveLines();
         return faraVerticale.Rotate90(-1);
+    }
+
+    private static List<GrupareRanduri.Cuvant> Citeste(TesseractEngine motor, Pix pix, PageSegMode mod)
+    {
+        using var pagina = motor.Process(pix, mod);
+        return Cuvinte(pagina);
+    }
+
+    private static int CuvinteBune(IEnumerable<GrupareRanduri.Cuvant> cuvinte) =>
+        cuvinte.Count(c => c.Incredere >= 80 && c.Text.Count(char.IsLetter) >= 3);
+
+    /// <summary>
+    /// Rotirea (+1 = 90° în sensul acelor de ceasornic, −1 = invers) cu care pagina se citește clar sau null.
+    /// Testul se face pe imaginea micșorată la jumătate (de ~4 ori mai rapid); rotirea câștigă doar dacă dă
+    /// net mai multe cuvinte bune decât pagina așa cum e.
+    /// </summary>
+    private static int? OrientareMaiBuna(TesseractEngine motor, Pix pix, int buneInitial)
+    {
+        using var mica = pix.Scale(0.5f, 0.5f);
+        var (rotire, maxim) = (0, buneInitial);
+        foreach (var r in new[] { 1, -1 })
+        {
+            using var rotita = mica.Rotate90(r);
+            var bune = CuvinteBune(Citeste(motor, rotita, PageSegMode.SparseText));
+            if (bune > maxim)
+            {
+                (rotire, maxim) = (r, bune);
+            }
+        }
+
+        return maxim >= PragCuvinteBune && maxim > 2 * buneInitial ? rotire : null;
     }
 
     private static List<GrupareRanduri.Cuvant> Cuvinte(Page pagina)

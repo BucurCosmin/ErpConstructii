@@ -7,7 +7,7 @@ public class ValidatorDateFormularTeste
 {
     private static Dictionary<string, string> CampuriValide() => new()
     {
-        ["numar"] = "NC/2026/0001",
+        ["numar"] = "NM/2026/0001",
         ["data"] = "03.11.2026",
         ["lucrare"] = "Reabilitare",
         ["compartiment_santier"] = "Șantier central",
@@ -27,7 +27,7 @@ public class ValidatorDateFormularTeste
     [Fact]
     public void Comanda_completa_cu_formate_romanesti_este_valida()
     {
-        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.ComandaFurnizor, Date(CampuriValide(), LinieValida()));
+        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.NecesarMateriale, Date(CampuriValide(), LinieValida()));
         Assert.Empty(probleme);
     }
 
@@ -37,7 +37,7 @@ public class ValidatorDateFormularTeste
         var campuri = CampuriValide();
         campuri.Remove("lucrare");
 
-        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.ComandaFurnizor, Date(campuri));
+        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.NecesarMateriale, Date(campuri));
 
         Assert.Equal(2, probleme.Count(p => p.Severitate == Severitate.Eroare));
     }
@@ -50,7 +50,7 @@ public class ValidatorDateFormularTeste
         var linie = LinieValida().ToDictionary(p => p.Key, p => p.Value);
         linie["cantitate"] = "o mie";
 
-        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.ComandaFurnizor, Date(campuri, linie));
+        var probleme = ValidatorDateFormular.Valideaza(CatalogFormulare.NecesarMateriale, Date(campuri, linie));
 
         Assert.Equal(2, probleme.Count);
     }

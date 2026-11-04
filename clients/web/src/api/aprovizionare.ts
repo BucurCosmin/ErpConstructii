@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 
-export interface LinieNotaComanda {
+export interface LinieNecesarMateriale {
   denumire: string
   unitateMasura: string
   cantitate: number
@@ -9,7 +9,7 @@ export interface LinieNotaComanda {
   articolDevizId: string | null
 }
 
-export interface NotaComanda {
+export interface NecesarMateriale {
   id: string
   proiectId: string
   proiectCod: string
@@ -25,13 +25,13 @@ export interface NotaComanda {
   decisaLa: string | null
   motivRespingere: string | null
   versiuneSablon: number
-  linii: LinieNotaComanda[]
+  linii: LinieNecesarMateriale[]
   sursa: 'Sistem' | 'Import'
   numarExtern: string | null
   areOriginal: boolean
 }
 
-export interface LinieNotaComandaCerere {
+export interface LinieNecesarMaterialeCerere {
   denumire: string
   unitateMasura: string
   cantitate: number
@@ -39,25 +39,25 @@ export interface LinieNotaComandaCerere {
   articolDevizId: string | null
 }
 
-export interface FiltreNoteComanda {
+export interface FiltreNecesareMateriale {
   proiectId?: string
   lucrare?: string
   material?: string
   dataDe?: string
   dataPanaLa?: string
-  stare?: NotaComanda['stare']
+  stare?: NecesarMateriale['stare']
   numar?: string
   intocmit?: string
   aprobatDe?: string
 }
 
 export const cheiAprovizionare = {
-  noteComanda: ['aprovizionare', 'note-comanda'] as const,
+  necesareMateriale: ['aprovizionare', 'necesare-materiale'] as const,
 }
 
-export const useNoteComanda = (filtre: FiltreNoteComanda) =>
+export const useNecesareMateriale = (filtre: FiltreNecesareMateriale) =>
   useQuery({
-    queryKey: [...cheiAprovizionare.noteComanda, filtre] as const,
+    queryKey: [...cheiAprovizionare.necesareMateriale, filtre] as const,
     queryFn: () => {
       const parametri = new URLSearchParams()
       if (filtre.proiectId) parametri.set('proiectId', filtre.proiectId)
@@ -70,38 +70,38 @@ export const useNoteComanda = (filtre: FiltreNoteComanda) =>
       if (filtre.intocmit) parametri.set('intocmit', filtre.intocmit)
       if (filtre.aprobatDe) parametri.set('aprobatDe', filtre.aprobatDe)
       const query = parametri.toString()
-      return api.get<NotaComanda[]>(`/api/aprovizionare/note-comanda${query ? `?${query}` : ''}`)
+      return api.get<NecesarMateriale[]>(`/api/aprovizionare/necesare-materiale${query ? `?${query}` : ''}`)
     },
   })
 
-export const useEmiteNotaComanda = () => {
+export const useEmiteNecesarMateriale = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ proiectId, compartimentSantier, linii }: { proiectId: string; compartimentSantier: string; linii: LinieNotaComandaCerere[] }) =>
-      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda`, { compartimentSantier, linii }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.noteComanda }),
+    mutationFn: ({ proiectId, compartimentSantier, linii }: { proiectId: string; compartimentSantier: string; linii: LinieNecesarMaterialeCerere[] }) =>
+      api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale`, { compartimentSantier, linii }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
   })
 }
 
-export const useAprobaNotaComanda = () => {
+export const useAprobaNecesarMateriale = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ proiectId, id }: { proiectId: string; id: string }) =>
-      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}/aprobare`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.noteComanda }),
+      api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}/aprobare`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
   })
 }
 
-export const useRespingeNotaComanda = () => {
+export const useRespingeNecesarMateriale = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ proiectId, id, motiv }: { proiectId: string; id: string; motiv: string }) =>
-      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}/respingere`, { motiv }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.noteComanda }),
+      api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}/respingere`, { motiv }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
   })
 }
 
-// ---------------------------------------------------------------- Import note externe (scanări, Word)
+// ---------------------------------------------------------------- Import necesare externe (scanări, Word)
 
 export type Certitudine = 'Sigur' | 'Nesigur' | 'Lipsa'
 
@@ -119,7 +119,7 @@ export interface LinieInterpretata {
   observatii: CampCitit<string>
 }
 
-export interface InterpretareNota {
+export interface InterpretareNecesar {
   numeFisier: string
   dinOcr: boolean
   numarExtern: CampCitit<string>
@@ -129,28 +129,120 @@ export interface InterpretareNota {
   proiectPropus: { id: string; cod: string; denumire: string; scor: number; certitudine: Certitudine } | null
   linii: LinieInterpretata[]
   probleme: { severitate: 'Informare' | 'Avertisment' | 'Eroare'; locatie: string; mesaj: string }[]
-  notaExistenta: string | null
+  necesarExistent: string | null
 }
 
-export interface ConfirmaImportNota {
+export interface ConfirmaImportNecesar {
   numarExtern: string | null
   dataDocument: string
   compartimentSantier: string
-  linii: LinieNotaComandaCerere[]
+  linii: LinieNecesarMaterialeCerere[]
 }
 
 /** Citește documentul (OCR pentru scanări) și propune datele; nu salvează nimic. */
-export const useInterpreteazaNota = () =>
+export const useInterpreteazaNecesar = () =>
   useMutation({
-    mutationFn: (fisier: File) => api.postFisier<InterpretareNota>('/api/aprovizionare/note-comanda/import/interpretare', fisier),
+    mutationFn: (fisier: File) => api.postFisier<InterpretareNecesar>('/api/aprovizionare/necesare-materiale/import/interpretare', fisier),
   })
 
-/** Creează nota din documentul verificat; originalul se arhivează. */
-export const useImportaNota = () => {
+/** Creează necesarul din documentul verificat; originalul se arhivează. */
+export const useImportaNecesar = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ proiectId, fisier, date }: { proiectId: string; fisier: File; date: ConfirmaImportNota }) =>
+    mutationFn: ({ proiectId, fisier, date }: { proiectId: string; fisier: File; date: ConfirmaImportNecesar }) =>
+      api.postFisier<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/import`, fisier, { date: JSON.stringify(date) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
+  })
+}
+
+// ---------------------------------------------------------------- Note de comandă către furnizori (GC 007)
+
+export interface LinieNotaComanda {
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  termen: string | null
+}
+
+export interface NotaComanda {
+  id: string
+  numar: string
+  numarExtern: string | null
+  data: string
+  proiectId: string
+  proiectCod: string
+  lucrare: string | null
+  furnizorId: string | null
+  furnizorDenumire: string
+  furnizorCui: string | null
+  linii: LinieNotaComanda[]
+  observatii: string | null
+  sursa: 'Sistem' | 'Import'
+  areOriginal: boolean
+  inregistrataDe: string
+  inregistrataLa: string
+}
+
+export interface FiltreNoteComanda {
+  proiectId?: string
+  furnizor?: string
+  material?: string
+  dataDe?: string
+  dataPanaLa?: string
+}
+
+export const useNoteComanda = (filtre: FiltreNoteComanda) =>
+  useQuery({
+    queryKey: ['aprovizionare', 'note-comanda', filtre] as const,
+    queryFn: () => {
+      const p = new URLSearchParams()
+      for (const [k, v] of Object.entries(filtre)) if (v) p.set(k, v)
+      const q = p.toString()
+      return api.get<NotaComanda[]>(`/api/aprovizionare/note-comanda${q ? `?${q}` : ''}`)
+    },
+  })
+
+export interface InterpretareNotaComanda {
+  numeFisier: string
+  dinOcr: boolean
+  numarExtern: CampCitit<string>
+  data: CampCitit<string>
+  furnizorDenumire: CampCitit<string>
+  furnizorCui: CampCitit<string>
+  furnizorAdresa: string | null
+  furnizorTelefon: string | null
+  furnizorGasit: { id: string; denumire: string; cui: string | null } | null
+  lucrare: CampCitit<string>
+  proiectPropus: { id: string; cod: string; denumire: string; scor: number; certitudine: Certitudine } | null
+  linii: { rand: number; denumire: CampCitit<string>; unitateMasura: CampCitit<string>; cantitate: CampCitit<number>; termen: string | null }[]
+  probleme: { severitate: 'Informare' | 'Avertisment' | 'Eroare'; locatie: string; mesaj: string }[]
+  comandaExistenta: string | null
+}
+
+export interface ConfirmaNotaComanda {
+  numarExtern: string | null
+  data: string
+  lucrare: string | null
+  furnizorDenumire: string
+  furnizorCui: string | null
+  furnizorAdresa: string | null
+  furnizorTelefon: string | null
+  linii: LinieNotaComanda[]
+  observatii: string | null
+}
+
+/** Citește nota de comandă (OCR pentru scanări) și propune datele; nu salvează nimic. */
+export const useInterpreteazaNotaComanda = () =>
+  useMutation({
+    mutationFn: (fisier: File) => api.postFisier<InterpretareNotaComanda>('/api/aprovizionare/note-comanda/import/interpretare', fisier),
+  })
+
+/** Înregistrează nota de comandă verificată; originalul se arhivează, furnizorul lipsă se adaugă în nomenclator. */
+export const useImportaNotaComanda = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, fisier, date }: { proiectId: string; fisier: File; date: ConfirmaNotaComanda }) =>
       api.postFisier<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/import`, fisier, { date: JSON.stringify(date) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.noteComanda }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['aprovizionare', 'note-comanda'] }),
   })
 }

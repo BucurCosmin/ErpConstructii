@@ -30,6 +30,7 @@ public sealed class ModulFormulare : IModul
 
         // Extragerea textului din documente externe (Word direct; PDF scanat și imagini prin OCR local).
         servicii.Configure<OptiuniOcr>(configurare.GetSection("Ocr"));
+        servicii.AddMemoryCache();
         servicii.AddSingleton<IExtractorText, ExtractorTextWord>();
         if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
         {

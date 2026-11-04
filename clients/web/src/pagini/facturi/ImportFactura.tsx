@@ -13,6 +13,7 @@ import {
   Form,
   Input,
   InputNumber,
+  Modal,
   Result,
   Row,
   Select,
@@ -27,7 +28,9 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
 import type { CampCitit, Certitudine } from '../../api/aprovizionare'
 import { useImportaFactura, useInterpreteazaFactura } from '../../api/facturi'
-import type { FacturaPrimita, InterpretareFactura } from '../../api/facturi'
+import type { FacturaPrimita, InterpretareFactura, PaginaDocument, TipPagina } from '../../api/facturi'
+import { ImportNecesarExtern } from '../aprovizionare/ImportNecesarExtern'
+import { ImportNotaComanda } from '../aprovizionare/ImportNotaComanda'
 import { useProiecte } from '../../api/interogari'
 import { formatLei } from '../../util/format'
 
@@ -90,6 +93,8 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
   const [creata, setCreata] = useState<FacturaPrimita>()
   const urlCurent = useRef<string | undefined>(undefined)
   const valori = Form.useWatch([], form) as ValoriFormular | undefined
+  const [pagina, setPagina] = useState<number>()
+  const [importDinDosar, setImportDinDosar] = useState<'NotaComanda' | 'NecesarMateriale'>()
 
   useEffect(() => () => {
     if (urlCurent.current) URL.revokeObjectURL(urlCurent.current)
@@ -102,6 +107,8 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
     setFisier(undefined)
     setRezultat(undefined)
     setCreata(undefined)
+    setPagina(undefined)
+    setImportDinDosar(undefined)
     form.resetFields()
   }
 
@@ -117,6 +124,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
     try {
       const r = await interpreteaza.mutateAsync(f)
       setRezultat(r)
+      if (r.paginiFactura.length > 0 && r.pagini.length > 1) setPagina(r.paginiFactura[0])
       form.setFieldsValue({
         proiectId: r.proiectPropus?.id,
         numar: r.numar.valoare ?? undefined,
@@ -254,7 +262,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
           style={{ position: 'sticky', top: 80 }}
         >
           {url && /\.pdf$/i.test(fisier.name) ? (
-            <iframe src={url} title="Factura originală" style={{ width: '100%', height: 780, border: 0, display: 'block' }} />
+            <iframe key={pagina ?? 0} src={pagina ? `${url}#page=${pagina}` : url} title="Factura originală" style={{ width: '100%', height: 780, border: 0, display: 'block' }} />
           ) : url ? (
             <img src={url} alt="Factura originală" style={{ width: '100%', display: 'block' }} />
           ) : (
@@ -294,12 +302,23 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
                   ))}
                 </Space>
               }
-              description={rezultat.probleme.length > 0 && (
+              description={rezultat.probleme.some((p) => p.locatie !== 'pagini') && (
                 <ul style={{ margin: '4px 0 0', paddingInlineStart: 18 }}>
-                  {rezultat.probleme.map((p, i) => <li key={i}>{p.mesaj}</li>)}
+                  {rezultat.probleme.filter((p) => p.locatie !== 'pagini').map((p, i) => <li key={i}>{p.mesaj}</li>)}
                 </ul>
               )}
             />
+
+            {rezultat.pagini.length > 1 && (
+              <ContinutDosar
+                pagini={rezultat.pagini}
+                paginiFactura={rezultat.paginiFactura}
+                paginaVizibila={pagina}
+                onArata={setPagina}
+                onImporta={setImportDinDosar}
+                poateCrea={poateCrea}
+              />
+            )}
 
             <Card size="small" title="Proiect" style={{ marginBottom: 16 }}>
               <Form.Item
@@ -482,6 +501,72 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
           </Form>
         )}
       </Col>
+      <Modal
+        open={!!importDinDosar}
+        onCancel={() => setImportDinDosar(undefined)}
+        footer={null}
+        width="min(1500px, 96vw)"
+        destroyOnHidden
+        title={importDinDosar === 'NotaComanda' ? 'Notă de comandă din același PDF' : 'Necesar de materiale din același PDF'}
+      >
+        {importDinDosar === 'NotaComanda' && <ImportNotaComanda poateCrea={poateCrea} fisierInitial={fisier} />}
+        {importDinDosar === 'NecesarMateriale' && <ImportNecesarExtern poateCrea={poateCrea} fisierInitial={fisier} />}
+      </Modal>
     </Row>
+  )
+}
+
+const culoriTip: Record<TipPagina, string> = {
+  Factura: 'blue',
+  EFactura: 'geekblue',
+  NotaComanda: 'purple',
+  NecesarMateriale: 'magenta',
+  Aviz: 'cyan',
+  Certificat: 'green',
+  Anexa: 'gold',
+  Altele: 'default',
+}
+
+/**
+ * Ce conține PDF-ul pagină cu pagină (pe hârtie, oamenii țin la un loc factura, nota de comandă, avizul și
+ * certificatele). Paginile consecutive de același tip se grupează; nota de comandă și necesarul se pot importa direct.
+ */
+function ContinutDosar({ pagini, paginiFactura, paginaVizibila, onArata, onImporta, poateCrea }: {
+  pagini: PaginaDocument[]
+  paginiFactura: number[]
+  paginaVizibila?: number
+  onArata: (pagina: number) => void
+  onImporta: (tip: 'NotaComanda' | 'NecesarMateriale') => void
+  poateCrea: boolean
+}) {
+  const grupuri: { tip: TipPagina; descriere: string; pagini: number[] }[] = []
+  for (const p of pagini) {
+    const ultim = grupuri[grupuri.length - 1]
+    if (ultim && ultim.tip === p.tip && (p.tip === 'Certificat' || p.tip === 'Anexa' || p.tip === 'EFactura' || p.tip === 'Altele')) ultim.pagini.push(p.pagina)
+    else grupuri.push({ tip: p.tip, descriere: p.descriere, pagini: [p.pagina] })
+  }
+  const interval = (ps: number[]) => (ps.length === 1 ? `p. ${ps[0]}` : `p. ${ps[0]}–${ps[ps.length - 1]}`)
+
+  return (
+    <Card size="small" title={`Conținutul PDF-ului (${pagini.length} pagini)`} style={{ marginBottom: 16 }}>
+      <Space direction="vertical" style={{ width: '100%' }} size={6}>
+        {grupuri.map((g) => (
+          <Flex key={g.pagini[0]} justify="space-between" align="center" gap={8} wrap>
+            <Space size={8}>
+              <Button size="small" type={g.pagini.includes(paginaVizibila ?? -1) ? 'primary' : 'default'} onClick={() => onArata(g.pagini[0])}>
+                {interval(g.pagini)}
+              </Button>
+              <Tag color={culoriTip[g.tip]}>{g.descriere}</Tag>
+              {g.pagini.some((p) => paginiFactura.includes(p)) && <Typography.Text type="success">factura citită de aici</Typography.Text>}
+            </Space>
+            {(g.tip === 'NotaComanda' || g.tip === 'NecesarMateriale') && (
+              <Button size="small" disabled={!poateCrea} onClick={() => onImporta(g.tip as 'NotaComanda' | 'NecesarMateriale')}>
+                {g.tip === 'NotaComanda' ? 'Importă nota de comandă' : 'Importă necesarul'}
+              </Button>
+            )}
+          </Flex>
+        ))}
+      </Space>
+    </Card>
   )
 }

@@ -733,7 +733,7 @@ public static partial class InterpretorFacturaPdf
     }
 
     private static bool EsteCuvantClient(string t) =>
-        t.StartsWith("CUMPARATOR", StringComparison.Ordinal) || t.StartsWith("CLIENT", StringComparison.Ordinal) || t.StartsWith("BENEFICIAR", StringComparison.Ordinal);
+        t.StartsWith("CUMPA", StringComparison.Ordinal) || t.StartsWith("CLIENT", StringComparison.Ordinal) || t.StartsWith("BENEFICIAR", StringComparison.Ordinal); // „Cumpa arator”: OCR rupe des eticheta
 
     private static bool EsteCuvantFurnizor(string t) =>
         t.StartsWith("FURNIZOR", StringComparison.Ordinal) || t.StartsWith("VANZATOR", StringComparison.Ordinal) || t.StartsWith("PRESTATOR", StringComparison.Ordinal);

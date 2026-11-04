@@ -11,8 +11,33 @@ public sealed class AprovizionareDbContext(DbContextOptions<AprovizionareDbConte
 
     protected override string Schema => NumeSchema;
 
-    public DbSet<NotaComanda> NoteComanda => Set<NotaComanda>();
+    public DbSet<NecesarMateriale> NecesareMateriale => Set<NecesarMateriale>();
     public DbSet<DocumentOriginal> DocumenteOriginale => Set<DocumentOriginal>();
+    public DbSet<NotaComanda> NoteComanda => Set<NotaComanda>();
+}
+
+internal sealed class ConfigurareNotaComanda : IEntityTypeConfiguration<NotaComanda>
+{
+    public void Configure(EntityTypeBuilder<NotaComanda> b)
+    {
+        b.ToTable("note_comanda");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.NumarExtern).HasMaxLength(50);
+        b.Property(x => x.ProiectCod).HasMaxLength(40).IsRequired();
+        b.Property(x => x.Lucrare).HasMaxLength(500);
+        b.Property(x => x.FurnizorDenumire).HasMaxLength(300).IsRequired();
+        b.Property(x => x.FurnizorCui).HasMaxLength(20);
+        b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.Observatii).HasMaxLength(1000);
+        b.Property(x => x.Sursa).HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.InregistrataDeNume).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.NumarAfisat);
+        b.Ignore(x => x.Linii);
+        b.Ignore(x => x.EsteBlocat);
+        b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
+        b.HasIndex(x => new { x.FirmaId, x.ProiectId, x.Data });
+        b.HasIndex(x => new { x.FirmaId, x.FurnizorId });
+    }
 }
 
 internal sealed class ConfigurareDocumentOriginal : IEntityTypeConfiguration<DocumentOriginal>
@@ -30,9 +55,9 @@ internal sealed class ConfigurareDocumentOriginal : IEntityTypeConfiguration<Doc
     }
 }
 
-internal sealed class ConfigurareNotaComanda : IEntityTypeConfiguration<NotaComanda>
+internal sealed class ConfigurareNecesarMateriale : IEntityTypeConfiguration<NecesarMateriale>
 {
-    public void Configure(EntityTypeBuilder<NotaComanda> b)
+    public void Configure(EntityTypeBuilder<NecesarMateriale> b)
     {
         b.HasKey(x => x.Id);
         b.Property(x => x.An).IsRequired();
@@ -50,7 +75,7 @@ internal sealed class ConfigurareNotaComanda : IEntityTypeConfiguration<NotaComa
         b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
         b.Property(x => x.Stare).HasConversion<string>().HasMaxLength(40).IsRequired();
         b.Property(x => x.MotivRespingere).HasMaxLength(1000);
-        b.Property(x => x.Sursa).HasConversion<string>().HasMaxLength(20).HasDefaultValue(SursaNotaComanda.Sistem).IsRequired();
+        b.Property(x => x.Sursa).HasConversion<string>().HasMaxLength(20).HasDefaultValue(SursaDocument.Sistem).IsRequired();
         b.Property(x => x.NumarExtern).HasMaxLength(50);
         b.Ignore(x => x.NumarAfisat);
         b.Ignore(x => x.Linii);

@@ -4,7 +4,7 @@ using ErpConstructii.SharedKernel;
 namespace ErpConstructii.Aprovizionare;
 
 /// <summary>
-/// Documentul original al unei note importate (scanare PDF, poză, Word), arhivat neschimbat, cu amprenta SHA-256
+/// Documentul original al unui document importat (necesar de materiale, notă de comandă) (scanare PDF, poză, Word), arhivat neschimbat, cu amprenta SHA-256
 /// (REQ-FRM-07): dovada vizei de pe hârtie și protecție la importul dublu. Se mută în modulul Documente când există.
 /// </summary>
 public sealed class DocumentOriginal : EntitateFirma

@@ -25,6 +25,9 @@ public static class InterpretorEFactura
         ["KMT"] = "km", ["LS"] = "forfetar",
     };
 
+    /// <summary>UM afișată pentru un cod UN/ECE (ex. H87 → buc); codurile necunoscute rămân ca atare.</summary>
+    internal static string UnitateDinCod(string cod) => Unitati.GetValueOrDefault(cod.Trim(), cod.Trim());
+
     /// <summary>Recunoaște un XML e-Factura după elementul rădăcină.</summary>
     public static bool EsteEFactura(byte[] continut)
     {
@@ -110,7 +113,7 @@ public static class InterpretorEFactura
     {
         var cantitateEl = l.Element(Cbc + (esteNotaCredit ? "CreditedQuantity" : "InvoicedQuantity"));
         var cod = (string?)cantitateEl?.Attribute("unitCode");
-        var um = cod is null ? null : Unitati.GetValueOrDefault(cod, cod);
+        var um = cod is null ? null : UnitateDinCod(cod);
         var item = l.Element(Cac + "Item");
         var pret = l.Element(Cac + "Price");
         var bazaPret = Numar(Text(pret, Cbc + "BaseQuantity")) is { } b and > 0 ? b : 1m;

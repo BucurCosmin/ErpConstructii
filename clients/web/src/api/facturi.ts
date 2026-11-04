@@ -77,6 +77,20 @@ export interface InterpretareFactura {
   proiectPropus: { id: string; cod: string; denumire: string; scor: number; certitudine: Certitudine } | null
   probleme: { severitate: 'Informare' | 'Avertisment' | 'Eroare'; locatie: string; mesaj: string }[]
   facturaExistenta: string | null
+  /** Ce conține fiecare pagină a PDF-ului (dosare scanate: factură, e-Factura, notă de comandă, aviz, certificate). */
+  pagini: PaginaDocument[]
+  /** Paginile din care s-a citit factura. */
+  paginiFactura: number[]
+}
+
+export type TipPagina = 'Factura' | 'EFactura' | 'NotaComanda' | 'NecesarMateriale' | 'Aviz' | 'Certificat' | 'Anexa' | 'Altele'
+
+export interface PaginaDocument {
+  pagina: number
+  tip: TipPagina
+  descriere: string
+  numar: string | null
+  data: string | null
 }
 
 export interface ConfirmaFactura {

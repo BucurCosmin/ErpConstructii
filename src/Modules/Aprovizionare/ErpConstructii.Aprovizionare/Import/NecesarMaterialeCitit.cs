@@ -18,10 +18,10 @@ public sealed record LinieCitita(
 }
 
 /// <summary>
-/// Modelul canonic al unei note de comandă / necesar de materiale emis în afara sistemului (pe hârtie sau Word),
-/// așa cum a fost înțeles din document. Nu e încă o notă: utilizatorul verifică și completează, apoi o confirmă.
+/// Modelul canonic al unui necesar de materiale emis în afara sistemului (pe hârtie sau Word),
+/// așa cum a fost înțeles din document. Nu e încă un necesar: utilizatorul verifică și completează, apoi îl confirmă.
 /// </summary>
-public sealed record NotaComandaCitita(
+public sealed record NecesarMaterialeCitit(
     CampCitit<string> NumarExtern,
     CampCitit<DateOnly> Data,
     CampCitit<string> CompartimentSantier,

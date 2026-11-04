@@ -3,215 +3,109 @@ using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Aprovizionare;
 
-public enum StareNotaComanda
-{
-    InAsteptareAprobare,
-    Aprobata,
-    Respinsa,
-}
+/// <param name="Termen">Termenul de livrare, așa cum e scris pe comandă (dată sau text, ex. „imediat”).</param>
+/// <param name="PretUnitar">Prețul negociat, dacă apare pe comandă (formularul uzual nu îl are).</param>
+public sealed record LinieNotaComanda(string Denumire, string UnitateMasura, decimal Cantitate, string? Termen, decimal? PretUnitar);
 
-/// <summary>De unde vine nota: emisă în sistem sau importată dintr-un document extern (hârtie scanată, Word).</summary>
-public enum SursaNotaComanda
-{
-    Sistem,
-    Import,
-}
+/// <summary>Datele unei comenzi către furnizor, verificate de utilizator.</summary>
+public sealed record DateNotaComanda(
+    string? NumarExtern,
+    DateOnly Data,
+    Guid ProiectId,
+    string ProiectCod,
+    string? Lucrare,
+    Guid? FurnizorId,
+    string FurnizorDenumire,
+    string? FurnizorCui,
+    IReadOnlyList<LinieNotaComanda> Linii,
+    string? Observatii);
 
-public sealed record LinieNotaComanda(
-    string Denumire,
-    string UnitateMasura,
-    decimal Cantitate,
-    string Observatii,
-    Guid? ArticolDevizId);
-
-/// <summary>Notă emisă pe proiect, cu numerotare anuală și flux de aprobare (REQ-APV-01..02).</summary>
+/// <summary>
+/// Notă de comandă către furnizor (formularul GC 007): ce materiale se cer, cui și pentru ce lucrare. Urmează necesarului
+/// de materiale aprobat și deschide lanțul notă de comandă → recepție (NIR) → factură, folosit la potrivirea în 3 puncte (REQ-FCT-09). Notele emise pe hârtie
+/// se importă (scanare / Word): primesc număr de sistem NC/AAAA/NNNN și își păstrează numărul de pe document.
+/// Imuabilă după înregistrare (regula 6).
+/// </summary>
 public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
 {
-    private NotaComanda() { }
+    private IReadOnlyList<LinieNotaComanda>? _linii;
 
-    private NotaComanda(
-        int an,
-        int numar,
-        Guid proiectId,
-        string proiectCod,
-        string lucrare,
-        string compartimentSantier,
-        DateOnly data,
-        Guid emitentId,
-        string emitentNume,
-        Guid sablonId,
-        int versiuneSablon,
-        IReadOnlyCollection<LinieNotaComanda> linii)
-    {
-        An = an;
-        Numar = numar;
-        ProiectId = proiectId;
-        ProiectCod = proiectCod;
-        Lucrare = lucrare;
-        CompartimentSantier = compartimentSantier;
-        Data = data;
-        EmitentId = emitentId;
-        EmitentNume = emitentNume;
-        SablonId = sablonId;
-        VersiuneSablon = versiuneSablon;
-        LiniiJson = JsonSerializer.Serialize(linii);
-        Stare = StareNotaComanda.InAsteptareAprobare;
-    }
+    private NotaComanda() { }
 
     public int An { get; private set; }
     public int Numar { get; private set; }
     public string NumarAfisat => $"NC/{An}/{Numar:D4}";
+    public string? NumarExtern { get; private set; }
+    public DateOnly Data { get; private set; }
     public Guid ProiectId { get; private set; }
     public string ProiectCod { get; private set; } = string.Empty;
-    public string Lucrare { get; private set; } = string.Empty;
-    public string CompartimentSantier { get; private set; } = string.Empty;
-    public DateOnly Data { get; private set; }
-    public Guid EmitentId { get; private set; }
-    public string EmitentNume { get; private set; } = string.Empty;
-    public Guid SablonId { get; private set; }
-    public int VersiuneSablon { get; private set; }
+
+    /// <summary>„Obiect / Lucrare” de pe comandă (coduri de contract, „STOC”…), păstrat ca pe document.</summary>
+    public string? Lucrare { get; private set; }
+
+    public Guid? FurnizorId { get; private set; }
+    public string FurnizorDenumire { get; private set; } = string.Empty;
+    public string? FurnizorCui { get; private set; }
     public string LiniiJson { get; private set; } = "[]";
-    public IReadOnlyList<LinieNotaComanda> Linii => JsonSerializer.Deserialize<List<LinieNotaComanda>>(LiniiJson) ?? [];
-    public StareNotaComanda Stare { get; private set; }
-    public SursaNotaComanda Sursa { get; private set; } = SursaNotaComanda.Sistem;
-
-    /// <summary>Numărul de pe documentul original (pentru notele importate), păstrat lângă numărul de sistem.</summary>
-    public string? NumarExtern { get; private set; }
-
-    /// <summary>Documentul original importat (scanare / Word), arhivat neschimbat.</summary>
+    public IReadOnlyList<LinieNotaComanda> Linii => _linii ??= JsonSerializer.Deserialize<List<LinieNotaComanda>>(LiniiJson) ?? [];
+    public string? Observatii { get; private set; }
+    public SursaDocument Sursa { get; private set; }
     public Guid? DocumentOriginalId { get; private set; }
-
-    public Guid? DecisaDeId { get; private set; }
-    public string? DecisaDeNume { get; private set; }
-    public DateTimeOffset? DecisaLa { get; private set; }
-    public string? MotivRespingere { get; private set; }
+    public Guid InregistrataDeId { get; private set; }
+    public string InregistrataDeNume { get; private set; } = string.Empty;
     public bool EsteBlocat => true;
 
-    public static Rezultat<NotaComanda> Emite(
-        int an,
-        int numar,
-        Guid proiectId,
-        string proiectCod,
-        string lucrare,
-        string compartimentSantier,
-        DateOnly data,
-        Guid emitentId,
-        string emitentNume,
-        Guid sablonId,
-        int versiuneSablon,
-        IReadOnlyCollection<LinieNotaComanda> linii) =>
-        Creeaza(an, numar, proiectId, proiectCod, lucrare, compartimentSantier, data, emitentId, emitentNume,
-            sablonId, versiuneSablon, linii, cereSablon: true);
-
-    private static Rezultat<NotaComanda> Creeaza(
-        int an,
-        int numar,
-        Guid proiectId,
-        string proiectCod,
-        string lucrare,
-        string compartimentSantier,
-        DateOnly data,
-        Guid emitentId,
-        string emitentNume,
-        Guid sablonId,
-        int versiuneSablon,
-        IReadOnlyCollection<LinieNotaComanda> linii,
-        bool cereSablon)
-    {
-        if (an < 2000 || numar < 1)
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Numărul notei de comandă nu este valid."));
-        if (proiectId == Guid.Empty || string.IsNullOrWhiteSpace(proiectCod) ||
-            string.IsNullOrWhiteSpace(lucrare) || string.IsNullOrWhiteSpace(compartimentSantier))
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Proiectul, lucrarea și compartimentul / șantierul sunt obligatorii."));
-        if (compartimentSantier.Length > 300)
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Compartimentul / șantierul nu poate depăși 300 de caractere."));
-        if (emitentId == Guid.Empty || string.IsNullOrWhiteSpace(emitentNume) || emitentNume.Length > 200)
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Emitentul este obligatoriu."));
-        if (cereSablon && (sablonId == Guid.Empty || versiuneSablon < 1))
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Versiunea șablonului este obligatorie."));
-        if (linii.Count == 0 || linii.Any(l =>
-                string.IsNullOrWhiteSpace(l.Denumire) ||
-                string.IsNullOrWhiteSpace(l.UnitateMasura) ||
-                l.Cantitate <= 0))
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Nota trebuie să conțină materiale cu unitate de măsură și cantitate pozitivă."));
-
-        return Rezultat.Ok(new NotaComanda(
-            an, numar, proiectId, proiectCod.Trim(), lucrare.Trim(), compartimentSantier.Trim(), data, emitentId, emitentNume.Trim(), sablonId, versiuneSablon, linii));
-    }
-
-    /// <summary>
-    /// Notă emisă în afara sistemului (REQ-FRM-10): primește număr de sistem ca orice notă, păstrează numărul și
-    /// data de pe documentul original și intră în același flux de aprobare (viza de pe hârtie nu o aprobă automat).
-    /// Emitentul este cel care importă; el nu o poate aproba (separarea atribuțiilor).
-    /// Fără șablon activ (<paramref name="sablonId"/> gol), nota nu poate fi regenerată în Word; rămâne originalul.
-    /// </summary>
+    /// <summary>Notă de comandă emisă în afara sistemului, cu originalul arhivat.</summary>
     public static Rezultat<NotaComanda> Importa(
-        int an,
-        int numar,
-        string? numarExtern,
-        Guid proiectId,
-        string proiectCod,
-        string lucrare,
-        string compartimentSantier,
-        DateOnly dataDocument,
-        Guid emitentId,
-        string emitentNume,
-        Guid sablonId,
-        int versiuneSablon,
-        IReadOnlyCollection<LinieNotaComanda> linii,
-        Guid documentOriginalId)
+        int an, int numar, DateNotaComanda date, Guid documentOriginalId, Guid utilizatorId, string utilizatorNume)
     {
-        if (numarExtern?.Length > 50)
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Numărul de pe documentul original nu poate depăși 50 de caractere."));
+        var probleme = new List<string>();
+        if (an < 2000 || numar < 1)
+            probleme.Add("Numărul notei de comandă nu este valid.");
+        if (date.NumarExtern?.Length > 50)
+            probleme.Add("Numărul de pe comandă nu poate depăși 50 de caractere.");
+        if (date.Data.Year < 2000)
+            probleme.Add("Data notei de comandă nu este validă.");
+        if (date.ProiectId == Guid.Empty || string.IsNullOrWhiteSpace(date.ProiectCod))
+            probleme.Add("Proiectul este obligatoriu (pentru stoc general, folosește proiectul de stoc al firmei).");
+        if (string.IsNullOrWhiteSpace(date.FurnizorDenumire) || date.FurnizorDenumire.Length > 300)
+            probleme.Add("Furnizorul este obligatoriu.");
+        if (!string.IsNullOrWhiteSpace(date.FurnizorCui) && !ValidareFiscala.EsteCuiValid(date.FurnizorCui))
+            probleme.Add($"CUI-ul furnizorului „{date.FurnizorCui}” nu este valid.");
+        if (date.Linii.Count == 0 || date.Linii.Any(l => string.IsNullOrWhiteSpace(l.Denumire) || string.IsNullOrWhiteSpace(l.UnitateMasura) || l.Cantitate <= 0))
+            probleme.Add("Nota de comandă trebuie să conțină materiale cu denumire, UM și cantitate pozitivă.");
         if (documentOriginalId == Guid.Empty)
-            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Documentul original este obligatoriu pentru o notă importată."));
+            probleme.Add("Documentul original este obligatoriu pentru o notă de comandă importată.");
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
+            probleme.Add("Utilizatorul care înregistrează nota de comandă este obligatoriu.");
+        if (probleme.Count > 0)
+        {
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare(string.Join(" ", probleme)));
+        }
 
-        // Șablonul e opțional: documentul de referință al unei note importate este originalul arhivat.
-        var rezultat = Creeaza(an, numar, proiectId, proiectCod, lucrare, compartimentSantier, dataDocument,
-            emitentId, emitentNume, sablonId, versiuneSablon, linii, cereSablon: false);
-        if (rezultat.Esec)
-            return rezultat;
-
-        var nota = rezultat.Valoare;
-        nota.Sursa = SursaNotaComanda.Import;
-        nota.NumarExtern = string.IsNullOrWhiteSpace(numarExtern) ? null : numarExtern.Trim();
-        nota.DocumentOriginalId = documentOriginalId;
-        return Rezultat.Ok(nota);
-    }
-
-    public Rezultat Aproba(Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
-    {
-        if (Stare != StareNotaComanda.InAsteptareAprobare)
-            return Rezultat.Esuat(Eroare.Validare("Doar notele aflate în așteptarea aprobării pot fi aprobate."));
-        if (utilizatorId == EmitentId)
-            return Rezultat.Esuat(Eroare.Interzis("Persoana care a emis nota nu o poate aproba."));
-        if (string.IsNullOrWhiteSpace(utilizatorNume) || utilizatorNume.Length > 200)
-            return Rezultat.Esuat(Eroare.Validare("Numele aprobatorului este obligatoriu."));
-
-        Stare = StareNotaComanda.Aprobata;
-        DecisaDeId = utilizatorId;
-        DecisaDeNume = utilizatorNume.Trim();
-        DecisaLa = moment;
-        MotivRespingere = null;
-        return Rezultat.Ok();
-    }
-
-    public Rezultat Respinge(Guid utilizatorId, string utilizatorNume, DateTimeOffset moment, string motiv)
-    {
-        if (Stare != StareNotaComanda.InAsteptareAprobare)
-            return Rezultat.Esuat(Eroare.Validare("Doar notele aflate în așteptarea aprobării pot fi respinse."));
-        if (string.IsNullOrWhiteSpace(motiv))
-            return Rezultat.Esuat(Eroare.Validare("Motivul respingerii este obligatoriu."));
-        if (motiv.Length > 1000)
-            return Rezultat.Esuat(Eroare.Validare("Motivul respingerii nu poate depăși 1000 de caractere."));
-        if (string.IsNullOrWhiteSpace(utilizatorNume) || utilizatorNume.Length > 200)
-            return Rezultat.Esuat(Eroare.Validare("Numele decidentului este obligatoriu."));
-
-        Stare = StareNotaComanda.Respinsa;
-        DecisaDeId = utilizatorId;
-        DecisaDeNume = utilizatorNume.Trim();
-        DecisaLa = moment;
-        MotivRespingere = motiv.Trim();
-        return Rezultat.Ok();
+        return Rezultat.Ok(new NotaComanda
+        {
+            An = an,
+            Numar = numar,
+            NumarExtern = string.IsNullOrWhiteSpace(date.NumarExtern) ? null : date.NumarExtern.Trim(),
+            Data = date.Data,
+            ProiectId = date.ProiectId,
+            ProiectCod = date.ProiectCod.Trim(),
+            Lucrare = string.IsNullOrWhiteSpace(date.Lucrare) ? null : date.Lucrare.Trim()[..Math.Min(date.Lucrare.Trim().Length, 500)],
+            FurnizorId = date.FurnizorId,
+            FurnizorDenumire = date.FurnizorDenumire.Trim(),
+            FurnizorCui = string.IsNullOrWhiteSpace(date.FurnizorCui) ? null : ValidareFiscala.NormalizeazaCui(date.FurnizorCui),
+            LiniiJson = JsonSerializer.Serialize(date.Linii.Select(l => l with
+            {
+                Denumire = l.Denumire.Trim(),
+                UnitateMasura = l.UnitateMasura.Trim(),
+                Termen = string.IsNullOrWhiteSpace(l.Termen) ? null : l.Termen.Trim(),
+            }).ToList()),
+            Observatii = string.IsNullOrWhiteSpace(date.Observatii) ? null : date.Observatii.Trim(),
+            Sursa = SursaDocument.Import,
+            DocumentOriginalId = documentOriginalId,
+            InregistrataDeId = utilizatorId,
+            InregistrataDeNume = utilizatorNume.Trim(),
+        });
     }
 }

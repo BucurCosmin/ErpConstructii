@@ -20,7 +20,7 @@ public static partial class NormalizatorNecesarMateriale
 
     public static byte[] Normalizeaza(byte[] continut, TipFormular tip)
     {
-        if (tip.Cod != CatalogFormulare.ComandaFurnizor.Cod)
+        if (tip.Cod != CatalogFormulare.NecesarMateriale.Cod)
             return continut;
 
         using var ms = new MemoryStream();

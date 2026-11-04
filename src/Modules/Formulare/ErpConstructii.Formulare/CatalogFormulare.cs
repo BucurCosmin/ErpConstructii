@@ -15,9 +15,9 @@ public static class CatalogFormulare
         new("intocmit_de", "Întocmit de"),
     ];
 
-    public static readonly TipFormular ComandaFurnizor = new(
-        Cod: "comanda-furnizor",
-        Denumire: "Notă de comandă",
+    public static readonly TipFormular NecesarMateriale = new(
+        Cod: "necesar-materiale",
+        Denumire: "Necesar de materiale",
         ModulErp: "Aprovizionare",
         Campuri:
         [
@@ -84,7 +84,7 @@ public static class CatalogFormulare
     /// <summary>Restul catalogului; câmpurile specifice se adaugă la implementarea fiecărui modul.</summary>
     public static readonly IReadOnlyList<TipFormular> Toate =
     [
-        ComandaFurnizor,
+        NecesarMateriale,
         FacturaPrimita,
         Declarat("referat-necesitate", "Referat de necesitate / cerere materiale", "Aprovizionare", true),
         Declarat("cerere-oferta", "Cerere de ofertă către furnizori", "Aprovizionare", false),

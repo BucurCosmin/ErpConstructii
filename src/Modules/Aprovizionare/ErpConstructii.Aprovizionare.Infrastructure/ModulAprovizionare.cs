@@ -19,7 +19,7 @@ namespace ErpConstructii.Aprovizionare.Infrastructure;
 
 public sealed partial class ModulAprovizionare : IModul
 {
-    private const string CodTipNota = "comanda-furnizor";
+    private const string CodTipNecesar = "necesar-materiale";
     private const string TipDocx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     public string Nume => AprovizionareDbContext.NumeSchema;
@@ -34,59 +34,62 @@ public sealed partial class ModulAprovizionare : IModul
         var creare = Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Creare);
         var aprobare = Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Aprobare);
 
-        grup.MapGet("/proiecte/{proiectId:guid}/note-comanda", ListaNote)
-            .WithName("ListaNoteComandaAprovizionare")
-            .WithSummary("Listează notele de comandă ale unui proiect și statusurile lor")
-            .Produces<IReadOnlyList<NotaComandaDto>>()
+        grup.MapGet("/proiecte/{proiectId:guid}/necesare-materiale", ListaNote)
+            .WithName("ListaNecesareMateriale")
+            .WithSummary("Listează necesarele de materiale ale unui proiect și statusurile lor")
+            .Produces<IReadOnlyList<NecesarMaterialeDto>>()
             .CerePermisiune(vizualizare);
 
-        grup.MapGet("/note-comanda", ListaNoteFiltrata)
-            .WithName("CautaNoteComandaAprovizionare")
-            .WithSummary("Listează și filtrează notele de comandă din proiectele accesibile utilizatorului")
-            .Produces<IReadOnlyList<NotaComandaDto>>()
+        grup.MapGet("/necesare-materiale", ListaNoteFiltrata)
+            .WithName("CautaNecesareMateriale")
+            .WithSummary("Listează și filtrează necesarele de materiale din proiectele accesibile utilizatorului")
+            .Produces<IReadOnlyList<NecesarMaterialeDto>>()
             .Produces(StatusCodes.Status400BadRequest)
             .CerePermisiune(vizualizare);
 
-        grup.MapGet("/proiecte/{proiectId:guid}/note-comanda/{id:guid}", DetaliiNota)
-            .WithName("DetaliiNotaComandaAprovizionare")
-            .WithSummary("Obține o notă de comandă")
-            .Produces<NotaComandaDto>()
+        grup.MapGet("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}", DetaliiNecesar)
+            .WithName("DetaliiNecesarMateriale")
+            .WithSummary("Obține un necesar de materiale")
+            .Produces<NecesarMaterialeDto>()
             .Produces(StatusCodes.Status404NotFound)
             .CerePermisiune(vizualizare);
 
-        grup.MapPost("/proiecte/{proiectId:guid}/note-comanda", EmiteNota)
-            .WithName("EmiteNotaComandaAprovizionare")
-            .WithSummary("Emite o notă cu număr și dată generate de sistem și o trimite spre aprobare")
-            .Produces<NotaComandaDto>(StatusCodes.Status201Created)
+        grup.MapPost("/proiecte/{proiectId:guid}/necesare-materiale", EmiteNecesar)
+            .WithName("EmiteNecesarMateriale")
+            .WithSummary("Emite un necesar cu număr și dată generate de sistem și o trimite spre aprobare")
+            .Produces<NecesarMaterialeDto>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict)
             .CerePermisiune(creare);
 
-        grup.MapPost("/proiecte/{proiectId:guid}/note-comanda/{id:guid}/aprobare", AprobaNota)
-            .WithName("AprobaNotaComandaAprovizionare")
-            .WithSummary("Aprobă o notă de comandă aflată în așteptare")
-            .Produces<NotaComandaDto>()
+        grup.MapPost("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/aprobare", AprobaNecesar)
+            .WithName("AprobaNecesarMateriale")
+            .WithSummary("Aprobă un necesar de materiale aflat în așteptare")
+            .Produces<NecesarMaterialeDto>()
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status409Conflict)
             .CerePermisiune(aprobare);
 
-        grup.MapPost("/proiecte/{proiectId:guid}/note-comanda/{id:guid}/respingere", RespingeNota)
-            .WithName("RespingeNotaComandaAprovizionare")
-            .WithSummary("Respinge o notă de comandă și înregistrează motivul")
-            .Produces<NotaComandaDto>()
+        grup.MapPost("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/respingere", RespingeNecesar)
+            .WithName("RespingeNecesarMateriale")
+            .WithSummary("Respinge un necesar de materiale și înregistrează motivul")
+            .Produces<NecesarMaterialeDto>()
             .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict)
             .CerePermisiune(aprobare);
 
-        // Note emise în afara sistemului: interpretare (OCR / Word) → verificare → notă cu originalul arhivat.
-        ImportNotaComanda.Mapeaza(grup);
+        // Necesare emise în afara sistemului: interpretare (OCR / Word) → verificare → necesar cu originalul arhivat.
+        ImportNecesarMateriale.Mapeaza(grup);
 
-        grup.MapGet("/proiecte/{proiectId:guid}/note-comanda/{id:guid}/document.docx", DescarcaNota)
-            .WithName("DescarcaNotaComandaAprovizionare")
-            .WithSummary("Generează documentul Word al unei note, indiferent de status")
+        // Note de comandă către furnizori (GC 007) emise pe hârtie: import cu originalul arhivat.
+        EndpointuriNoteComanda.Mapeaza(grup);
+
+        grup.MapGet("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/document.docx", DescarcaNecesar)
+            .WithName("DescarcaNecesarMateriale")
+            .WithSummary("Generează documentul Word al unui necesar, indiferent de status")
             .Produces(StatusCodes.Status200OK, contentType: TipDocx)
             .Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict)
@@ -98,16 +101,16 @@ public sealed partial class ModulAprovizionare : IModul
         AprovizionareDbContext db,
         CancellationToken ct)
     {
-        var note = await db.NoteComanda.AsNoTracking()
+        var necesare = await db.NecesareMateriale.AsNoTracking()
             .Where(n => n.ProiectId == proiectId)
             .OrderByDescending(n => n.An)
             .ThenByDescending(n => n.Numar)
             .ToListAsync(ct);
-        return Results.Ok(note.Select(MapareNotaComanda.LaDto).ToList());
+        return Results.Ok(necesare.Select(MapareNecesarMateriale.LaDto).ToList());
     }
 
     private static async Task<IResult> ListaNoteFiltrata(
-        [AsParameters] FiltreNoteComanda filtre,
+        [AsParameters] FiltreNecesareMateriale filtre,
         AprovizionareDbContext db,
         IServiciuPermisiuni permisiuni,
         IUtilizatorCurent utilizator,
@@ -122,12 +125,12 @@ public sealed partial class ModulAprovizionare : IModul
             filtre.AprobatDe?.Length > 200 || filtre.Numar?.Length > 30)
             return Results.BadRequest(new { mesaj = "Unul dintre filtre depășește lungimea maximă permisă." });
 
-        StareNotaComanda? stare = null;
+        StareNecesarMateriale? stare = null;
         if (!string.IsNullOrWhiteSpace(filtre.Stare))
         {
-            if (!Enum.TryParse<StareNotaComanda>(filtre.Stare, ignoreCase: true, out var stareCitita) ||
+            if (!Enum.TryParse<StareNecesarMateriale>(filtre.Stare, ignoreCase: true, out var stareCitita) ||
                 !Enum.IsDefined(stareCitita))
-                return Results.BadRequest(new { mesaj = "Statusul notei de comandă nu este valid." });
+                return Results.BadRequest(new { mesaj = "Statusul necesarului de materiale nu este valid." });
             stare = stareCitita;
         }
 
@@ -135,7 +138,7 @@ public sealed partial class ModulAprovizionare : IModul
         var proiecteAccesibile = evaluator.ProiecteAccesibile(
             Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare),
             firmaId);
-        var interogare = db.NoteComanda.AsNoTracking();
+        var interogare = db.NecesareMateriale.AsNoTracking();
         if (proiecteAccesibile is not null)
         {
             var idProiecte = proiecteAccesibile.ToList();
@@ -155,13 +158,13 @@ public sealed partial class ModulAprovizionare : IModul
             interogare = interogare.Where(n => EF.Functions.ILike(n.EmitentNume, $"%{filtre.Intocmit.Trim()}%"));
         if (!string.IsNullOrWhiteSpace(filtre.AprobatDe))
             interogare = interogare.Where(n =>
-                n.Stare == StareNotaComanda.Aprobata &&
+                n.Stare == StareNecesarMateriale.Aprobata &&
                 n.DecisaDeNume != null &&
                 EF.Functions.ILike(n.DecisaDeNume, $"%{filtre.AprobatDe.Trim()}%"));
         if (!string.IsNullOrWhiteSpace(filtre.Numar))
         {
             var numar = filtre.Numar.Trim();
-            if (numar.StartsWith("NC/", StringComparison.OrdinalIgnoreCase))
+            if (numar.StartsWith("NM/", StringComparison.OrdinalIgnoreCase))
                 numar = numar[3..];
             var segmente = numar.Split('/');
             if (segmente.Length == 2 &&
@@ -172,10 +175,10 @@ public sealed partial class ModulAprovizionare : IModul
                      int.TryParse(segmente[0], NumberStyles.None, CultureInfo.InvariantCulture, out numarAnual))
                 interogare = interogare.Where(n => n.Numar == numarAnual);
             else
-                return Results.BadRequest(new { mesaj = "Numărul trebuie să fie de forma NC/AAAA/NNNN sau NNNN." });
+                return Results.BadRequest(new { mesaj = "Numărul trebuie să fie de forma NM/AAAA/NNNN sau NNNN." });
         }
 
-        var note = await interogare
+        var necesare = await interogare
             .OrderByDescending(n => n.Data)
             .ThenByDescending(n => n.An)
             .ThenByDescending(n => n.Numar)
@@ -183,26 +186,26 @@ public sealed partial class ModulAprovizionare : IModul
         if (!string.IsNullOrWhiteSpace(filtre.Material))
         {
             var material = filtre.Material.Trim();
-            note = note.Where(n => n.Linii.Any(l =>
+            necesare = necesare.Where(n => n.Linii.Any(l =>
                 l.Denumire.Contains(material, StringComparison.OrdinalIgnoreCase))).ToList();
         }
-        return Results.Ok(note.Select(MapareNotaComanda.LaDto).ToList());
+        return Results.Ok(necesare.Select(MapareNecesarMateriale.LaDto).ToList());
     }
 
-    private static async Task<IResult> DetaliiNota(
+    private static async Task<IResult> DetaliiNecesar(
         Guid proiectId,
         Guid id,
         AprovizionareDbContext db,
         CancellationToken ct)
     {
-        var nota = await db.NoteComanda.AsNoTracking()
+        var necesar = await db.NecesareMateriale.AsNoTracking()
             .FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
-        return nota is null ? Results.NotFound() : Results.Ok(MapareNotaComanda.LaDto(nota));
+        return necesar is null ? Results.NotFound() : Results.Ok(MapareNecesarMateriale.LaDto(necesar));
     }
 
-    private static async Task<IResult> EmiteNota(
+    private static async Task<IResult> EmiteNecesar(
         Guid proiectId,
-        EmiteNotaComandaCerere cerere,
+        EmiteNecesarMaterialeCerere cerere,
         AprovizionareDbContext db,
         IInterogareProiecte proiecte,
         IInterogareSabloaneFormulare sabloane,
@@ -228,18 +231,18 @@ public sealed partial class ModulAprovizionare : IModul
         if (proiect is null)
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
 
-        var sablon = await sabloane.SablonActivAsync(CodTipNota, ct);
+        var sablon = await sabloane.SablonActivAsync(CodTipNecesar, ct);
         if (sablon is null)
-            return Results.Conflict(new { mesaj = "Nu există un șablon activ pentru nota de comandă. Încarcă-l în Formulare și documente." });
+            return Results.Conflict(new { mesaj = "Nu există un șablon activ pentru necesarul de materiale. Încarcă-l în Formulare și documente." });
 
         var azi = ceas.Azi;
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await BlocheazaSecventaAsync(db, tranzactie, firmaId, azi.Year, ct);
-        var numar = (await db.NoteComanda
+        var numar = (await db.NecesareMateriale
             .Where(n => n.An == azi.Year)
             .MaxAsync(n => (int?)n.Numar, ct) ?? 0) + 1;
 
-        var rezultat = NotaComanda.Emite(
+        var rezultat = NecesarMateriale.Emite(
             azi.Year,
             numar,
             proiect.Id,
@@ -251,7 +254,7 @@ public sealed partial class ModulAprovizionare : IModul
             utilizator.Nume,
             sablon.Id,
             sablon.Versiune,
-            cerere.Linii.Select(l => new LinieNotaComanda(
+            cerere.Linii.Select(l => new LinieNecesarMateriale(
                 l.Denumire.Trim(),
                 l.UnitateMasura.Trim(),
                 l.Cantitate,
@@ -260,12 +263,12 @@ public sealed partial class ModulAprovizionare : IModul
         if (rezultat.Esec)
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
 
-        db.NoteComanda.Add(rezultat.Valoare);
+        db.NecesareMateriale.Add(rezultat.Valoare);
         await db.SaveChangesAsync(ct);
         await tranzactie.CommitAsync(ct);
 
-        var dto = MapareNotaComanda.LaDto(rezultat.Valoare);
-        return Results.Created($"/api/aprovizionare/proiecte/{proiectId}/note-comanda/{dto.Id}", dto);
+        var dto = MapareNecesarMateriale.LaDto(rezultat.Valoare);
+        return Results.Created($"/api/aprovizionare/proiecte/{proiectId}/necesare-materiale/{dto.Id}", dto);
     }
 
     internal static async Task BlocheazaSecventaAsync(
@@ -273,7 +276,8 @@ public sealed partial class ModulAprovizionare : IModul
         IDbContextTransaction tranzactie,
         Guid firmaId,
         int an,
-        CancellationToken ct)
+        CancellationToken ct,
+        string secventa = "")
     {
         await using var comanda = db.Database.GetDbConnection().CreateCommand();
         comanda.Transaction = tranzactie.GetDbTransaction();
@@ -281,7 +285,7 @@ public sealed partial class ModulAprovizionare : IModul
 
         var parametruFirma = comanda.CreateParameter();
         parametruFirma.ParameterName = "firma";
-        parametruFirma.Value = firmaId.ToString("N");
+        parametruFirma.Value = firmaId.ToString("N") + secventa; // secvențe separate: necesare („”), necesare de comandă („:nc”)
         comanda.Parameters.Add(parametruFirma);
 
         var parametruAn = comanda.CreateParameter();
@@ -292,7 +296,7 @@ public sealed partial class ModulAprovizionare : IModul
         await comanda.ExecuteScalarAsync(ct);
     }
 
-    private static async Task<IResult> AprobaNota(
+    private static async Task<IResult> AprobaNecesar(
         Guid proiectId,
         Guid id,
         AprovizionareDbContext db,
@@ -300,52 +304,52 @@ public sealed partial class ModulAprovizionare : IModul
         ICeas ceas,
         CancellationToken ct)
     {
-        var nota = await db.NoteComanda.FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
-        if (nota is null)
+        var necesar = await db.NecesareMateriale.FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
+        if (necesar is null)
             return Results.NotFound();
         if (utilizator.UtilizatorId is not { } utilizatorId)
             return Results.Unauthorized();
         if (string.IsNullOrWhiteSpace(utilizator.Nume))
             return Results.BadRequest(new { mesaj = "Numele aprobatorului nu este disponibil în sesiune." });
 
-        var rezultat = nota.Aproba(utilizatorId, utilizator.Nume, ceas.Acum);
+        var rezultat = necesar.Aproba(utilizatorId, utilizator.Nume, ceas.Acum);
         if (rezultat.Esec)
             return rezultat.Eroare.Cod == "interzis"
                 ? Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: rezultat.Eroare.Mesaj)
                 : Results.Conflict(new { mesaj = rezultat.Eroare.Mesaj });
 
         await db.SaveChangesAsync(ct);
-        return Results.Ok(MapareNotaComanda.LaDto(nota));
+        return Results.Ok(MapareNecesarMateriale.LaDto(necesar));
     }
 
-    private static async Task<IResult> RespingeNota(
+    private static async Task<IResult> RespingeNecesar(
         Guid proiectId,
         Guid id,
-        RespingeNotaComandaCerere cerere,
+        RespingeNecesarMaterialeCerere cerere,
         AprovizionareDbContext db,
         IUtilizatorCurent utilizator,
         ICeas ceas,
         CancellationToken ct)
     {
-        var nota = await db.NoteComanda.FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
-        if (nota is null)
+        var necesar = await db.NecesareMateriale.FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
+        if (necesar is null)
             return Results.NotFound();
         if (utilizator.UtilizatorId is not { } utilizatorId)
             return Results.Unauthorized();
         if (string.IsNullOrWhiteSpace(utilizator.Nume))
             return Results.BadRequest(new { mesaj = "Numele decidentului nu este disponibil în sesiune." });
-        if (nota.Stare != StareNotaComanda.InAsteptareAprobare)
-            return Results.Conflict(new { mesaj = "Doar notele aflate în așteptarea aprobării pot fi respinse." });
+        if (necesar.Stare != StareNecesarMateriale.InAsteptareAprobare)
+            return Results.Conflict(new { mesaj = "Doar necesarele aflate în așteptarea aprobării pot fi respinse." });
 
-        var rezultat = nota.Respinge(utilizatorId, utilizator.Nume, ceas.Acum, cerere.Motiv);
+        var rezultat = necesar.Respinge(utilizatorId, utilizator.Nume, ceas.Acum, cerere.Motiv);
         if (rezultat.Esec)
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
 
         await db.SaveChangesAsync(ct);
-        return Results.Ok(MapareNotaComanda.LaDto(nota));
+        return Results.Ok(MapareNecesarMateriale.LaDto(necesar));
     }
 
-    private static async Task<IResult> DescarcaNota(
+    private static async Task<IResult> DescarcaNecesar(
         Guid proiectId,
         Guid id,
         AprovizionareDbContext db,
@@ -353,33 +357,33 @@ public sealed partial class ModulAprovizionare : IModul
         IGeneratorFormular generator,
         CancellationToken ct)
     {
-        var nota = await db.NoteComanda.AsNoTracking()
+        var necesar = await db.NecesareMateriale.AsNoTracking()
             .FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
-        if (nota is null)
+        if (necesar is null)
             return Results.NotFound();
 
-        if (nota.SablonId == Guid.Empty)
-            return Results.Conflict(new { mesaj = "Nota a fost importată fără șablon de firmă; descarcă documentul original." });
+        if (necesar.SablonId == Guid.Empty)
+            return Results.Conflict(new { mesaj = "Necesarul a fost importat fără șablon de firmă; descarcă documentul original." });
 
-        var sablon = await sabloane.SablonAsync(nota.SablonId, nota.VersiuneSablon, ct);
+        var sablon = await sabloane.SablonAsync(necesar.SablonId, necesar.VersiuneSablon, ct);
         if (sablon is null)
-            return Results.Conflict(new { mesaj = "Versiunea șablonului folosită de notă nu mai este disponibilă." });
+            return Results.Conflict(new { mesaj = "Versiunea șablonului folosită de necesar nu mai este disponibilă." });
 
         var formatRo = CultureInfo.GetCultureInfo("ro-RO");
         var date = new DateFormular(
             new Dictionary<string, string>
             {
-                ["numar"] = nota.NumarAfisat,
-                ["data"] = nota.Data.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
-                ["proiect_cod"] = nota.ProiectCod,
-                ["proiect_denumire"] = nota.Lucrare,
-                ["lucrare"] = nota.Lucrare,
-                ["compartiment_santier"] = nota.CompartimentSantier,
-                ["intocmit_de"] = nota.EmitentNume,
+                ["numar"] = necesar.NumarAfisat,
+                ["data"] = necesar.Data.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                ["proiect_cod"] = necesar.ProiectCod,
+                ["proiect_denumire"] = necesar.Lucrare,
+                ["lucrare"] = necesar.Lucrare,
+                ["compartiment_santier"] = necesar.CompartimentSantier,
+                ["intocmit_de"] = necesar.EmitentNume,
             },
             new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>
             {
-                ["linii"] = nota.Linii.Select(l => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
+                ["linii"] = necesar.Linii.Select(l => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>
                 {
                     ["denumire"] = l.Denumire,
                     ["um"] = l.UnitateMasura,
@@ -388,9 +392,9 @@ public sealed partial class ModulAprovizionare : IModul
                     ["articol_deviz"] = l.ArticolDevizId?.ToString() ?? string.Empty,
                 }).ToList(),
             });
-        var metadate = new MetadateFormular(CodTipNota, sablon.Versiune, nota.Id, nota.NumarAfisat);
-        var docx = generator.Genereaza(sablon.Continut, CatalogFormulare.ComandaFurnizor, date, metadate, randuriGoale: 15);
-        var numeFisier = Regex.Replace(nota.NumarAfisat, @"[^a-zA-Z0-9_-]", "_", RegexOptions.CultureInvariant);
+        var metadate = new MetadateFormular(CodTipNecesar, sablon.Versiune, necesar.Id, necesar.NumarAfisat);
+        var docx = generator.Genereaza(sablon.Continut, CatalogFormulare.NecesarMateriale, date, metadate, randuriGoale: 15);
+        var numeFisier = Regex.Replace(necesar.NumarAfisat, @"[^a-zA-Z0-9_-]", "_", RegexOptions.CultureInvariant);
         return Results.File(docx, TipDocx, $"{numeFisier}.docx");
     }
 }

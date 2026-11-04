@@ -89,11 +89,13 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 
 | ID | Cerință | Faza | Stare |
 |---|---|---|---|
-| REQ-APV-01 | Notele de comandă sunt emise pe proiect, fără furnizor; numărul și data se generează automat, lucrarea se preia din proiect, iar compartimentul / șantierul se introduce manual. | 1 | ✅ |
-| REQ-APV-02 | Notele emise au status și intră în lista de aprobare; aprobarea cere permisiunea `aprovizionare.aprobare`, emitentul nu își poate aproba propria notă, iar aprobatorul și momentul aprobării se înregistrează. | 1 | ✅ |
-| REQ-APV-03 | Nota se poate genera în Word pentru arhivare indiferent de status, folosind versiunea șablonului de la emitere și numele emitentului capturat la emitere. | 1 | ✅ |
-| REQ-APV-04 | Notele din proiectele accesibile se pot filtra după proiect/lucrare, material, interval de dată, status, număr, emitent și aprobator. | 1 | ✅ |
+| REQ-APV-01 | Necesarele de materiale (cererile șantierului, NM/AAAA/NNNN) sunt emise pe proiect, fără furnizor; numărul și data se generează automat, lucrarea se preia din proiect, iar compartimentul / șantierul se introduce manual. | 1 | ✅ |
+| REQ-APV-02 | Necesarele emise au status și intră în lista de aprobare; aprobarea cere permisiunea `aprovizionare.aprobare`, emitentul nu își poate aproba propriul necesar, iar aprobatorul și momentul aprobării se înregistrează. | 1 | ✅ |
+| REQ-APV-03 | Necesarul se poate genera în Word pentru arhivare indiferent de status, folosind versiunea șablonului de la emitere și numele emitentului capturat la emitere. | 1 | ✅ |
+| REQ-APV-04 | Necesarele din proiectele accesibile se pot filtra după proiect/lucrare, material, interval de dată, status, număr, emitent și aprobator. | 1 | ✅ |
 | REQ-APV-05 | Șablonul „Necesar materiale” acceptă placeholderele documentate și le mapează la controalele Word ale aplicației. | 1 | ✅ |
+| REQ-APV-06 | Notele de comandă către furnizori (formularul GC 007: furnizor, lucrare, materiale cu UM / cantitate / termen) au număr de sistem NC/AAAA/NNNN; cele emise pe hârtie se importă (PDF / scanare / Word) cu numărul original păstrat și originalul arhivat. Furnizorul se caută în nomenclator după CUI sau denumire și se adaugă dacă lipsește. | 1 | ✅ (import; emiterea din sistem rămâne) |
+| REQ-APV-07 | Dosarele scanate (factură + e-Factura + notă de comandă + aviz + certificate în același PDF) se împart pe pagini: fiecare document se citește doar din paginile lui, iar din importul facturii se pot importa nota de comandă / necesarul din același fișier. | 1 | ✅ |
 
 ## FCT — Facturi
 
@@ -106,7 +108,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-FCT-05 | PDF pentru client din șablonul Word al firmei; arhivare XML + mesaj semnat ANAF + PDF. | 1 | ⬜ |
 | REQ-FCT-06 | Surse de facturi emise: situații, avansuri, refacturări, vânzări de materiale, storno (cu referință la factura inițială). | 1 | ⬜ |
 | REQ-FCT-07 | Descărcare automată periodică a facturilor primite din SPV; fără dublări. | 1 | 🟡 (import manual XML / ZIP din SPV; descărcarea automată rămâne) |
-| REQ-FCT-08 | Facturi din afara e-Factura: PDF/scan atașat și introducere manuală. | 1 | ✅ |
+| REQ-FCT-08 | Facturi din afara e-Factura: PDF/scan atașat și introducere manuală. Din scanări se citește de preferință pagina e-Factura (vizualizarea SPV, același format la toți furnizorii), apoi factura tipărită de furnizor. | 1 | ✅ |
 | REQ-FCT-09 | Potrivire în 3 puncte comandă–NIR–factură, cu toleranțe configurabile; diferențele merg la achizitor. | 2 | ✅ (regula) |
 | REQ-FCT-10 | Alocare pe proiect și articol moștenită din comandă; reguli per furnizor pentru facturile fără comandă. | 2 | ⬜ |
 | REQ-FCT-11 | Arhiva originală din SPV păstrată neschimbată. | 1 | ✅ |
@@ -129,7 +131,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-FRM-11 | Documentele fără șablon: atașate ca fișier + introducere manuală. | 1 | 🟡 |
 | REQ-FRM-12 | Numerotare pe serii (firmă, tip, an); numere rezervate pentru formulare goale, anulate la expirare. | 1 | 🟡 |
 
-În implementarea curentă, notele de comandă folosesc șabloane Word versionate pe firmă și sunt păstrate cu status de aprobare; numărul, data și lucrarea sunt completate de sistem, iar compartimentul / șantierul se introduce manual. Șablonul „Necesar materiale” este normalizat la încărcare, iar facturile primite se importă ca ciorne „De verificat”, cu originalul păstrat și datele introduse manual; potrivirea automată și aprobarea facturilor rămân de completat.
+În implementarea curentă, necesarele de materiale folosesc șabloane Word versionate pe firmă și sunt păstrate cu status de aprobare; numărul, data și lucrarea sunt completate de sistem, iar compartimentul / șantierul se introduce manual. Șablonul „Necesar materiale” este normalizat la încărcare, iar facturile primite se importă ca ciorne „De verificat”, cu originalul păstrat și datele introduse manual; potrivirea automată și aprobarea facturilor rămân de completat.
 
 ## RPT — Rapoarte
 

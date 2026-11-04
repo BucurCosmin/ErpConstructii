@@ -12,8 +12,8 @@ namespace ErpConstructii.Teste.Formulare;
 /// </summary>
 public class FormularWordTeste
 {
-    private static readonly TipFormular Tip = CatalogFormulare.ComandaFurnizor;
-    private static readonly MetadateFormular Metadate = new(Tip.Cod, 3, Guid.Parse("0193f3c0-0000-7000-8000-000000000001"), "NC/2026/0007");
+    private static readonly TipFormular Tip = CatalogFormulare.NecesarMateriale;
+    private static readonly MetadateFormular Metadate = new(Tip.Cod, 3, Guid.Parse("0193f3c0-0000-7000-8000-000000000001"), "NM/2026/0007");
 
     [Fact]
     public void Generat_apoi_citit_pastreaza_campurile_liniile_si_metadatele()
@@ -21,7 +21,7 @@ public class FormularWordTeste
         var date = new DateFormular(
             new Dictionary<string, string>
             {
-                ["numar"] = "NC/2026/0007",
+                ["numar"] = "NM/2026/0007",
                 ["data"] = "03.11.2026",
                 ["proiect_cod"] = "P-01",
                 ["lucrare"] = "Reabilitare",
@@ -41,7 +41,7 @@ public class FormularWordTeste
 
         Assert.Empty(citit.Probleme);
         Assert.Equal(Metadate, citit.Metadate);
-        Assert.Equal("NC/2026/0007", citit.Date.Campuri["numar"]);
+        Assert.Equal("NM/2026/0007", citit.Date.Campuri["numar"]);
         Assert.Equal("Reabilitare", citit.Date.Campuri["lucrare"]);
 
         var linii = citit.Date.Tabele["linii"];
@@ -98,7 +98,7 @@ public class FormularWordTeste
         var date = new DateFormular(
             new Dictionary<string, string>
             {
-                ["numar"] = "NC/2026/0007",
+                ["numar"] = "NM/2026/0007",
                 ["data"] = "03.11.2026",
                 ["proiect_cod"] = "P-01",
                 ["lucrare"] = "Reabilitare",
@@ -114,7 +114,7 @@ public class FormularWordTeste
         using var ms = new MemoryStream(rezultat);
         using var doc = WordprocessingDocument.Open(ms, false);
         var corp = doc.MainDocumentPart!.Document!.Body!;
-        Assert.Contains("NC/2026/0007", corp.InnerText);
+        Assert.Contains("NM/2026/0007", corp.InnerText);
         Assert.Contains("03.11.2026", corp.InnerText);
         Assert.Contains("Reabilitare", corp.InnerText);
         Assert.Contains("Șantier central", corp.InnerText);

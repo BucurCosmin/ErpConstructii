@@ -1,4 +1,4 @@
-import { CheckCircleOutlined, DeleteOutlined, FileWordOutlined, InboxOutlined, PlusOutlined, ScanOutlined, WarningOutlined } from '@ant-design/icons'
+import { DeleteOutlined, FileWordOutlined, InboxOutlined, PlusOutlined, ScanOutlined } from '@ant-design/icons'
 import {
   Alert,
   App,
@@ -24,11 +24,10 @@ import {
 } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
-import { useImportaNota, useInterpreteazaNota } from '../../api/aprovizionare'
-import type { CampCitit, Certitudine, InterpretareNota, NotaComanda } from '../../api/aprovizionare'
+import { useImportaNecesar, useInterpreteazaNecesar } from '../../api/aprovizionare'
+import type { CampCitit, Certitudine, InterpretareNecesar, NecesarMateriale } from '../../api/aprovizionare'
 import { useProiecte } from '../../api/interogari'
-
-const UNITATI = ['buc', 'kg', 't', 'm', 'ml', 'mp', 'mc', 'l', 'set', 'bax', 'cut', 'rola', 'sac', 'per', 'pac', 'kit', 'palet']
+import { eticheteCertitudine, stareCamp, UNITATI } from './campuriCitite'
 
 interface LinieFormular {
   denumire?: string
@@ -53,37 +52,19 @@ interface ValoriFormular {
 }
 
 /**
- * Starea vizuală a unui câmp citit din document: „de verificat” cât timp valoarea propusă nu a fost schimbată.
- * Câmpurile lipsă sunt obligatorii (regula din formular), deci nu au nevoie de altă marcare.
- */
-function stareCamp<T>(camp: CampCitit<T> | undefined, valoareCurenta: unknown) {
-  if (!camp || camp.certitudine !== 'Nesigur' || valoareCurenta !== camp.valoare) return {}
-  return {
-    validateStatus: 'warning' as const,
-    help: camp.textSursa ? `De verificat. Citit în document: „${camp.textSursa}”` : 'De verificat',
-  }
-}
-
-const eticheteCertitudine: Record<Certitudine, { text: string; culoare: string; icon: React.ReactNode }> = {
-  Sigur: { text: 'citit clar', culoare: 'green', icon: <CheckCircleOutlined /> },
-  Nesigur: { text: 'de verificat', culoare: 'orange', icon: <WarningOutlined /> },
-  Lipsa: { text: 'de completat', culoare: 'red', icon: <WarningOutlined /> },
-}
-
-/**
- * Importul unei note de comandă / necesar de materiale emis în afara sistemului (PDF scanat, poză, Word):
+ * Importul unui necesar de materiale emis în afara sistemului (PDF scanat, poză, Word):
  * sistemul citește documentul, propune datele, iar utilizatorul le verifică și le completează înainte de creare.
  */
-export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
+export function ImportNecesarExtern({ poateCrea, fisierInitial }: { poateCrea: boolean; fisierInitial?: File }) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
-  const interpreteaza = useInterpreteazaNota()
-  const importa = useImportaNota()
+  const interpreteaza = useInterpreteazaNecesar()
+  const importa = useImportaNecesar()
   const [form] = Form.useForm<ValoriFormular>()
   const [fisier, setFisier] = useState<File>()
   const [url, setUrl] = useState<string>()
-  const [rezultat, setRezultat] = useState<InterpretareNota>()
-  const [creata, setCreata] = useState<NotaComanda>()
+  const [rezultat, setRezultat] = useState<InterpretareNecesar>()
+  const [creata, setCreata] = useState<NecesarMateriale>()
   const urlCurent = useRef<string | undefined>(undefined)
 
   const valori = Form.useWatch([], form) as ValoriFormular | undefined
@@ -137,10 +118,20 @@ export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
     return false
   }
 
+  // Deschis din importul unei facturi: același PDF (dosarul scanat), citit direct, fără o nouă alegere a fișierului.
+  const citit = useRef<File | undefined>(undefined)
+  useEffect(() => {
+    if (fisierInitial && citit.current !== fisierInitial) {
+      citit.current = fisierInitial
+      void citeste(fisierInitial)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fisierInitial])
+
   const creeaza = async (v: ValoriFormular) => {
     if (!fisier || !v.proiectId || !v.dataDocument) return
     try {
-      const nota = await importa.mutateAsync({
+      const necesar = await importa.mutateAsync({
         proiectId: v.proiectId,
         fisier,
         date: {
@@ -156,8 +147,8 @@ export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
           })),
         },
       })
-      setCreata(nota)
-      message.success(`Nota ${nota.numar} a fost creată și trimisă spre aprobare.`)
+      setCreata(necesar)
+      message.success(`Necesarul ${necesar.numar} a fost creat și trimis spre aprobare.`)
     } catch (e) {
       message.error((e as Error).message)
     }
@@ -168,8 +159,8 @@ export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
     return (
       <Result
         status="success"
-        title={`Nota ${creata.numar} a fost creată`}
-        subTitle={`Număr pe document: ${creata.numarExtern ?? '—'} · ${creata.linii.length} materiale · trimisă spre aprobare. Originalul este atașat notei.`}
+        title={`Necesarul ${creata.numar} a fost creat`}
+        subTitle={`Număr pe document: ${creata.numarExtern ?? '—'} · ${creata.linii.length} materiale · trimis spre aprobare. Originalul este atașat necesarului.`}
         extra={<Button type="primary" onClick={reseteaza}>Importă alt document</Button>}
       />
     )
@@ -189,10 +180,10 @@ export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
         <p className="ant-upload-drag-icon">
           <InboxOutlined />
         </p>
-        <p className="ant-upload-text">Trage aici nota de comandă sau apasă pentru a o alege</p>
+        <p className="ant-upload-text">Trage aici necesarul de materiale sau apasă pentru a-l alege</p>
         <p className="ant-upload-hint">
           PDF scanat, poză (JPG, PNG) sau document Word. Sistemul citește documentul și îți propune datele; verifici ce nu e clar,
-          apoi creezi nota.
+          apoi creezi necesarul.
         </p>
       </Upload.Dragger>
     )
@@ -242,13 +233,13 @@ export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
             </Flex>
           </Card>
         ) : (
-          <Form<ValoriFormular> form={form} name="importNota" layout="vertical" onFinish={creeaza} requiredMark="optional">
-            {rezultat.notaExistenta && (
+          <Form<ValoriFormular> form={form} name="importNecesar" layout="vertical" onFinish={creeaza} requiredMark="optional">
+            {rezultat.necesarExistent && (
               <Alert
                 type="error"
                 showIcon
                 style={{ marginBottom: 16 }}
-                title={`Acest document a fost deja importat ca nota ${rezultat.notaExistenta}.`}
+                title={`Acest document a fost deja importat ca necesarul ${rezultat.necesarExistent}.`}
               />
             )}
             <Alert
@@ -276,7 +267,7 @@ export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
               }
             />
 
-            <Card size="small" title="Antetul notei" style={{ marginBottom: 16 }}>
+            <Card size="small" title="Antetul necesarului" style={{ marginBottom: 16 }}>
               <Row gutter={12}>
                 <Col xs={24}>
                   <Form.Item
@@ -396,12 +387,12 @@ export function ImportNotaExterna({ poateCrea }: { poateCrea: boolean }) {
 
             <Flex justify="space-between" align="center" wrap gap={8}>
               <Typography.Text type="secondary">
-                Nota primește număr de sistem, păstrează numărul de pe document și intră în fluxul de aprobare.
+                Necesarul primește număr de sistem, păstrează numărul de pe document și intră în fluxul de aprobare.
               </Typography.Text>
               <Space>
                 <Button onClick={reseteaza}>Renunță</Button>
-                <Button type="primary" htmlType="submit" loading={importa.isPending} disabled={!poateCrea || !!rezultat.notaExistenta}>
-                  Creează nota de comandă
+                <Button type="primary" htmlType="submit" loading={importa.isPending} disabled={!poateCrea || !!rezultat.necesarExistent}>
+                  Creează necesarul de materiale
                 </Button>
               </Space>
             </Flex>

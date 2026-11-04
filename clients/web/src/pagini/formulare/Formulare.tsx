@@ -8,7 +8,7 @@ import type { SablonFormularApi } from '../../api/formulare'
 import { AntetPagina } from '../../layout/AntetPagina'
 
 export function Formulare() {
-  const [codTip, setCodTip] = useState('comanda-furnizor')
+  const [codTip, setCodTip] = useState('necesar-materiale')
   const [fisier, setFisier] = useState<File>()
   const { message } = App.useApp()
   const permisiuni = usePermisiuni()
@@ -86,7 +86,7 @@ export function Formulare() {
         <Space direction="vertical" size="middle" style={{ width: '100%' }}>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
             Fiecare încărcare creează o versiune nouă. Documentul „Necesar materiale” este recunoscut și pregătit automat
-            pentru notele de comandă; pentru celelalte șabloane folosește controale Word etichetate. Originalele rămân
+            pentru necesarele de materiale; pentru celelalte șabloane folosește controale Word etichetate. Originalele rămân
             disponibile pentru descărcare, iar activarea schimbă doar versiunea folosită la generare.
           </Typography.Paragraph>
 

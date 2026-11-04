@@ -8,5 +8,6 @@
     <ProjectReference Include="..\..\Formulare\ErpConstructii.Formulare\ErpConstructii.Formulare.csproj" />
     <ProjectReference Include="..\..\Identitate\ErpConstructii.Identitate\ErpConstructii.Identitate.csproj" />
     <ProjectReference Include="..\..\Proiecte\ErpConstructii.Proiecte\ErpConstructii.Proiecte.csproj" />
+    <ProjectReference Include="..\..\Parteneri\ErpConstructii.Parteneri\ErpConstructii.Parteneri.csproj" />
   </ItemGroup>
 </Project>

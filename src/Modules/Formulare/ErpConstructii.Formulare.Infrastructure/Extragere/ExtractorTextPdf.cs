@@ -22,7 +22,7 @@ public sealed class ExtractorTextPdf(ExtractorTextOcr ocr, ILogger<ExtractorText
     /// <summary>Sub atâtea litere, PDF-ul e considerat scanat (doar imagini, eventual un antet tipărit).</summary>
     private const int LitereMinime = 40;
 
-    private const int PaginiMaxime = 5;
+    private const int PaginiMaxime = 20;
 
     public bool Accepta(string numeFisier) => Path.GetExtension(numeFisier).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
 
