@@ -1,4 +1,4 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
@@ -6,6 +6,7 @@ import { useProiecte } from '../../api/interogari'
 import { useBonuriConsum, useConsuma, useConsumPeArticole, useDevizReferinta, useSoldStoc } from '../../api/stocuri'
 import type { BonConsum, ConsumPeArticole } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
+import { deschidePdf } from '../../util/pdf'
 
 const GENERALE = '__generale__'
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
@@ -157,6 +158,10 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
             { title: 'Linii', width: 80, align: 'right', render: (_, b) => b.linii.length },
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
             { title: 'Emis de', dataIndex: 'emisDe' },
+            {
+              title: '', width: 80,
+              render: (_, b) => <Button size="small" icon={<FilePdfOutlined />} onClick={() => void deschidePdf(`/api/stocuri/consumuri/${b.id}/pdf`).catch((x) => message.error((x as Error).message))}>PDF</Button>,
+            },
           ]}
         />
       </Card>

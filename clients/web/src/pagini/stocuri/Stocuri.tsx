@@ -1,4 +1,4 @@
-import { EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { EditOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Drawer, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useState } from 'react'
@@ -18,6 +18,7 @@ import {
 import type { ArticolStoc, FacturaDeReceptionat, MiscareStoc, Nir, SoldStoc } from '../../api/stocuri'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
+import { deschidePdf } from '../../util/pdf'
 import { ReceptieFactura } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
 import { InventarGestiune } from './InventarGestiune'
@@ -227,9 +228,12 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
             },
             { title: 'Recepționat de', dataIndex: 'receptionatDe', width: 160 },
             {
-              title: '', width: 110,
-              render: (_, n) => !n.storno && poateAnula && (
-                <Button size="small" danger onClick={(e) => { e.stopPropagation(); setDeStornat(n) }}>Stornează</Button>
+              title: '', width: 170,
+              render: (_, n) => (
+                <Space size={4}>
+                  <Button size="small" icon={<FilePdfOutlined />} onClick={(e) => { e.stopPropagation(); void deschidePdf(`/api/stocuri/nir/${n.id}/pdf`).catch((x) => message.error((x as Error).message)) }}>PDF</Button>
+                  {!n.storno && poateAnula && <Button size="small" danger onClick={(e) => { e.stopPropagation(); setDeStornat(n) }}>Stornează</Button>}
+                </Space>
               ),
             },
           ]}

@@ -112,6 +112,9 @@ public sealed class ModulStocuri : IModul
         // Inventarul gestiunilor și stornarea NIR-urilor.
         EndpointuriInventar.Mapeaza(g);
 
+        // PDF-urile documentelor (NIR, bon de consum, bon de transfer).
+        DocumenteStocPdf.Mapeaza(g);
+
         g.MapGet("/transferuri", ListaTransferuri).WithName("ListaTransferuri").WithSummary("Bonurile de transfer").Produces<IReadOnlyList<TransferDto>>().CerePermisiune(vizualizare);
     }
 

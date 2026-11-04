@@ -1,4 +1,4 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { DeleteOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
@@ -6,6 +6,7 @@ import { useProiecte } from '../../api/interogari'
 import { useGestiuni, useReturneaza, useSoldStoc, useTransfera, useTransferuri } from '../../api/stocuri'
 import type { TransferStoc } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
+import { deschidePdf } from '../../util/pdf'
 
 interface Valori {
   gestiuneSursaId?: string
@@ -163,6 +164,10 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
             { title: 'Materiale', width: 100, align: 'right', render: (_, t) => t.linii.length },
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: (v: number | null) => (v === null ? '—' : formatLei(v)) },
             { title: 'Emis de', dataIndex: 'emisDe', width: 160 },
+            {
+              title: '', width: 80,
+              render: (_, t) => <Button size="small" icon={<FilePdfOutlined />} onClick={() => void deschidePdf(`/api/stocuri/transferuri/${t.id}/pdf`).catch((x) => message.error((x as Error).message))}>PDF</Button>,
+            },
           ]}
         />
       </Card>

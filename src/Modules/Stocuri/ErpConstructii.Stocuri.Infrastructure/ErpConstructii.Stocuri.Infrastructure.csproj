@@ -10,5 +10,6 @@
     <ProjectReference Include="..\..\Proiecte\ErpConstructii.Proiecte\ErpConstructii.Proiecte.csproj" />
     <ProjectReference Include="..\..\Facturi\ErpConstructii.Facturi\ErpConstructii.Facturi.csproj" />
     <ProjectReference Include="..\..\Devize\ErpConstructii.Devize\ErpConstructii.Devize.csproj" />
+    <ProjectReference Include="..\..\Formulare\ErpConstructii.Formulare\ErpConstructii.Formulare.csproj" />
   </ItemGroup>
 </Project>

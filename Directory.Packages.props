@@ -27,6 +27,9 @@
     <!-- Textul digital din PDF-uri (facturi generate de programe), fără OCR -->
     <PackageVersion Include="PdfPig" Version="0.1.16" />
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <!-- PDF în formatul standard al documentelor. NU actualiza peste 6.2.x: de la 6.3 / 6.5 pachetul e AGPL-3.0 (licență incompatibilă cu D-10); 6.2.4 e MIT. -->
+    <PackageVersion Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <!-- De adăugat la implementarea importatorilor (vezi CLAUDE.md):
          ClosedXML (Excel), net.sf.mpxj-for-csharp (Primavera / MS Project). -->
     <!-- Teste -->

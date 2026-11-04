@@ -109,6 +109,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-STC-06 | Inventarul unei gestiuni (INV/AAAA/NNNN): stocul scriptic preluat la deschidere, gestiunea blocată pentru alte mișcări până la finalizare, numărătoarea comisiei, finalizarea cu drept de aprobare: plusuri la CMP (sau la prețul dat, dacă materialul nu are CMP), minusuri la CMP. | 2 | ✅ |
 | REQ-STC-07 | Stornarea NIR-ului (document separat): materialele ies la valoarea de intrare, doar dacă sunt încă în gestiune; după storno factura neanulată se poate recepționa din nou; NIR-urile facturilor anulate sunt semnalate. | 2 | ✅ |
 | REQ-STC-08 | e-Transport pentru transferurile de materiale cu risc fiscal; proces-verbal de inventar tipărit din șablonul firmei. | 2 | ⬜ |
+| REQ-STC-09 | NIR-ul (14-3-1A), bonul de consum (14-3-4A) și bonul de predare-transfer-restituire (14-3-3A) se descarcă în PDF: din șablonul Word al firmei, dacă e încărcat, altfel în formatul standard; prețurile apar doar cu dreptul „prețuri de cost”. | 2 | ✅ |
 
 ## FCT — Facturi
 

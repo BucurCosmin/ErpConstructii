@@ -81,6 +81,90 @@ public static class CatalogFormulare
         ],
         SePoateImporta: true);
 
+    // ---------------------------------------------------------------- gestiuni (Stocuri)
+
+    private static readonly CampFormular[] CampuriFirma =
+    [
+        new("firma_denumire", "Unitatea"),
+        new("firma_cui", "CUI"),
+    ];
+
+    /// <summary>Nota de recepție și constatare de diferențe (cod 14-3-1A).</summary>
+    public static readonly TipFormular Nir = new(
+        Cod: "nir",
+        Denumire: "Notă de recepție și constatare de diferențe (NIR)",
+        ModulErp: "Gestiuni",
+        Campuri:
+        [
+            .. CampuriComune, .. CampuriFirma,
+            new("gestiune", "Gestiunea", Obligatoriu: true),
+            new("furnizor", "Furnizor", Obligatoriu: true),
+            new("factura", "Factura (nr. / data)", Obligatoriu: true),
+            new("proiect_cod", "Proiect"),
+            new("total_valoare", "Total valoare", TipCamp.Suma),
+            new("observatii", "Observații"),
+        ],
+        Tabele:
+        [
+            new TabelFormular("linii",
+            [
+                new("numar_crt", "Nr. crt."), new("cod", "Cod"), new("denumire", "Denumire", Obligatoriu: true), new("um", "UM"),
+                new("cantitate_factura", "Cantitate cf. document", TipCamp.Numar), new("cantitate_receptionata", "Cantitate recepționată", TipCamp.Numar),
+                new("pret_unitar", "Preț unitar", TipCamp.Suma), new("valoare", "Valoare", TipCamp.Suma),
+                new("diferenta", "Diferență", TipCamp.Numar), new("observatii", "Observații"),
+            ], CelPutinOLinie: true),
+        ],
+        SePoateImporta: false);
+
+    /// <summary>Bon de consum (cod 14-3-4A), pe articolele devizului.</summary>
+    public static readonly TipFormular BonConsum = new(
+        Cod: "bon-consum",
+        Denumire: "Bon de consum",
+        ModulErp: "Gestiuni",
+        Campuri:
+        [
+            .. CampuriComune, .. CampuriFirma,
+            new("gestiune", "Gestiunea (șantierul)", Obligatoriu: true),
+            new("proiect_cod", "Proiect", Obligatoriu: true),
+            new("total_valoare", "Total valoare", TipCamp.Suma),
+            new("observatii", "Observații"),
+        ],
+        Tabele:
+        [
+            new TabelFormular("linii",
+            [
+                new("numar_crt", "Nr. crt."), new("cod", "Cod"), new("denumire", "Denumire", Obligatoriu: true), new("um", "UM"),
+                new("cantitate", "Cantitate", TipCamp.Numar), new("pret_unitar", "Preț unitar", TipCamp.Suma), new("valoare", "Valoare", TipCamp.Suma),
+                new("articol_deviz", "Articol de deviz"),
+            ], CelPutinOLinie: true),
+        ],
+        SePoateImporta: false);
+
+    /// <summary>Bon de predare-transfer-restituire (cod 14-3-3A): transfer în șantier sau retur în depozit.</summary>
+    public static readonly TipFormular BonTransfer = new(
+        Cod: "aviz-transfer",
+        Denumire: "Bon de predare-transfer-restituire",
+        ModulErp: "Gestiuni",
+        Campuri:
+        [
+            .. CampuriComune, .. CampuriFirma,
+            new("tip", "Tip (transfer / restituire)"),
+            new("gestiune_predatoare", "Gestiunea predătoare", Obligatoriu: true),
+            new("gestiune_primitoare", "Gestiunea primitoare", Obligatoriu: true),
+            new("proiect_cod", "Proiect"),
+            new("total_valoare", "Total valoare", TipCamp.Suma),
+            new("observatii", "Observații"),
+        ],
+        Tabele:
+        [
+            new TabelFormular("linii",
+            [
+                new("numar_crt", "Nr. crt."), new("cod", "Cod"), new("denumire", "Denumire", Obligatoriu: true), new("um", "UM"),
+                new("cantitate", "Cantitate", TipCamp.Numar), new("pret_unitar", "Preț unitar", TipCamp.Suma), new("valoare", "Valoare", TipCamp.Suma),
+            ], CelPutinOLinie: true),
+        ],
+        SePoateImporta: false);
+
     /// <summary>Restul catalogului; câmpurile specifice se adaugă la implementarea fiecărui modul.</summary>
     public static readonly IReadOnlyList<TipFormular> Toate =
     [
@@ -90,9 +174,9 @@ public static class CatalogFormulare
         Declarat("cerere-oferta", "Cerere de ofertă către furnizori", "Aprovizionare", false),
         Declarat("comanda-subantreprenor", "Comandă către subantreprenor", "Subantreprenori", true),
         Declarat("contract", "Contract / act adițional", "Contracte", true),
-        Declarat("nir", "Notă de recepție (NIR)", "Gestiuni", true),
-        Declarat("bon-consum", "Bon de consum", "Gestiuni", true),
-        Declarat("aviz-transfer", "Aviz de transfer între gestiuni", "Gestiuni", true),
+        Nir,
+        BonConsum,
+        BonTransfer,
         Declarat("pv-lucrari-ascunse", "Proces-verbal de lucrări ascunse", "Executie", true),
         Declarat("pv-predare-amplasament", "Proces-verbal de predare-primire amplasament", "Executie", true),
         Declarat("pv-receptie", "Proces-verbal de recepție (terminare / finală)", "Executie", true),

@@ -27,6 +27,9 @@ public sealed class ModulFormulare : IModul
         servicii.AddSingleton<IGeneratorFormular, GeneratorWord>();
         servicii.AddSingleton<ICititorFormular, CititorWord>();
         servicii.AddSingleton<IValidatorSablon, ValidatorSablonWord>();
+        // PDF-urile documentelor: șablonul firmei (Word → Gotenberg) sau formatul standard (MigraDoc).
+        servicii.AddSingleton<IGeneratorPdfStandard, Pdf.GeneratorPdfStandard>();
+        servicii.AddScoped<IServiciuDocumente, Pdf.ServiciuDocumente>();
 
         // Extragerea textului din documente externe (Word direct; PDF scanat și imagini prin OCR local).
         servicii.Configure<OptiuniOcr>(configurare.GetSection("Ocr"));
