@@ -10,8 +10,10 @@
 #   5. descarcă Caddy (dacă lipsește) și scrie Caddyfile-ul
 #   6. adaugă regulile de firewall pentru porturile 80 și 443 (cere drepturi de administrator)
 #
-# Pe router: redirecționează DOAR porturile TCP 80 și 443 către acest calculator. Portul 80 e necesar pentru
-# certificatul Let's Encrypt și pentru redirecționarea http → https. NU redirecționa 5432 (PostgreSQL) sau 5090 (API).
+# Pe router: redirecționează portul TCP 443 către acest calculator (obligatoriu: aplicația și certificatul Let's Encrypt,
+# obținut prin verificarea TLS-ALPN pe 443). Portul 80 e opțional: dacă e redirecționat, http:// trimite spre https://;
+# poate rămâne folosit de router (ex. administrarea de la distanță). Administrarea HTTPS a routerului NU trebuie să fie
+# pe 443. NU redirecționa 5432 (PostgreSQL) sau 5090 (API).
 
 param(
     [Parameter(Mandatory = $true)] [string] $Domeniu,
@@ -99,6 +101,13 @@ $logCaddy = (Join-Path $productie "loguri\caddy-acces.log") -replace '\\', '/'
 $global$Domeniu {
     encode zstd gzip
 
+    # Certificatul se verifică doar pe portul 443 (TLS-ALPN-01): portul 80 public poate rămâne al routerului.
+    tls {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+
     # API-ul și serverul de autentificare (OAuth2 / OIDC), pe aceeași origine cu aplicația web (D-19).
     @api path /api/* /connect/* /.well-known/* /sanatate
     handle @api {
@@ -144,4 +153,4 @@ catch {
 
 Write-Host ""
 Write-Host "Gata. Pornește producția: powershell -File deploy\porneste-productie.ps1" -ForegroundColor Green
-Write-Host "Adresa: https://$Domeniu/  (pe router: porturile TCP 80 și 443 → acest calculator)"
+Write-Host "Adresa: https://$Domeniu/  (pe router: portul TCP 443 → acest calculator; 80 opțional)"

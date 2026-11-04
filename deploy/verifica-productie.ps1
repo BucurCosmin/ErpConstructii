@@ -43,8 +43,11 @@ $jurnal = Join-Path $productie "loguri\caddy-erori.log"
 if (Test-Path $jurnal) {
     $text = Get-Content $jurnal -Raw
     if ($text -match "certificate obtained successfully") { Ok "jurnalul Caddy: certificatul a fost obținut" }
+    elseif ($text -match "(?i)tls-alpn-01.*(error|fail)|(error|fail).*tls-alpn-01") {
+        Problema "jurnalul Caddy: verificarea pe portul 443 (TLS-ALPN) a eșuat" "portul 443 din internet nu ajunge la Caddy: redirecționarea 443 din router lipsește sau routerul ține 443 pentru administrarea HTTPS (mut-o pe alt port, ex. 8443)"
+    }
     elseif ($text -match "(?i)(challenge failed|timeout during connect|connection refused|unauthorized|could not get certificate)") {
-        Problema "jurnalul Caddy: obținerea certificatului a eșuat" "ultimele erori de mai jos; de regulă portul 80 nu e redirecționat sau e blocat"
+        Problema "jurnalul Caddy: obținerea certificatului a eșuat" "ultimele erori de mai jos; de regulă portul 443 nu ajunge din internet la acest calculator"
         Get-Content $jurnal | Select-String -Pattern "(?i)error|failed" | Select-Object -Last 5 | ForEach-Object { Write-Host "          $($_.Line.Substring(0, [Math]::Min(220, $_.Line.Length)))" }
     }
     else { Info "jurnalul Caddy nu arată încă rezultatul certificatului (se obține la prima pornire, poate dura un minut)" }
