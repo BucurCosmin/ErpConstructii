@@ -1,12 +1,23 @@
--- Rolurile bazei de date (rulat o singură dată, la crearea bazei; în docker la prima pornire).
+-- Rolurile bazei de date. Idempotent: se poate rula din nou oricând (db\creeaza-baza-locala.ps1 îl rulează la fiecare
+-- execuție; în docker rulează la prima pornire).
 --
 --   erp_owner  proprietarul schemelor și tabelelor; rulează migrările EF. NU îl folosește aplicația.
 --   erp_app    rolul aplicației: drepturi DML, fără BYPASSRLS, nu e proprietar → RLS se aplică.
 --
 -- Parolele de mai jos sunt DOAR pentru dezvoltare locală.
 
-CREATE ROLE erp_owner LOGIN PASSWORD 'erp_owner_dev';
-CREATE ROLE erp_app   LOGIN PASSWORD 'erp_app_dev' NOBYPASSRLS;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_owner') THEN
+    CREATE ROLE erp_owner LOGIN PASSWORD 'erp_owner_dev';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'erp_app') THEN
+    CREATE ROLE erp_app LOGIN PASSWORD 'erp_app_dev' NOBYPASSRLS;
+  END IF;
+END $$;
+-- Rolurile pot exista dinainte (alt proiect, o instalare întreruptă): drepturile de bază se impun oricum.
+ALTER ROLE erp_owner LOGIN;
+ALTER ROLE erp_app LOGIN NOBYPASSRLS;
 
 GRANT CONNECT ON DATABASE erp TO erp_owner, erp_app;
 GRANT CREATE ON DATABASE erp TO erp_owner;
