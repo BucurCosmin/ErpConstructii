@@ -52,6 +52,7 @@ public sealed class ModulDevize : IModul
     public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare)
     {
         servicii.AdaugaDbContextModul<DevizeDbContext>(configurare, Nume);
+        servicii.AddScoped<IInterogareDevize, InterogareDevize>();
         // Importatorii concreți (WinDoc, Excel...) se înregistrează din proiectele lor,
         // ca IImportatorDeviz; registrul îi primește pe toți.
         servicii.AddScoped<RegistruImportatori>();

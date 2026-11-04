@@ -15,6 +15,7 @@ public sealed class StocuriDbContext(DbContextOptions<StocuriDbContext> optiuni)
     public DbSet<AliasArticol> Aliasuri => Set<AliasArticol>();
     public DbSet<Nir> Nir => Set<Nir>();
     public DbSet<TransferStoc> Transferuri => Set<TransferStoc>();
+    public DbSet<BonConsum> BonuriConsum => Set<BonConsum>();
     public DbSet<MiscareStoc> Miscari => Set<MiscareStoc>();
     public DbSet<SoldStoc> Solduri => Set<SoldStoc>();
 }
@@ -85,8 +86,27 @@ internal sealed class ConfigurareTransfer : IEntityTypeConfiguration<TransferSto
     {
         b.ToTable("transferuri");
         b.HasKey(x => x.Id);
+        b.Property(x => x.Directie).HasConversion<string>().HasMaxLength(20).HasDefaultValue(DirectieTransfer.SpreSantier).IsRequired();
         b.Property(x => x.GestiuneSursaDenumire).HasMaxLength(200).IsRequired();
         b.Property(x => x.GestiuneDestinatieDenumire).HasMaxLength(200).IsRequired();
+        b.Property(x => x.ProiectCod).HasMaxLength(40).IsRequired();
+        b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.Valoare).HasPrecision(18, 2);
+        b.Property(x => x.Observatii).HasMaxLength(1000);
+        b.Property(x => x.EmisDeNume).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.NumarAfisat);
+        b.Ignore(x => x.Linii);
+        b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
+        b.HasIndex(x => new { x.FirmaId, x.ProiectId, x.Data });
+    }
+}
+
+internal sealed class ConfigurareBonConsum : IEntityTypeConfiguration<BonConsum>
+{
+    public void Configure(EntityTypeBuilder<BonConsum> b)
+    {
+        b.ToTable("bonuri_consum");
+        b.HasKey(x => x.Id);
         b.Property(x => x.ProiectCod).HasMaxLength(40).IsRequired();
         b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
         b.Property(x => x.Valoare).HasPrecision(18, 2);

@@ -1,9 +1,9 @@
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Select, Space, Table, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
-import { useGestiuni, useSoldStoc, useTransfera, useTransferuri } from '../../api/stocuri'
+import { useGestiuni, useReturneaza, useSoldStoc, useTransfera, useTransferuri } from '../../api/stocuri'
 import type { TransferStoc } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 
@@ -15,31 +15,42 @@ interface Valori {
   linii: { articolId?: string; cantitate?: number | null }[]
 }
 
-/** Bon de transfer: materiale din depozit în „Materiale în șantier” ale unui proiect, evaluate la CMP. */
+/** Bon de transfer: materiale din depozit în „Materiale în șantier” ale unui proiect sau, la retur, înapoi în depozit; evaluate la CMP. */
 export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
   const { message } = App.useApp()
   const [form] = Form.useForm<Valori>()
   const gestiuni = useGestiuni()
   const proiecte = useProiecte()
   const transfera = useTransfera()
+  const returneaza = useReturneaza()
   const transferuri = useTransferuri()
+  const [retur, setRetur] = useState(false)
   const sursaId = Form.useWatch('gestiuneSursaId', form) as string | undefined
+  const proiectAles = Form.useWatch('proiectId', form) as string | undefined
   const linii = Form.useWatch('linii', form) as Valori['linii'] | undefined
-  const sold = useSoldStoc({ gestiuneId: sursaId })
+  // Spre șantier: materialele din depozit; la retur: materialele din șantierul proiectului.
+  const sold = useSoldStoc(retur ? { tip: 'Santier', proiectId: proiectAles ?? '00000000-0000-0000-0000-000000000000' } : { gestiuneId: sursaId })
 
-  const depozite = (gestiuni.data ?? []).filter((g) => g.tip === 'Depozit')
+  const depozite = useMemo(() => (gestiuni.data ?? []).filter((g) => g.tip === 'Depozit'), [gestiuni.data])
+  // Depozitul implicit, după ce lista se încarcă (pagina se poate deschide direct pe acest tab).
+  useEffect(() => {
+    if (depozite.length && !form.getFieldValue('gestiuneSursaId')) form.setFieldValue('gestiuneSursaId', depozite[0].id)
+  }, [depozite, form])
+
   const disponibil = useMemo(() => new Map((sold.data ?? []).map((s) => [s.articolId, s])), [sold.data])
 
   const trimite = async (v: Valori) => {
     if (!v.gestiuneSursaId || !v.proiectId) return
     try {
-      const bt = await transfera.mutateAsync({
+      const comun = {
         proiectId: v.proiectId,
-        gestiuneSursaId: v.gestiuneSursaId,
         data: v.data.format('YYYY-MM-DD'),
         observatii: v.observatii?.trim() || null,
         linii: v.linii.map((l) => ({ articolId: l.articolId!, cantitate: Number(l.cantitate) })),
-      })
+      }
+      const bt = retur
+        ? await returneaza.mutateAsync({ ...comun, gestiuneDestinatieId: v.gestiuneSursaId })
+        : await transfera.mutateAsync({ ...comun, gestiuneSursaId: v.gestiuneSursaId })
       message.success(`${bt.numar}: materialele au ajuns în ${bt.gestiuneDestinatie}.`)
       form.setFieldsValue({ linii: [{}], observatii: undefined })
     } catch (e) {
@@ -49,17 +60,21 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }} size="large">
-      <Card title="Transfer în șantier (bon de transfer)">
+      <Card
+        title={retur ? 'Retur în depozit (bon de transfer)' : 'Transfer în șantier (bon de transfer)'}
+        extra={<Segmented value={retur ? 'retur' : 'santier'} onChange={(v) => { setRetur(v === 'retur'); form.setFieldsValue({ linii: [{}] }) }}
+          options={[{ value: 'santier', label: 'Depozit → șantier' }, { value: 'retur', label: 'Retur șantier → depozit' }]} />}
+      >
         <Form<Valori> form={form} name="transfer" layout="vertical" onFinish={trimite} disabled={!poateCrea}
           initialValues={{ data: dayjs(), linii: [{}], gestiuneSursaId: depozite[0]?.id }}>
           <Row gutter={12}>
             <Col xs={24} md={7}>
-              <Form.Item name="gestiuneSursaId" label="Din depozitul" rules={[{ required: true, message: 'Alege depozitul.' }]}>
+              <Form.Item name="gestiuneSursaId" label={retur ? 'În depozitul' : 'Din depozitul'} rules={[{ required: true, message: 'Alege depozitul.' }]}>
                 <Select options={depozite.map((g) => ({ value: g.id, label: `${g.cod} — ${g.denumire}` }))} loading={gestiuni.isLoading} />
               </Form.Item>
             </Col>
             <Col xs={24} md={9}>
-              <Form.Item name="proiectId" label="În șantierul proiectului" rules={[{ required: true, message: 'Alege proiectul.' }]}>
+              <Form.Item name="proiectId" label={retur ? 'Din șantierul proiectului' : 'În șantierul proiectului'} rules={[{ required: true, message: 'Alege proiectul.' }]}>
                 <Select showSearch={{ optionFilterProp: 'label' }} options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
               </Form.Item>
             </Col>
@@ -75,7 +90,9 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
             </Col>
           </Row>
 
-          {sursaId && sold.data?.length === 0 && <Alert type="warning" showIcon title="Depozitul nu are materiale în stoc." style={{ marginBottom: 12 }} />}
+          {(retur ? proiectAles : sursaId) && sold.data?.length === 0 && (
+            <Alert type="warning" showIcon title={retur ? 'Șantierul proiectului nu are materiale.' : 'Depozitul nu are materiale în stoc.'} style={{ marginBottom: 12 }} />
+          )}
           <Form.List name="linii">
             {(campuri, { add, remove }) => (
               <>
@@ -87,7 +104,7 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
                         <Form.Item name={[name, 'articolId']} rules={[{ required: true, message: 'Alege materialul.' }]}>
                           <Select
                             showSearch={{ optionFilterProp: 'label' }}
-                            placeholder="Material din depozit"
+                            placeholder={retur ? 'Material din șantier' : 'Material din depozit'}
                             options={(sold.data ?? []).map((x) => ({
                               value: x.articolId,
                               label: `${x.articolCod} — ${x.denumire} · disponibil ${formatCantitate(x.cantitate)} ${x.unitateMasura}`,
@@ -114,7 +131,7 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
           <Typography.Text type="secondary" style={{ marginRight: 16 }}>
             Materialele pleacă la costul mediu (CMP) din depozit; gestiunea de șantier a proiectului se creează la primul transfer.
           </Typography.Text>
-          <Button type="primary" htmlType="submit" loading={transfera.isPending}>Emite bonul de transfer</Button>
+          <Button type="primary" htmlType="submit" loading={transfera.isPending || returneaza.isPending}>{retur ? 'Emite returul' : 'Emite bonul de transfer'}</Button>
         </Form>
       </Card>
 
@@ -139,6 +156,7 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
           }}
           columns={[
             { title: 'Număr', dataIndex: 'numar', width: 140 },
+            { title: '', dataIndex: 'directie', width: 90, render: (d: TransferStoc['directie']) => (d === 'Retur' ? <Tag color="orange">retur</Tag> : <Tag color="blue">în șantier</Tag>) },
             { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
             { title: 'Din', dataIndex: 'gestiuneSursa' },
             { title: 'În', dataIndex: 'gestiuneDestinatie' },

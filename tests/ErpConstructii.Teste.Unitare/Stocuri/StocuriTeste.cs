@@ -130,3 +130,89 @@ public class DocumenteStocTeste
         Assert.True(invers.Esec);
     }
 }
+
+public class ConsumSiReturTeste
+{
+    private static readonly Guid Proiect = Guid.NewGuid();
+    private static readonly Gestiune Santier = Gestiune.Santier(Proiect, "P-2026-001", "Hală");
+    private static readonly Gestiune Depozit = Gestiune.DepozitCentral();
+    private static readonly Guid Ciment = Guid.NewGuid();
+    private static readonly Guid Fundatii = Guid.NewGuid();
+
+    [Fact]
+    public void Bonul_de_consum_se_face_din_santier_pe_articole_de_deviz()
+    {
+        // 20 saci × 11,50 = 230,00 pe fundații + 5 saci × 11,50 = 57,50 fără articol → total 287,50.
+        LinieConsum[] linii =
+        [
+            new(Ciment, "MAT-00001", "Ciment", "sac", 20, 11.5m, 230m, Fundatii, "CA01A1", "Beton în fundații"),
+            new(Ciment, "MAT-00001", "Ciment", "sac", 5, 11.5m, 57.5m, null, null, null),
+        ];
+        var r = BonConsum.Emite(2026, 2, new DateOnly(2026, 9, 15), Santier, "P-2026-001", linii, null, Guid.NewGuid(), "Șef șantier");
+        Assert.True(r.Succes, r.Eroare.Mesaj);
+        Assert.Equal(("BC/2026/0002", Proiect, 287.5m), (r.Valoare.NumarAfisat, r.Valoare.ProiectId, r.Valoare.Valoare));
+        Assert.True(BonConsum.Emite(2026, 3, new DateOnly(2026, 9, 15), Depozit, "P-2026-001", linii, null, Guid.NewGuid(), "x").Esec);
+    }
+
+    [Fact]
+    public void Acelasi_material_pe_acelasi_articol_de_doua_ori_e_refuzat()
+    {
+        LinieConsum[] linii =
+        [
+            new(Ciment, "MAT-00001", "Ciment", "sac", 2, 11.5m, 23m, Fundatii, "CA01A1", "Beton"),
+            new(Ciment, "MAT-00001", "Ciment", "sac", 3, 11.5m, 34.5m, Fundatii, "CA01A1", "Beton"),
+        ];
+        Assert.True(BonConsum.Emite(2026, 1, new DateOnly(2026, 9, 15), Santier, "P", linii, null, Guid.NewGuid(), "x").Esec);
+    }
+
+    [Fact]
+    public void Returul_merge_din_santier_in_depozit()
+    {
+        var linii = new[] { new LinieTransfer(Ciment, "MAT-00001", "Ciment", "sac", 10, 11.5m, 115m) };
+        var r = TransferStoc.Emite(2026, 7, new DateOnly(2026, 9, 20), Santier, Depozit, "P-2026-001", linii, null, Guid.NewGuid(), "x", DirectieTransfer.Retur);
+        Assert.True(r.Succes, r.Eroare.Mesaj);
+        Assert.Equal((DirectieTransfer.Retur, Proiect), (r.Valoare.Directie, r.Valoare.ProiectId));
+        Assert.True(TransferStoc.Emite(2026, 8, new DateOnly(2026, 9, 20), Depozit, Santier, "P", linii, null, Guid.NewGuid(), "x", DirectieTransfer.Retur).Esec);
+    }
+}
+
+public class RaportConsumTeste
+{
+    private static readonly Guid Fundatii = Guid.NewGuid();
+    private static readonly Guid Zidarie = Guid.NewGuid();
+    private static readonly Guid Vechi = Guid.NewGuid();
+
+    private static readonly ArticolBuget[] Deviz =
+    [
+        new(Fundatii, "CA01A1", "Beton în fundații", "mc", 10, 1000m), // 10 mc × 100 lei material
+        new(Zidarie, "CG01A", "Zidărie BCA", "mc", 20, 4000m),
+    ];
+
+    [Fact]
+    public void Consumul_se_compara_cu_bugetul_de_materiale_al_articolului()
+    {
+        // Fundații: 230,00 + 920,00 = 1.150,00 consumat față de 1.000,00 buget → depășire 150,00 (115%).
+        ConsumMaterial[] consum =
+        [
+            new(Fundatii, "MAT-00001", "Ciment", "sac", 20, 230m),
+            new(Fundatii, "MAT-00003", "Agregate", "t", 40, 920m),
+        ];
+        var r = RaportConsum.PeArticole(Deviz, consum);
+        Assert.Equal((1150m, 150m, 115.0m, 2), (r[0].Consumat, r[0].Diferenta, r[0].ProcentConsumat, r[0].Materiale.Count));
+        Assert.Equal((0m, -4000m, 0.0m), (r[1].Consumat, r[1].Diferenta, r[1].ProcentConsumat)); // zidăria nu e începută
+    }
+
+    [Fact]
+    public void Consumurile_fara_articol_si_pe_articole_scoase_din_deviz_apar_separat()
+    {
+        ConsumMaterial[] consum =
+        [
+            new(null, "MAT-00009", "Lavete", "buc", 100, 97.5m),
+            new(Vechi, "MAT-00001", "Ciment", "sac", 2, 23m),
+        ];
+        var r = RaportConsum.PeArticole(Deviz, consum);
+        Assert.Equal(4, r.Count);
+        Assert.Equal((Vechi, 23m), (r[2].Cheie!.Value, r[2].Consumat));
+        Assert.Equal(((Guid?)null, 97.5m, (decimal?)null), (r[3].Cheie, r[3].Consumat, r[3].ProcentConsumat));
+    }
+}

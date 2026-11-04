@@ -135,6 +135,97 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                     b.ToTable("articole", "stocuri");
                 });
 
+            modelBuilder.Entity("ErpConstructii.Stocuri.BonConsum", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("An")
+                        .HasColumnType("integer")
+                        .HasColumnName("an");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<DateOnly>("Data")
+                        .HasColumnType("date")
+                        .HasColumnName("data");
+
+                    b.Property<Guid>("EmisDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("emis_de_id");
+
+                    b.Property<string>("EmisDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("emis_de_nume");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid>("GestiuneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gestiune_id");
+
+                    b.Property<string>("LiniiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("linii_json");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<int>("Numar")
+                        .HasColumnType("integer")
+                        .HasColumnName("numar");
+
+                    b.Property<string>("Observatii")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("observatii");
+
+                    b.Property<string>("ProiectCod")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("proiect_cod");
+
+                    b.Property<Guid>("ProiectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proiect_id");
+
+                    b.Property<decimal>("Valoare")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("valoare");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bonuri_consum");
+
+                    b.HasIndex("FirmaId", "An", "Numar")
+                        .IsUnique()
+                        .HasDatabaseName("ix_bonuri_consum_firma_id_an_numar");
+
+                    b.HasIndex("FirmaId", "ProiectId", "Data")
+                        .HasDatabaseName("ix_bonuri_consum_firma_id_proiect_id_data");
+
+                    b.ToTable("bonuri_consum", "stocuri");
+                });
+
             modelBuilder.Entity("ErpConstructii.Stocuri.Gestiune", b =>
                 {
                     b.Property<Guid>("Id")
@@ -476,6 +567,14 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                     b.Property<DateOnly>("Data")
                         .HasColumnType("date")
                         .HasColumnName("data");
+
+                    b.Property<string>("Directie")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("SpreSantier")
+                        .HasColumnName("directie");
 
                     b.Property<Guid>("EmisDeId")
                         .HasColumnType("uuid")

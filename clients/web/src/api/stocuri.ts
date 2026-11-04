@@ -36,7 +36,7 @@ export interface SoldStoc {
 export interface MiscareStoc {
   id: string
   data: string
-  tip: 'IntrareNir' | 'IesireTransfer' | 'IntrareTransfer'
+  tip: 'IntrareNir' | 'IesireTransfer' | 'IntrareTransfer' | 'IesireConsum'
   documentNumar: string
   documentId: string
   cantitate: number
@@ -98,6 +98,7 @@ export interface Nir {
 export interface TransferStoc {
   id: string
   numar: string
+  directie: 'SpreSantier' | 'Retur'
   data: string
   gestiuneSursa: string
   gestiuneDestinatie: string
@@ -173,6 +174,90 @@ export const useModificaArticol = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, ...c }: { id: string; denumire: string; unitateMasura: string; activ: boolean }) => api.put<void>(`/api/stocuri/articole/${id}`, c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+// ---------------------------------------------------------------- consum pe articole de deviz, retur
+
+export interface ArticolDeviz {
+  cheie: string
+  simbol: string
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  obiect: string
+  categorie: string
+}
+
+export interface DevizReferinta {
+  versiuneId: string
+  denumire: string
+  tip: string
+  stare: string
+  articole: ArticolDeviz[]
+}
+
+export interface BonConsum {
+  id: string
+  numar: string
+  data: string
+  proiectId: string
+  proiectCod: string
+  linii: { articolCod: string; denumire: string; unitateMasura: string; cantitate: number; pretUnitar: number | null; valoare: number | null;
+    articolDevizCheie: string | null; articolDevizSimbol: string | null; articolDevizDenumire: string | null }[]
+  valoare: number | null
+  emisDe: string
+  observatii: string | null
+}
+
+export interface ConsumPeArticole {
+  deviz: string | null
+  articole: {
+    cheie: string | null
+    simbol: string
+    denumire: string
+    bugetMaterial: number | null
+    consumat: number | null
+    diferenta: number | null
+    procentConsumat: number | null
+    materiale: { cod: string; denumire: string; unitateMasura: string; cantitate: number; valoare: number | null }[]
+  }[]
+  totalBuget: number | null
+  totalConsumat: number | null
+}
+
+export const useDevizReferinta = (proiectId?: string) =>
+  useQuery({
+    queryKey: ['stocuri', 'deviz', proiectId],
+    queryFn: () => api.get<DevizReferinta>(`/api/stocuri/proiecte/${proiectId}/deviz`),
+    enabled: !!proiectId,
+    retry: false,
+  })
+
+export const useBonuriConsum = () => useQuery({ queryKey: ['stocuri', 'consumuri'], queryFn: () => api.get<BonConsum[]>('/api/stocuri/consumuri') })
+
+export const useConsumPeArticole = (proiectId?: string) =>
+  useQuery({
+    queryKey: ['stocuri', 'consum-pe-articole', proiectId],
+    queryFn: () => api.get<ConsumPeArticole>(`/api/stocuri/proiecte/${proiectId}/consum-pe-articole`),
+    enabled: !!proiectId,
+  })
+
+export const useConsuma = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, ...c }: { proiectId: string; data: string; linii: { articolId: string; cantitate: number; articolDevizCheie: string | null }[]; observatii: string | null }) =>
+      api.post<BonConsum>(`/api/stocuri/proiecte/${proiectId}/consumuri`, c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export const useReturneaza = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, ...c }: { proiectId: string; gestiuneDestinatieId: string; data: string; linii: { articolId: string; cantitate: number }[]; observatii: string | null }) =>
+      api.post<TransferStoc>(`/api/stocuri/proiecte/${proiectId}/retururi`, c),
     onSuccess: () => reincarca(qc),
   })
 }

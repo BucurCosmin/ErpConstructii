@@ -18,10 +18,12 @@ import type { ArticolStoc, FacturaDeReceptionat, MiscareStoc, Nir, SoldStoc } fr
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { ReceptieFactura } from './ReceptieFactura'
+import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
 import { TransferSantier } from './TransferSantier'
 
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
 const tipMiscare: Record<MiscareStoc['tip'], { text: string; culoare: string }> = {
+  IesireConsum: { text: 'Consum (bon)', culoare: 'red' },
   IntrareNir: { text: 'Intrare (NIR)', culoare: 'green' },
   IesireTransfer: { text: 'Ieșire (transfer)', culoare: 'orange' },
   IntrareTransfer: { text: 'Intrare (transfer)', culoare: 'blue' },
@@ -283,7 +285,9 @@ export function Stocuri() {
           { key: 'depozite', label: 'Stoc în depozite', children: <StocDepozite poateEdita={poateEdita} /> },
           { key: 'santier', label: 'Materiale în șantier', children: <MaterialeInSantier /> },
           { key: 'receptii', label: 'Recepții (NIR)', children: <Receptii poateCrea={poateCrea} /> },
-          { key: 'transfer', label: 'Transfer în șantier', children: <TransferSantier poateCrea={poateCrea} /> },
+          { key: 'transfer', label: 'Transfer / retur', children: <TransferSantier poateCrea={poateCrea} /> },
+          { key: 'consum', label: 'Consum în șantier', children: <ConsumSantier poateCrea={poateCrea} /> },
+          { key: 'consum-articole', label: 'Consum pe articole', children: <ConsumPeArticoleRaport /> },
           { key: 'nomenclator', label: 'Nomenclator materiale', children: <Nomenclator poateEdita={poateEdita} /> },
         ]}
       />

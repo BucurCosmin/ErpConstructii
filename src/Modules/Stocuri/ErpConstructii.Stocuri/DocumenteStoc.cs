@@ -108,6 +108,15 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
     }
 }
 
+public enum DirectieTransfer
+{
+    /// <summary>Din depozit în „Materiale în șantier” ale proiectului.</summary>
+    SpreSantier,
+
+    /// <summary>Retur: materialele nefolosite se întorc din șantier în depozit.</summary>
+    Retur,
+}
+
 /// <param name="PretUnitar">CMP-ul din gestiunea sursă la momentul transferului.</param>
 public sealed record LinieTransfer(Guid ArticolId, string ArticolCod, string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal Valoare);
 
@@ -124,6 +133,7 @@ public sealed class TransferStoc : EntitateFirma, IDocumentCuStare
     public int An { get; private set; }
     public int Numar { get; private set; }
     public string NumarAfisat => $"BT/{An}/{Numar:D4}";
+    public DirectieTransfer Directie { get; private set; }
     public DateOnly Data { get; private set; }
     public Guid GestiuneSursaId { get; private set; }
     public string GestiuneSursaDenumire { get; private set; } = string.Empty;
@@ -141,12 +151,18 @@ public sealed class TransferStoc : EntitateFirma, IDocumentCuStare
 
     public static Rezultat<TransferStoc> Emite(
         int an, int numar, DateOnly data, Gestiune sursa, Gestiune destinatie, string proiectCod,
-        IReadOnlyList<LinieTransfer> linii, string? observatii, Guid utilizatorId, string utilizatorNume)
+        IReadOnlyList<LinieTransfer> linii, string? observatii, Guid utilizatorId, string utilizatorNume,
+        DirectieTransfer directie = DirectieTransfer.SpreSantier)
     {
         var probleme = new List<string>();
+        var (depozit, santier) = directie == DirectieTransfer.SpreSantier ? (sursa, destinatie) : (destinatie, sursa);
         if (an < 2000 || numar < 1) probleme.Add("Numărul bonului de transfer nu este valid.");
-        if (sursa.Tip != TipGestiune.Depozit) probleme.Add("Transferul pleacă dintr-un depozit.");
-        if (destinatie.Tip != TipGestiune.Santier || destinatie.ProiectId is null) probleme.Add("Transferul ajunge în gestiunea de șantier a unui proiect.");
+        if (depozit.Tip != TipGestiune.Depozit)
+            probleme.Add(directie == DirectieTransfer.SpreSantier ? "Transferul pleacă dintr-un depozit." : "Returul ajunge într-un depozit.");
+        if (santier.Tip != TipGestiune.Santier || santier.ProiectId is null)
+            probleme.Add(directie == DirectieTransfer.SpreSantier
+                ? "Transferul ajunge în gestiunea de șantier a unui proiect."
+                : "Returul pleacă din gestiunea de șantier a unui proiect.");
         if (linii.Count == 0) probleme.Add("Transferul trebuie să conțină cel puțin un material.");
         if (linii.Any(l => l.Cantitate <= 0)) probleme.Add("Cantitățile transferate trebuie să fie pozitive.");
         if (linii.GroupBy(l => l.ArticolId).Any(g => g.Count() > 1)) probleme.Add("Un articol apare de două ori; cumulează cantitatea.");
@@ -158,12 +174,13 @@ public sealed class TransferStoc : EntitateFirma, IDocumentCuStare
         {
             An = an,
             Numar = numar,
+            Directie = directie,
             Data = data,
             GestiuneSursaId = sursa.Id,
             GestiuneSursaDenumire = sursa.Denumire,
             GestiuneDestinatieId = destinatie.Id,
             GestiuneDestinatieDenumire = destinatie.Denumire,
-            ProiectId = destinatie.ProiectId!.Value,
+            ProiectId = santier.ProiectId!.Value,
             ProiectCod = proiectCod,
             LiniiJson = JsonSerializer.Serialize(linii),
             Valoare = linii.Sum(l => l.Valoare),
@@ -179,6 +196,69 @@ public enum TipMiscare
     IntrareNir,
     IesireTransfer,
     IntrareTransfer,
+    IesireConsum,
+}
+
+/// <param name="ArticolDevizCheie">Cheia stabilă a articolului de deviz pe care se consumă (D-05); null = cheltuieli generale de șantier.</param>
+public sealed record LinieConsum(
+    Guid ArticolId, string ArticolCod, string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal Valoare,
+    Guid? ArticolDevizCheie, string? ArticolDevizSimbol, string? ArticolDevizDenumire);
+
+/// <summary>
+/// Bon de consum: materialele din „Materiale în șantier” se consumă pe articolele devizului, la CMP. Așa ajunge
+/// costul real al materialelor pe articol (axa costurilor). Imuabil (regula 6).
+/// </summary>
+public sealed class BonConsum : EntitateFirma, IDocumentCuStare
+{
+    private IReadOnlyList<LinieConsum>? _linii;
+
+    private BonConsum() { }
+
+    public int An { get; private set; }
+    public int Numar { get; private set; }
+    public string NumarAfisat => $"BC/{An}/{Numar:D4}";
+    public DateOnly Data { get; private set; }
+    public Guid GestiuneId { get; private set; }
+    public Guid ProiectId { get; private set; }
+    public string ProiectCod { get; private set; } = string.Empty;
+    public string LiniiJson { get; private set; } = "[]";
+    public IReadOnlyList<LinieConsum> Linii => _linii ??= JsonSerializer.Deserialize<List<LinieConsum>>(LiniiJson) ?? [];
+    public decimal Valoare { get; private set; }
+    public string? Observatii { get; private set; }
+    public Guid EmisDeId { get; private set; }
+    public string EmisDeNume { get; private set; } = string.Empty;
+    public bool EsteBlocat => true;
+
+    public static Rezultat<BonConsum> Emite(
+        int an, int numar, DateOnly data, Gestiune santier, string proiectCod, IReadOnlyList<LinieConsum> linii, string? observatii,
+        Guid utilizatorId, string utilizatorNume)
+    {
+        var probleme = new List<string>();
+        if (an < 2000 || numar < 1) probleme.Add("Numărul bonului de consum nu este valid.");
+        if (santier.Tip != TipGestiune.Santier || santier.ProiectId is null) probleme.Add("Consumul se face din gestiunea de șantier a unui proiect.");
+        if (linii.Count == 0) probleme.Add("Bonul de consum trebuie să conțină cel puțin un material.");
+        if (linii.Any(l => l.Cantitate <= 0)) probleme.Add("Cantitățile consumate trebuie să fie pozitive.");
+        if (linii.GroupBy(l => (l.ArticolId, l.ArticolDevizCheie)).Any(g => g.Count() > 1))
+            probleme.Add("Același material apare de două ori pe același articol de deviz; cumulează cantitatea.");
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume)) probleme.Add("Utilizatorul este obligatoriu.");
+        if (probleme.Count > 0)
+            return Rezultat.Esuat<BonConsum>(Eroare.Validare(string.Join(" ", probleme)));
+
+        return Rezultat.Ok(new BonConsum
+        {
+            An = an,
+            Numar = numar,
+            Data = data,
+            GestiuneId = santier.Id,
+            ProiectId = santier.ProiectId!.Value,
+            ProiectCod = proiectCod,
+            LiniiJson = JsonSerializer.Serialize(linii),
+            Valoare = linii.Sum(l => l.Valoare),
+            Observatii = string.IsNullOrWhiteSpace(observatii) ? null : observatii.Trim(),
+            EmisDeId = utilizatorId,
+            EmisDeNume = utilizatorNume.Trim(),
+        });
+    }
 }
 
 /// <summary>

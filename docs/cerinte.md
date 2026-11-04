@@ -104,7 +104,9 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-STC-01 | Liniile facturilor primite se marchează „intră în stoc” (implicit toate; serviciile se debifează). Gestionarul recepționează factura într-un depozit (NIR/AAAA/NNNN): confirmă cantitățile primite (diferențele cer observație), leagă fiecare linie de un material din nomenclator (propus după alegerile anterioare pe furnizor) și materialele intră în stoc la prețul facturii. O singură recepție pe factură. | 2 | ✅ |
 | REQ-STC-02 | Gestiuni: depozite configurabile (implicit „Depozit central”) și o gestiune „Materiale în șantier” pe proiect, creată la primul transfer. Bonul de transfer (BT/AAAA/NNNN) mută materiale din depozit în șantier la cost mediu ponderat; stocul nu devine negativ. | 2 | ✅ |
 | REQ-STC-03 | Soldul pe gestiune (cantitate, CMP, valoare) și fișa de magazie; valorile se văd doar cu dreptul „prețuri de cost”. | 2 | ✅ |
-| REQ-STC-04 | Consumul din șantier pe articol de deviz (bon de consum), retururi în depozit, inventar și e-Transport pentru transferurile cu risc fiscal. | 2 | ⬜ |
+| REQ-STC-04 | Bonul de consum (BC/AAAA/NNNN): materialele din șantier se consumă la CMP pe articolele devizului de referință (referite prin cheia stabilă) sau pe cheltuieli generale de șantier; returul nefolosit în depozit (bon de transfer în sens invers). | 2 | ✅ |
+| REQ-STC-05 | Raportul consum real de materiale pe articol față de bugetul de materiale din deviz (cantitate × preț material), cu articolele neîncepute și consumurile fără articol separat. | 2 | ✅ |
+| REQ-STC-06 | Inventar (proces-verbal, plusuri / minusuri), stornarea NIR-ului la anularea facturii, e-Transport pentru transferurile cu risc fiscal. | 2 | ⬜ |
 
 ## FCT — Facturi
 

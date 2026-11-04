@@ -54,7 +54,7 @@ public sealed record TransferCerere(Guid GestiuneSursaId, DateOnly Data, IReadOn
 
 public sealed record LinieTransferDto(string ArticolCod, string Denumire, string UnitateMasura, decimal Cantitate, decimal? PretUnitar, decimal? Valoare);
 
-public sealed record TransferDto(Guid Id, string Numar, DateOnly Data, string GestiuneSursa, string GestiuneDestinatie, Guid ProiectId, string ProiectCod,
+public sealed record TransferDto(Guid Id, string Numar, string Directie, DateOnly Data, string GestiuneSursa, string GestiuneDestinatie, Guid ProiectId, string ProiectCod,
     IReadOnlyList<LinieTransferDto> Linii, decimal? Valoare, string EmisDe, string? Observatii);
 
 public sealed record FiltreSold(Guid? GestiuneId, string? Tip, Guid? ProiectId, string? Cauta);
@@ -103,6 +103,9 @@ public sealed class ModulStocuri : IModul
         g.MapPost("/proiecte/{proiectId:guid}/transferuri", Transfera).WithName("TransferInSantier")
             .WithSummary("Bon de transfer: materiale din depozit în „Materiale în șantier” ale proiectului, la CMP")
             .Produces<TransferDto>(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(creare);
+        // Consum pe articolele devizului, retur în depozit, consum real față de bugetul de materiale.
+        EndpointuriConsum.Mapeaza(g);
+
         g.MapGet("/transferuri", ListaTransferuri).WithName("ListaTransferuri").WithSummary("Bonurile de transfer").Produces<IReadOnlyList<TransferDto>>().CerePermisiune(vizualizare);
     }
 
@@ -417,7 +420,7 @@ public sealed class ModulStocuri : IModul
     // ---------------------------------------------------------------- utilitare
 
     /// <summary>Operațiile de stoc ale unei firme se serializează: soldurile și numerotarea rămân consecvente.</summary>
-    private static async Task BlocheazaStoculAsync(StocuriDbContext db, IDbContextTransaction tranzactie, Guid firmaId, CancellationToken ct)
+    internal static async Task BlocheazaStoculAsync(StocuriDbContext db, IDbContextTransaction tranzactie, Guid firmaId, CancellationToken ct)
     {
         await using var comanda = db.Database.GetDbConnection().CreateCommand();
         comanda.Transaction = tranzactie.GetDbTransaction();
@@ -429,7 +432,7 @@ public sealed class ModulStocuri : IModul
         await comanda.ExecuteScalarAsync(ct);
     }
 
-    private static async Task<SoldStoc> SoldAsync(StocuriDbContext db, Guid gestiuneId, Guid articolId, CancellationToken ct)
+    internal static async Task<SoldStoc> SoldAsync(StocuriDbContext db, Guid gestiuneId, Guid articolId, CancellationToken ct)
     {
         var sold = db.Solduri.Local.FirstOrDefault(s => s.GestiuneId == gestiuneId && s.ArticolId == articolId)
                    ?? await db.Solduri.FirstOrDefaultAsync(s => s.GestiuneId == gestiuneId && s.ArticolId == articolId, ct);
@@ -461,7 +464,7 @@ public sealed class ModulStocuri : IModul
         }
     }
 
-    private static async Task<bool> VedePreturiAsync(IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct) =>
+    internal static async Task<bool> VedePreturiAsync(IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct) =>
         utilizator.UtilizatorId is { } uid && firma.FirmaId is { } fid &&
         (await permisiuni.PentruUtilizatorAsync(uid, ct)).Are(Permisiuni.PreturiCost, new Domeniu(fid));
 
@@ -472,7 +475,7 @@ public sealed class ModulStocuri : IModul
             preturi ? l.PretUnitar : null, preturi ? l.Valoare : null, l.Observatii)).ToList(),
         preturi ? n.Valoare : null, n.AreDiferente, n.ReceptionatDeNume, n.Observatii);
 
-    private static TransferDto Dto(TransferStoc t, bool preturi) => new(t.Id, t.NumarAfisat, t.Data, t.GestiuneSursaDenumire, t.GestiuneDestinatieDenumire, t.ProiectId, t.ProiectCod,
+    internal static TransferDto Dto(TransferStoc t, bool preturi) => new(t.Id, t.NumarAfisat, t.Directie.ToString(), t.Data, t.GestiuneSursaDenumire, t.GestiuneDestinatieDenumire, t.ProiectId, t.ProiectCod,
         t.Linii.Select(l => new LinieTransferDto(l.ArticolCod, l.Denumire, l.UnitateMasura, l.Cantitate, preturi ? l.PretUnitar : null, preturi ? l.Valoare : null)).ToList(),
         preturi ? t.Valoare : null, t.EmisDeNume, t.Observatii);
 }
