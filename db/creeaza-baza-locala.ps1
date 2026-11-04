@@ -57,6 +57,11 @@ finally {
     Remove-Item Env:PGPASSWORD -ErrorAction SilentlyContinue
 }
 
+# Instrumentul de migrări (dotnet-ef) e declarat în .config\dotnet-tools.json; se instalează local dacă lipsește.
+Push-Location $radacina
+try { dotnet tool restore | Out-Null; if ($LASTEXITCODE -ne 0) { throw "dotnet tool restore a eșuat (e instalat .NET SDK 10?)." } }
+finally { Pop-Location }
+
 # Migrările rulează cu rolul proprietar, NU cu erp_app.
 $conexiune = "Host=$Gazda;Port=$Port;Database=erp;Username=erp_owner;Password=$ParolaOwner"
 # (modul, DbContext): un modul poate avea mai multe contexte (Identitate: business + autentificare).
@@ -71,6 +76,7 @@ $contexte = @(
     @("Facturi", "FacturiDbContext"),
     @("Stocuri", "StocuriDbContext")
 )
+Push-Location $radacina
 foreach ($c in $contexte) {
     $m = $c[0]; $context = $c[1]
     Write-Host "Migrări $context..."
@@ -78,7 +84,8 @@ foreach ($c in $contexte) {
         -p (Join-Path $radacina "src\Modules\$m\ErpConstructii.$m.Infrastructure") `
         -s (Join-Path $radacina "src\Host\ErpConstructii.Api") `
         -c $context --connection $conexiune
-    if ($LASTEXITCODE -ne 0) { throw "Migrările $context au eșuat." }
+    if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Migrările $context au eșuat." }
 }
+Pop-Location
 
 Write-Host "Gata. Pornește API-ul: dotnet run --project src/Host/ErpConstructii.Api" -ForegroundColor Green
