@@ -58,6 +58,8 @@ Interfața web: `cd clients/web && npm run dev` (http://localhost:5173; proxy Vi
 
 **Producție / acces extern (D-26):** `powershell -File deploy\pregateste-productie.ps1 -Domeniu sdaq.home.ro [-Port 443]` (compilează web + API, generează certificatul HTTPS autosemnat pentru domeniu + IP-urile din rețea și certificatele token-urilor, scrie secretele în `productiepippsettings.Production.local.json`, deschide portul în firewall — cere administrator), apoi `deploy\porneste-productie.ps1` / `opreste-productie.ps1`; diagnostic: `deployerifica-productie.ps1`. API-ul servește și aplicația web și ascultă direct pe `https://0.0.0.0:<port>`; pe router se redirecționează doar acel port.
 
+**Cont blocat / parolă uitată:** `powershell -File deployeseteaza-parola.ps1 -Email <adresa> [-ReseteazaMfa]` (parolă temporară nouă, deblocare, sesiuni închise; folosește `productiepi` dacă există, altfel configurarea de dezvoltare). Comanda din spate: `ErpConstructii.Api --reseteaza-parola <email>` (`Administrare/ComandaCont.cs`).
+
 Pentru teste cu curl, în Development API-ul acceptă și headerele `X-Dev-Utilizator: <guid>`, `X-Dev-Firma: <guid>` și opțional `X-Dev-Nume` (schema „Dev”, neînregistrată în alte medii). Pentru testele în browser se folosește un utilizator de test separat, nu contul demo (care are MFA înrolat pe telefonul utilizatorului).
 
 ## Structura

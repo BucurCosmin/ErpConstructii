@@ -118,6 +118,13 @@ builder.Services.AddRateLimiter(o =>
 
 var app = builder.Build();
 
+// Comandă de consolă (ex. --reseteaza-parola <email>): rulează și iese, fără a porni serverul web.
+if (ErpConstructii.Api.Administrare.ComandaCont.EsteComanda(args))
+{
+    Environment.ExitCode = await ErpConstructii.Api.Administrare.ComandaCont.RuleazaAsync(app.Services, args);
+    return;
+}
+
 app.UseForwardedHeaders();
 
 // Producția: API-ul servește și aplicația web compilată (folderul din „Web:Radacina”), pe aceeași origine (D-19),
