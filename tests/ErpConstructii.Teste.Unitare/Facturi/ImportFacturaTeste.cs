@@ -262,6 +262,53 @@ public class InterpretorFacturaPdfTeste
 
         Assert.Equal((new DateOnly(2026, 10, 31), Certitudine.Nesigur), (f.DataScadenta.Valoare, f.DataScadenta.Certitudine));
     }
+
+    /// <summary>
+    /// Formatul SmartBill (scanat): titlul „FACTURA” pe rândul furnizorului, antetul tabelului pe trei rânduri („Preț unitar”
+    /// deasupra), rândul cu numerele coloanelor, „Nr. crt.” sub primul rând al produsului, sumele totalului pe rândul vecin.
+    /// </summary>
+    private static TextDocument FacturaSmartBill() => new(
+    [
+        R(20, ("Furnizor:", 20), ("EXEMPLU", 100), ("LEMN", 170), ("SRL", 215), ("FACTURA", 440), ("Client:", 640), ("CONSTRUCT", 700), ("TEST", 790), ("SRL", 840)),
+        R(40, ("CIF:RO18547290", 20), ("Seria", 420), ("DQUI", 465), ("nr.", 510), ("2011", 535), ("CIF:", 640), ("RO23456783", 675)),
+        R(60, ("Data", 385), ("(zi/luna/an):", 425), ("02/12/2026", 545)),
+        R(80, ("Cota", 390), ("TVA:", 430), ("0%Taxare", 470), ("inversa", 550)),
+        R(200, ("Pret", 640), ("unitar", 680), ("Valoarea", 745), ("Valoarea", 835)),
+        R(216, ("Nr.", 20), ("crt", 45), ("Denumirea", 165), ("produselor", 260), ("U.M.", 510), ("Cant.", 570), ("(fara", 645), ("TVA)", 685), ("-Lei-", 760), ("TVA", 855)),
+        R(232, ("-Lei-", 662), ("-Lei-", 853)),
+        R(256, ("0", 25), ("1", 317), ("2", 525), ("3", 585), ("4", 675), ("5(3x4)", 755), ("6", 867)),
+        R(286, ("Cherestea", 140), ("R", 225), ("DIV", 240), ("DIMENSIUNI", 275), ("m3", 518), ("0.39", 593), ("1150.00", 670), ("448.50", 770), ("0.00", 885)),
+        R(304, ("1", 25), ("Cod", 140), ("CPV:", 175), ("03419000-0", 220)),
+        R(326, ("bn", 20)), // zgomot OCR în coloana „Nr. crt.”
+        R(1100, ("intocmit", 20), ("de:", 100), ("Dan", 135), ("Preda", 170), ("448.50", 775), ("0.00", 888)),
+        R(1112, ("Total", 630)),
+        R(1135, ("TVA", 840), ("la", 875), ("incasare", 900)),
+        R(1150, ("Total", 630), ("plata", 680), ("448.50", 873)),
+        R(1200, ("Termen", 20), ("plata:", 80), ("09/12/2026", 140)),
+    ], [], DinOcr: false);
+
+    [Fact]
+    public void Factura_SmartBill_ignora_numerotarea_coloanelor_si_citeste_linia_cu_numarul_dedesubt()
+    {
+        var f = InterpretorFacturaPdf.Interpreteaza(FacturaSmartBill(), DateTest.CuiFirma);
+
+        Assert.Equal("EXEMPLU LEMN SRL", f.FurnizorDenumire.Valoare); // fără titlul „FACTURA”
+        Assert.Equal(DateTest.CuiFurnizor, f.FurnizorCui.Valoare);
+        Assert.Equal("DQUI 2011", f.Numar.Valoare);
+        Assert.Equal((new DateOnly(2026, 12, 2), new DateOnly(2026, 12, 9)), (f.DataEmitere.Valoare, f.DataScadenta.Valoare));
+
+        // Rândul „0 1 2 3 4 5(3x4) 6” nu e linie; „1 Cod CPV…” e numărul și continuarea produsului de deasupra.
+        var l = Assert.Single(f.Linii);
+        Assert.Equal(1, l.Rand);
+        Assert.Equal("Cherestea R DIV DIMENSIUNI Cod CPV: 03419000-0", l.Denumire.Valoare);
+        // 0,39 × 1.150,00 = 448,50 ✓ → sigur
+        Assert.Equal(("m3", 0.39m, 1150m, 448.50m, Certitudine.Sigur),
+            (l.UnitateMasura.Valoare, l.Cantitate.Valoare, l.PretUnitar.Valoare, l.ValoareFaraTva.Valoare, l.ValoareFaraTva.Certitudine));
+
+        // Taxare inversă: 448,50 + 0,00 = 448,50 ✓
+        Assert.Equal((448.50m, 0m, 448.50m, Certitudine.Sigur),
+            (f.TotalFaraTva.Valoare, f.TotalTva.Valoare, f.TotalDePlata.Valoare, f.TotalDePlata.Certitudine));
+    }
 }
 
 /// <summary>Formular de comandă cu 3 coloane (Beneficiar | COMANDA | Furnizor), ca formularul GC 007; date sintetice.</summary>

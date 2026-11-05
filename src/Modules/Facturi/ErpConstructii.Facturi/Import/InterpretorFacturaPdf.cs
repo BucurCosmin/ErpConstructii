@@ -167,7 +167,10 @@ public static partial class InterpretorFacturaPdf
     private static string? DenumireDinColoana(IReadOnlyList<RandText> randuri, int index, CuvantText eticheta)
     {
         var stanga = eticheta.X0 - 30;
-        var dreapta = randuri[index].Cuvinte.Where(c => c.X0 > eticheta.X1 && EsteCuvantClient(Normalizeaza(c.Text))).Select(c => c.X0).DefaultIfEmpty(int.MaxValue).Min();
+        // Până la eticheta clientului sau la titlul documentului („FACTURA”, centrat între cele două coloane).
+        var dreapta = randuri[index].Cuvinte
+            .Where(c => c.X0 > eticheta.X1 && (EsteCuvantClient(Normalizeaza(c.Text)) || EsteTitluDocument(Normalizeaza(c.Text))))
+            .Select(c => c.X0).DefaultIfEmpty(int.MaxValue).Min();
 
         string Coloana(RandText r, int deLa) => string.Join(' ', r.Cuvinte
             .Where(c => !ReferenceEquals(c, eticheta) && c.X0 >= deLa && c.X0 < dreapta && c.Text.Any(char.IsLetterOrDigit))
@@ -336,8 +339,14 @@ public static partial class InterpretorFacturaPdf
             return ([], null, -1);
         }
 
-        // Antetul poate continua pe rândul următor (ex. „Preț unitar” / „(fără TVA)”).
+        // Antetul poate continua pe rândul următor (ex. „Preț unitar” / „(fără TVA)”) sau poate începe pe rândul de deasupra
+        // (celulele cu text pe două rânduri sunt centrate vertical: „Preț unitar” deasupra rândului cu „Denumirea… Cant.”).
         var cuvinteAntet = randuri[indexAntet].Cuvinte.ToList();
+        if (indexAntet > 0 && EsteRandAntetVecin(randuri[indexAntet - 1], randuri[indexAntet]))
+        {
+            cuvinteAntet.AddRange(randuri[indexAntet - 1].Cuvinte);
+        }
+
         var inceputDate = indexAntet + 1;
         if (inceputDate < randuri.Count && !randuri[inceputDate].Text.Any(char.IsAsciiDigit) && ContineCuvantAntet(randuri[inceputDate].Text))
         {
@@ -346,8 +355,9 @@ public static partial class InterpretorFacturaPdf
         }
 
         var coloane = Coloane(cuvinteAntet);
+        var coloanaNr = coloane?.FirstOrDefault(c => c.Coloana == Col.Nr);
         var cotaGlobala = CotaDinText(randuri);
-        var linii = new List<(int Rand, List<CuvantText> Den, Dictionary<Col, string> Valori, float Incredere, RandText Ultimul)>();
+        var linii = new List<(int Rand, bool NrCitit, List<CuvantText> Den, Dictionary<Col, string> Valori, float Incredere, RandText Ultimul)>();
         var sfarsit = randuri.Count;
 
         for (var i = inceputDate; i < randuri.Count; i++)
@@ -362,9 +372,9 @@ public static partial class InterpretorFacturaPdf
             var cuvinte = rand.Cuvinte.Count > 0
                 ? rand.Cuvinte.Where(c => c.Text.Any(char.IsLetterOrDigit)).ToList()
                 : rand.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(t => new CuvantText(t, 0, 0, 100)).ToList();
-            if (cuvinte.Count == 0)
+            if (cuvinte.Count == 0 || EsteNumerotareColoane(cuvinte))
             {
-                continue;
+                continue; // rândul „0 1 2 3 4 5(3x4) 6” de sub antet (SmartBill și formularele tipizate)
             }
 
             int? nr = null;
@@ -399,15 +409,21 @@ public static partial class InterpretorFacturaPdf
 
             // Rând fără număr și fără valori, sub un produs → continuarea denumirii (un produs nou are cantitate și valoare).
             // Distanța poate fi cât între produse (mulți furnizori nu strâng rândurile); notele de subsol vin după TOTAL.
-            if (nr is null && numerice == 0 && linii.Count > 0)
+            // Numărul curent fără valori, sub un produs care nu avea număr → e numărul acelui produs: celula „Nr. crt.” e
+            // centrată vertical, iar denumirea pe două rânduri o împinge sub primul rând (ex. SmartBill: „1  Cod CPV: …”).
+            var continuare = numerice == 0 && linii.Count > 0 && (nr is null || !linii[^1].NrCitit);
+            if (continuare)
             {
                 var anterior = linii[^1];
                 var aproape = !rand.ArePozitieVerticala || !anterior.Ultimul.ArePozitieVerticala ||
                               rand.Y0 - anterior.Ultimul.Y1 < (anterior.Ultimul.Y1 - anterior.Ultimul.Y0) * 2.5;
                 if (aproape)
                 {
-                    anterior.Den.AddRange(den);
-                    linii[^1] = anterior with { Ultimul = rand };
+                    // Resturile OCR din coloana „Nr. crt.” nu țin de denumire.
+                    anterior.Den.AddRange(den.Where(c => coloanaNr is null || c.X0 > coloanaNr.X1));
+                    linii[^1] = nr is { } nrSub
+                        ? anterior with { Rand = nrSub, NrCitit = true, Ultimul = rand }
+                        : anterior with { Ultimul = rand };
                     continue;
                 }
             }
@@ -417,7 +433,7 @@ public static partial class InterpretorFacturaPdf
                 continue; // text între tabel și totaluri, subtitluri etc.
             }
 
-            linii.Add((nr ?? linii.Count + 1, den, valori, incredere, rand));
+            linii.Add((nr ?? linii.Count + 1, nr is not null, den, valori, incredere, rand));
         }
 
         var rezultat = linii
@@ -535,6 +551,16 @@ public static partial class InterpretorFacturaPdf
                 continue;
             }
 
+            // „Total” singur pe rând: OCR-ul pune sumele pe rândul vecin, când textul din stânga nu e aliniat cu ele
+            // (ex. SmartBill: „întocmit de: … 448.50 0.00” imediat deasupra lui „Total”).
+            if (t == "TOTAL" && sume.Count == 0 && fara is null)
+            {
+                sume = new[] { i - 1, i + 1 }
+                    .Where(j => j >= 0 && j < randuri.Count && RanduriLipite(randuri[j], rand))
+                    .Select(j => Sume(randuri[j]))
+                    .FirstOrDefault(s => s.Count >= 2) ?? [];
+            }
+
             // Rândul „Total” al tabelului: valoarea fără TVA și TVA-ul, în coloanele lor (sau ultimele două sume).
             if (t.StartsWith("TOTAL", StringComparison.Ordinal) && sume.Count >= 2 && fara is null)
             {
@@ -577,6 +603,10 @@ public static partial class InterpretorFacturaPdf
             tva is { } tv ? new CampCitit<decimal>(tv, certitudine, textTva) : CampCitit<decimal>.Lipsa(),
             plata is { } pv ? new CampCitit<decimal>(pv, certitudine, textPlata) : CampCitit<decimal>.Lipsa());
     }
+
+    private static bool RanduriLipite(RandText a, RandText b) =>
+        a.ArePozitieVerticala && b.ArePozitieVerticala && a.Pagina == b.Pagina &&
+        Math.Abs((a.Y0 + a.Y1) / 2 - (b.Y0 + b.Y1) / 2) < Math.Max(a.Y1 - a.Y0, b.Y1 - b.Y0) * 1.2;
 
     /// <summary>Sumele de pe un rând: numerele cu zecimale (ex. „1.234,56”), în ordinea de la stânga la dreapta.</summary>
     private static List<(decimal Valoare, CuvantText Cuvant)> Sume(RandText rand)
@@ -678,6 +708,47 @@ public static partial class InterpretorFacturaPdf
         return denumire && t.Contains("CANT", StringComparison.Ordinal);
     }
 
+    /// <summary>Rândul de deasupra antetului face parte din el: doar cuvinte de antet, fără cifre, lipit de antet.</summary>
+    private static bool EsteRandAntetVecin(RandText deasupra, RandText antet)
+    {
+        if (deasupra.Text.Any(char.IsAsciiDigit) || !ContineCuvantAntet(deasupra.Text) || EsteAntetTabel(deasupra.Text))
+        {
+            return false;
+        }
+
+        return !deasupra.ArePozitieVerticala || !antet.ArePozitieVerticala ||
+               antet.Y0 - deasupra.Y1 < Math.Max(antet.Y1 - antet.Y0, deasupra.Y1 - deasupra.Y0) * 1.5;
+    }
+
+    /// <summary>Rândul cu numerele coloanelor („0 1 2 3 4 5(3x4) 6”): cel puțin 3 numere consecutive, eventual cu formula.</summary>
+    private static bool EsteNumerotareColoane(List<CuvantText> cuvinte)
+    {
+        if (cuvinte.Count < 3)
+        {
+            return false;
+        }
+
+        int? anterior = null;
+        foreach (var c in cuvinte)
+        {
+            var m = PotrivireNumarColoana().Match(c.Text);
+            if (!m.Success)
+            {
+                return false;
+            }
+
+            var n = int.Parse(m.Groups["n"].Value, CultureInfo.InvariantCulture);
+            if ((anterior is null && n > 1) || (anterior is { } a && n != a + 1))
+            {
+                return false;
+            }
+
+            anterior = n;
+        }
+
+        return true;
+    }
+
     private static bool ContineCuvantAntet(string text)
     {
         var t = Normalizeaza(text);
@@ -734,6 +805,8 @@ public static partial class InterpretorFacturaPdf
 
     private static bool EsteCuvantClient(string t) =>
         t.StartsWith("CUMPA", StringComparison.Ordinal) || t.StartsWith("CLIENT", StringComparison.Ordinal) || t.StartsWith("BENEFICIAR", StringComparison.Ordinal); // „Cumpa arator”: OCR rupe des eticheta
+
+    private static bool EsteTitluDocument(string t) => t.Trim(':', '.') is "FACTURA" or "INVOICE" or "FACTURA FISCALA";
 
     private static bool EsteCuvantFurnizor(string t) =>
         t.StartsWith("FURNIZOR", StringComparison.Ordinal) || t.StartsWith("VANZATOR", StringComparison.Ordinal) || t.StartsWith("PRESTATOR", StringComparison.Ordinal);
@@ -851,13 +924,13 @@ public static partial class InterpretorFacturaPdf
     [GeneratedRegex(@"\bNr\.?\s*(?<n>[A-Z0-9][A-Z0-9\-]*)\s*/\s*(?<d>\d{1,2}\.\d{1,2}\.\d{4})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireNumarCuData();
 
-    [GeneratedRegex(@"\bData\s*(?:factur[iă]i|emiterii|emitere|documentului)?\s*[:.]?\s*(?<d>" + Data + ")", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"\bData\s*(?:factur[iă]i|emiterii|emitere|documentului)?\s*(?:\([^)]{0,15}\))?\s*[:.]?\s*(?<d>" + Data + ")", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireDataEmitere();
 
-    [GeneratedRegex(@"(?:scaden[tț][aăe]i?|termen(?:ul)?\s+de\s+plat[aă]|due\s+date)\s*[:.]?\s*(?<d>" + Data + ")", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"(?:scaden[tț][aăe]i?|termen(?:ul)?\s+(?:de\s+)?plat[aă]|due\s+date)\s*[:.]?\s*(?<d>" + Data + ")", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireScadenta();
 
-    [GeneratedRegex(@"termen(?:ul)?\s+de\s+plat[aă]\s*[:.]?\s*(?<z>\d{1,3})\s*zile", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"termen(?:ul)?\s+(?:de\s+)?plat[aă]\s*[:.]?\s*(?<z>\d{1,3})\s*zile", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireTermenZile();
 
     // Același separator între zi, lună și an („1/09.01.2026” nu e o dată; „09.01.2026” da).
@@ -884,6 +957,9 @@ public static partial class InterpretorFacturaPdf
 
     [GeneratedRegex(@"^-?\(?\d{1,3}(?:[.\s]\d{3})*,\d{2}\)?$|^-?\(?\d{1,3}(?:,\d{3})*\.\d{2}\)?$|^-?\d+[.,]\d{2}$")]
     private static partial Regex PotrivireSuma();
+
+    [GeneratedRegex(@"^(?<n>\d{1,2})(?:\([0-9x*+\-=]+\)|=[0-9x*+\-]+)?$", RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireNumarColoana();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex SpatiiMultiple();
