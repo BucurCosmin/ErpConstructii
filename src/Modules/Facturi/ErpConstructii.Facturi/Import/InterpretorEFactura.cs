@@ -26,7 +26,17 @@ public static class InterpretorEFactura
     };
 
     /// <summary>UM afișată pentru un cod UN/ECE (ex. H87 → buc); codurile necunoscute rămân ca atare.</summary>
-    internal static string UnitateDinCod(string cod) => Unitati.GetValueOrDefault(cod.Trim(), cod.Trim());
+    internal static string UnitateDinCod(string cod)
+    {
+        var c = cod.Trim().Trim('"', '“', '”', '„', '\'');
+        // OCR: „HB7” / „HS7” / „H 87” în loc de H87 (cel mai frecvent cod: bucată).
+        if (c.Replace(" ", string.Empty, StringComparison.Ordinal).ToUpperInvariant() is "HB7" or "HS7" or "H8" or "HBT" or "H87")
+        {
+            c = "H87";
+        }
+
+        return Unitati.GetValueOrDefault(c, c);
+    }
 
     /// <summary>Recunoaște un XML e-Factura după elementul rădăcină.</summary>
     public static bool EsteEFactura(byte[] continut)

@@ -446,8 +446,7 @@ public sealed class ModulFacturi : IModul
     /// Paginile din care se citește factura: vizualizarea e-Factura din SPV (conținutul legal, același format la toți
     /// furnizorii); în lipsa ei, factura tipărită de furnizor.
     /// </summary>
-    private static TipPagina TipPaginaFactura(IReadOnlyList<PaginaClasificata> pagini) =>
-        pagini.Any(p => p.Tip == TipPagina.EFactura) ? TipPagina.EFactura : TipPagina.Factura;
+    private static TipPagina TipPaginaFactura(IReadOnlyList<PaginaClasificata> pagini) => CitireFacturaText.TipPaginaFactura(pagini);
 
     private static async Task<(FacturaCitita? Factura, bool DinOcr, string? Problema, IReadOnlyList<PaginaClasificata> Pagini)> InterpreteazaAsync(
         SursaImport sursa, IEnumerable<IExtractorText> extractori, string? cuiFirma, CancellationToken ct)
@@ -476,33 +475,8 @@ public sealed class ModulFacturi : IModul
             return (null, false, text.Probleme.FirstOrDefault()?.Mesaj ?? "Documentul nu poate fi citit.", []);
         }
 
-        // Dosar scanat (factură + e-Factura + notă de comandă + aviz…): factura se citește doar din paginile ei.
-        var pagini = ClasificarePagini.Clasifica(text.Valoare);
-        var document = text.Valoare;
-        var probleme = text.Probleme.ToList();
-        if (pagini.Count > 1)
-        {
-            var tip = TipPaginaFactura(pagini);
-            if (ClasificarePagini.Pagini(document, pagini, tip) is { } doarFactura)
-            {
-                document = doarFactura;
-                var folosite = pagini.Where(p => p.Tip == tip).Select(p => p.Pagina).ToList();
-                var altele = pagini.Where(p => p.Tip != tip).ToList();
-                probleme.Add(new ProblemaImport(Severitate.Informare, "pagini",
-                    $"PDF-ul are {pagini.Count} pagini; factura a fost citită din {(folosite.Count == 1 ? "pagina" : "paginile")} {string.Join(", ", folosite)}" +
-                    (altele.Count == 0 ? "." : $". Mai conține: {string.Join("; ", altele.Select(p => $"p. {p.Pagina} – {p.Descriere}"))}.")));
-            }
-            else
-            {
-                probleme.Add(new ProblemaImport(Severitate.Avertisment, "pagini",
-                    $"Nu am găsit pagina facturii între cele {pagini.Count} pagini; verifică documentul."));
-            }
-        }
-
-        var factura = InterpretorVizualizareEFactura.EsteVizualizare(document)
-            ? InterpretorVizualizareEFactura.Interpreteaza(document, cuiFirma)
-            : InterpretorFacturaPdf.Interpreteaza(document, cuiFirma);
-        return (factura with { Probleme = [.. probleme, .. factura.Probleme] }, document.DinOcr, null, pagini);
+        var (factura, pagini) = CitireFacturaText.Citeste(text.Valoare, text.Probleme, cuiFirma);
+        return (factura, text.Valoare.DinOcr, null, pagini);
     }
 
     /// <summary>Arhiva descărcată din SPV conține XML-ul facturii și „semnatura_*.xml” (semnătura ANAF).</summary>

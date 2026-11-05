@@ -57,6 +57,9 @@
     <Project Path="src/Modules/Formulare/ErpConstructii.Formulare/ErpConstructii.Formulare.csproj" />
     <Project Path="src/Modules/Formulare/ErpConstructii.Formulare.Infrastructure/ErpConstructii.Formulare.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/ErpConstructii.TestImport/ErpConstructii.TestImport.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ErpConstructii.Teste.Unitare/ErpConstructii.Teste.Unitare.csproj" />
     <Project Path="tests/ErpConstructii.Teste.Formulare/ErpConstructii.Teste.Formulare.csproj" />

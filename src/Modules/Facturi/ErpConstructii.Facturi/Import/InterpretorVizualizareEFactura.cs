@@ -334,7 +334,14 @@ public static partial class InterpretorVizualizareEFactura
             var pretUnitar = pret is { } p ? p / baza : (decimal?)null;
             var consistent = cantitate is { } q && pretUnitar is { } pu && valoare is { } v && Math.Abs(Rotunjire.Lei.Aplica(q * pu) - v) <= 0.01m;
             var certValori = consistent ? cert : Certitudine.Nesigur;
-            if (!consistent && cantitate is { } q2 && pretUnitar is { } p2 && valoare is { } v2)
+            if (!consistent && cantitate is { } q1 && pretUnitar is { } p1 && valoare is { } v1 &&
+                CorectieOcr.ValoareCorectata(v1, q1, p1, baza == 1m ? val.GetValueOrDefault(Col.Pret) : null) is { } corectata)
+            {
+                valoare = corectata;
+                probleme.Add(new ProblemaImport(Severitate.Avertisment, $"linia {nr}",
+                    $"Valoarea citită ({v1:N2}) diferă printr-o cifră de cantitate × preț; am propus {valoare:N2}. Verifică linia."));
+            }
+            else if (!consistent && cantitate is { } q2 && pretUnitar is { } p2 && valoare is { } v2)
             {
                 // Sub 1%: prețul afișat e rotunjit (ex. carburanți); peste: probabil o cifră citită greșit.
                 if (Math.Abs(q2 * p2 - v2) <= Math.Max(0.05m, Math.Abs(v2) * 0.01m))

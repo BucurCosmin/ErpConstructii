@@ -34,7 +34,7 @@ public static partial class InterpretorFacturaPdf
         var (furnizorCui, cumparatorCui) = CitesteCui(randuri, firma, probleme);
         var furnizor = CitesteFurnizor(randuri, furnizorCui.Valoare);
         var numar = CitesteNumar(randuri);
-        var data = CitesteDataEmitere(randuri);
+        var data = VerificaAnul(CitesteDataEmitere(randuri), randuri, probleme);
         var scadenta = CitesteScadenta(randuri, data.Valoare);
         var moneda = CitesteMoneda(randuri);
         var referinta = CitesteReferinta(randuri);
@@ -234,6 +234,16 @@ public static partial class InterpretorFacturaPdf
 
         foreach (var rand in randuri)
         {
+            var e = PotrivireEtichetaNumar().Match(rand.Text);
+            if (e.Success)
+            {
+                var valoare = SpatiiMultiple().Replace(e.Groups["n"].Value.Trim(), " ");
+                return new CampCitit<string>(valoare, CertitudineOcr(rand, e.Groups["n"].Value), e.Value.Trim());
+            }
+        }
+
+        foreach (var rand in randuri)
+        {
             var m = PotrivireNumarFactura().Match(rand.Text);
             if (m.Success && m.Groups["n"].Value.Any(char.IsAsciiDigit))
             {
@@ -278,6 +288,36 @@ public static partial class InterpretorFacturaPdf
         }
 
         return CampCitit<DateOnly>.Lipsa();
+    }
+
+    /// <summary>
+    /// OCR-ul confundă des 5 cu 6 în an („02.12.2026” în loc de „02.12.2025”). Dacă aceeași zi și lună apar în document
+    /// și cu alt an (ex. subsolul „din data: 02-12-2025”), anul cel mai frecvent dintre toate datele documentului
+    /// câștigă, iar data rămâne de verificat.
+    /// </summary>
+    private static CampCitit<DateOnly> VerificaAnul(CampCitit<DateOnly> data, IReadOnlyList<RandText> randuri, List<ProblemaImport> probleme)
+    {
+        if (data.Certitudine == Certitudine.Lipsa)
+        {
+            return data;
+        }
+
+        var d = data.Valoare;
+        var toate = randuri
+            .SelectMany(r => PotrivireDataLibera().Matches(r.Text).Select(m => ParseazaData(m.Value)))
+            .OfType<DateOnly>()
+            .ToList();
+        var alta = toate.FirstOrDefault(x => x.Day == d.Day && x.Month == d.Month && x.Year != d.Year);
+        if (alta == default)
+        {
+            return data;
+        }
+
+        var an = toate.GroupBy(x => x.Year).OrderByDescending(g => g.Count()).ThenBy(g => g.Key == d.Year ? 0 : 1).First().Key;
+        var corectata = an == d.Year ? d : new DateOnly(an, d.Month, d.Day);
+        probleme.Add(new ProblemaImport(Severitate.Avertisment, "dată",
+            $"Data facturii apare în document cu ani diferiți ({d:dd.MM.yyyy} și {alta:dd.MM.yyyy}); am propus {corectata:dd.MM.yyyy}. Verifică data."));
+        return new CampCitit<DateOnly>(corectata, Certitudine.Nesigur, data.TextSursa);
     }
 
     private static CampCitit<DateOnly> CitesteScadenta(IReadOnlyList<RandText> randuri, DateOnly dataEmitere)
@@ -369,9 +409,13 @@ public static partial class InterpretorFacturaPdf
                 break;
             }
 
-            var cuvinte = rand.Cuvinte.Count > 0
-                ? rand.Cuvinte.Where(c => c.Text.Any(char.IsLetterOrDigit)).ToList()
-                : rand.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(t => new CuvantText(t, 0, 0, 100)).ToList();
+            // Ghilimelele / barele lipite de cuvinte sunt resturi OCR ale grilei („"47,400” = 47,400).
+            var cuvinte = (rand.Cuvinte.Count > 0
+                    ? rand.Cuvinte
+                    : rand.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(t => new CuvantText(t, 0, 0, 100)).ToList())
+                .Select(c => c with { Text = c.Text.Trim(CaractereParazite) })
+                .Where(c => c.Text.Any(char.IsLetterOrDigit))
+                .ToList();
             if (cuvinte.Count == 0 || EsteNumerotareColoane(cuvinte))
             {
                 continue; // rândul „0 1 2 3 4 5(3x4) 6” de sub antet (SmartBill și formularele tipizate)
@@ -436,20 +480,31 @@ public static partial class InterpretorFacturaPdf
             linii.Add((nr ?? linii.Count + 1, nr is not null, den, valori, incredere, rand));
         }
 
+        var separator = SeparatorZecimal(linii.SelectMany(l => l.Valori.Values));
         var rezultat = linii
             .Select(l => ConstruiesteLinie(l.Rand, string.Join(' ', l.Den.Select(c => c.Text)), l.Valori,
-                dinOcr && l.Incredere < TextDocument.PragIncredere, cotaGlobala, probleme))
+                dinOcr && l.Incredere < TextDocument.PragIncredere, cotaGlobala, separator, probleme))
             .ToList();
         return (rezultat, coloane, sfarsit);
     }
 
     private static LinieFacturaCitita ConstruiesteLinie(
-        int rand, string denumire, Dictionary<Col, string> valori, bool ocrNesigur, decimal? cotaGlobala, List<ProblemaImport> probleme)
+        int rand, string denumire, Dictionary<Col, string> valori, bool ocrNesigur, decimal? cotaGlobala, char? separator, List<ProblemaImport> probleme)
     {
         var certitudineOcr = ocrNesigur ? Certitudine.Nesigur : Certitudine.Sigur;
         string? Text(Col c) => valori.TryGetValue(c, out var v) ? v : null;
 
-        decimal? Numar(Col c, bool mii = true) => TextNumeric.ParseazaNumar(Text(c), out var v, mii) ? v : null;
+        // Când documentul își arată separatorul zecimal („21,00”, „514,10”), „47,400” e 47,4, nu 47.400.
+        decimal? Numar(Col c, bool mii = true)
+        {
+            var t = Text(c);
+            if (separator is { } sep && t is not null)
+            {
+                mii = !t.Contains(sep);
+            }
+
+            return TextNumeric.ParseazaNumar(t, out var v, mii) ? v : null;
+        }
 
         var pret = Numar(Col.Pret);
         var valoare = Numar(Col.Valoare);
@@ -460,6 +515,16 @@ public static partial class InterpretorFacturaPdf
             TextNumeric.ParseazaNumar(Text(Col.Cantitate), out var c2, miiImplicit: true) && Egal(c2 * p1, v1))
         {
             cantitate = c2;
+        }
+
+        // O cifră citită greșit în valoare (6/8, 5/6): valoarea calculată, de verificat.
+        if (cantitate is { } c3 && pret is { } p3 && valoare is { } v3 && !Egal(c3 * p3, v3) &&
+            CorectieOcr.ValoareCorectata(v3, c3, p3, Text(Col.Pret)) is { } corectata)
+        {
+            valoare = corectata;
+            probleme.Add(new ProblemaImport(Severitate.Avertisment, $"linia {rand}",
+                $"Valoarea citită ({v3:N2}) diferă printr-o cifră de cantitate × preț; am propus {valoare:N2}. Verifică linia."));
+            certitudineOcr = Certitudine.Nesigur;
         }
 
         var consistent = cantitate is { } c && pret is { } p && valoare is { } v && Egal(c * p, v);
@@ -500,7 +565,8 @@ public static partial class InterpretorFacturaPdf
             cota = cotaGlobala is { } g ? new CampCitit<decimal>(g, Certitudine.Nesigur) : CampCitit<decimal>.Lipsa();
         }
 
-        var um = Text(Col.Um)?.Trim().TrimEnd('.').ToLowerInvariant();
+        // Codurile UN/ECE tipărite (KGM, XPP, H87) → UM afișată (kg, buc), ca la e-Factura.
+        var um = Text(Col.Um)?.Trim().TrimEnd('.') is { Length: > 0 } u ? InterpretorEFactura.UnitateDinCod(u).ToLowerInvariant() : null;
         return new LinieFacturaCitita(
             rand,
             denumire.Length == 0 ? CampCitit<string>.Lipsa() : new CampCitit<string>(Scurteaza(denumire, 500), certitudineOcr, denumire),
@@ -559,6 +625,28 @@ public static partial class InterpretorFacturaPdf
                     .Where(j => j >= 0 && j < randuri.Count && RanduriLipite(randuri[j], rand))
                     .Select(j => Sume(randuri[j]))
                     .FirstOrDefault(s => s.Count >= 2) ?? [];
+            }
+
+            // „TOTAL” în mijlocul rândului (după textul semnăturilor): contează doar sumele de după el.
+            if (!t.StartsWith("TOTAL", StringComparison.Ordinal) && PotrivireCuvantTotal().IsMatch(t) &&
+                rand.Cuvinte.FirstOrDefault(c => Normalizeaza(c.Text).TrimEnd(':').Equals("TOTAL", StringComparison.Ordinal)) is { } cuvantTotal)
+            {
+                var dupa = sume.Where(s => s.Cuvant.X0 > cuvantTotal.X0).ToList();
+                if (dupa.Count >= 2 && fara is null)
+                {
+                    fara = dupa[0].Valoare;
+                    tva = dupa[1].Valoare;
+                    textFara = textTva = rand.Text.Trim();
+                    continue;
+                }
+
+                // „Total: 622,06” sub totalurile fără TVA și TVA = totalul de plată, dacă se potrivește.
+                if (dupa.Count == 1 && fara is { } ff && tva is { } tt && Math.Abs(ff + tt - dupa[0].Valoare) <= 0.01m)
+                {
+                    plata ??= dupa[0].Valoare;
+                    textPlata ??= rand.Text.Trim();
+                    continue;
+                }
             }
 
             // Rândul „Total” al tabelului: valoarea fără TVA și TVA-ul, în coloanele lor (sau ultimele două sume).
@@ -708,6 +796,30 @@ public static partial class InterpretorFacturaPdf
         return denumire && t.Contains("CANT", StringComparison.Ordinal);
     }
 
+    private static readonly char[] CaractereParazite = ['"', '\'', '|', '`', '‘', '’', '“', '”', '„', '«', '»'];
+
+    /// <summary>
+    /// Separatorul zecimal din tabelul facturii, după numerele cu exact două zecimale („21,00”, „1.234,56” → virgulă;
+    /// „448.50” → punct). Null dacă documentul nu-l arată clar (ambele sau niciunul).
+    /// </summary>
+    private static char? SeparatorZecimal(IEnumerable<string> valori)
+    {
+        var (virgula, punct) = (0, 0);
+        foreach (var v in valori)
+        {
+            if (PotrivireZecimaleVirgula().IsMatch(v))
+            {
+                virgula++;
+            }
+            else if (PotrivireZecimalePunct().IsMatch(v))
+            {
+                punct++;
+            }
+        }
+
+        return virgula > 0 && punct == 0 ? ',' : punct > 0 && virgula == 0 ? '.' : null;
+    }
+
     /// <summary>Rândul de deasupra antetului face parte din el: doar cuvinte de antet, fără cifre, lipit de antet.</summary>
     private static bool EsteRandAntetVecin(RandText deasupra, RandText antet)
     {
@@ -726,6 +838,12 @@ public static partial class InterpretorFacturaPdf
         if (cuvinte.Count < 3)
         {
             return false;
+        }
+
+        // OCR-ul strică des cifrele mici („Loi 1 i 2 344 _5=3X4”), dar formula rămâne recognoscibilă.
+        if (cuvinte.Any(c => PotrivireFormulaColoana().IsMatch(c.Text)) && !cuvinte.Any(c => PotrivireSuma().IsMatch(c.Text)))
+        {
+            return true;
         }
 
         int? anterior = null;
@@ -758,8 +876,8 @@ public static partial class InterpretorFacturaPdf
     private static bool EsteSfarsitTabel(string text)
     {
         var t = Normalizeaza(text);
-        return t.StartsWith("TOTAL", StringComparison.Ordinal) || t.Contains("SEMNATUR", StringComparison.Ordinal) ||
-               t.Contains("TERMEN DE PLATA", StringComparison.Ordinal) || t.Contains("DATE PRIVIND EXPEDI", StringComparison.Ordinal) ||
+        return PotrivireCuvantTotal().IsMatch(t) || t.Contains("SEMNATUR", StringComparison.Ordinal) ||
+               PotrivireTermenPlata().IsMatch(t) || t.Contains("DATE PRIVIND EXPEDI", StringComparison.Ordinal) ||
                t.StartsWith("INTOCMIT", StringComparison.Ordinal) || t.Contains("TOTAL DE PLATA", StringComparison.Ordinal);
     }
 
@@ -921,6 +1039,10 @@ public static partial class InterpretorFacturaPdf
     [GeneratedRegex(@"(?:\bFactur[aă](?:\s+fiscal[aă])?|\bInvoice)\s*(?:seria\s*\S+\s*)?(?:nr\.?|num[aă]r(?:ul)?|no\.?)\s*[:.]?\s*(?<n>[A-Z]{0,10}\s?[-/]?\s?\d[\d/\-]*)|\b(?:Nr\.?|Num[aă]r(?:ul)?)\s*(?:factur[aă]|document)\s*[:.]?\s*(?<n>[A-Z0-9][A-Z0-9/\-]*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireNumarFactura();
 
+    /// <summary>Eticheta „Număr:” singură pe rând, cu seria inclusă în valoare („Numar: MAX CER25 14842”).</summary>
+    [GeneratedRegex(@"^\s*Num[aă]r(?:ul)?(?:\s+factur[aăi]+)?\s*:\s*(?<n>(?:[A-Z0-9][A-Z0-9\-/]*\s){0,3}[A-Z0-9\-/]*\d[A-Z0-9\-/]*)\s*$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireEtichetaNumar();
+
     [GeneratedRegex(@"\bNr\.?\s*(?<n>[A-Z0-9][A-Z0-9\-]*)\s*/\s*(?<d>\d{1,2}\.\d{1,2}\.\d{4})\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireNumarCuData();
 
@@ -957,6 +1079,21 @@ public static partial class InterpretorFacturaPdf
 
     [GeneratedRegex(@"^-?\(?\d{1,3}(?:[.\s]\d{3})*,\d{2}\)?$|^-?\(?\d{1,3}(?:,\d{3})*\.\d{2}\)?$|^-?\d+[.,]\d{2}$")]
     private static partial Regex PotrivireSuma();
+
+    [GeneratedRegex(@"\d\s*[=(]\s*\d\s*[xX*]\s*\d", RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireFormulaColoana();
+
+    [GeneratedRegex(@"^-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}$", RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireZecimaleVirgula();
+
+    [GeneratedRegex(@"^-?(?:\d{1,3}(?:,\d{3})+|\d+)\.\d{2}$", RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireZecimalePunct();
+
+    [GeneratedRegex(@"(?<![A-Z])TOTAL(?![A-Z])", RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireCuvantTotal();
+
+    [GeneratedRegex(@"TERMEN(?:UL)?\s+(?:DE\s+)?PLATA", RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireTermenPlata();
 
     [GeneratedRegex(@"^(?<n>\d{1,2})(?:\([0-9x*+\-=]+\)|=[0-9x*+\-]+)?$", RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireNumarColoana();

@@ -263,6 +263,23 @@ public class InterpretorFacturaPdfTeste
         Assert.Equal((new DateOnly(2026, 10, 31), Certitudine.Nesigur), (f.DataScadenta.Valoare, f.DataScadenta.Certitudine));
     }
 
+    [Fact]
+    public void Virgula_zecimala_cu_trei_zecimale_si_ghilimelele_OCR_nu_strica_linia()
+    {
+        // Factura arată virgula zecimală („21,00”): „47,400” = 47,4 și „7,769” = 7,769, nu mii. „"47,400” are o
+        // ghilimea lipită de OCR. 47,4 × 7,769 = 368,25 ≈ 368,23 (prețul afișat e rotunjit) ✓.
+        var doc = new TextDocument(
+        [
+            R(220, ("Nr.", 20), ("Denumirea", 60), ("U.M.", 400), ("Cantitate", 460), ("Pret", 560), ("Valoare", 660), ("Cota", 760), ("Valoare", 830)),
+            R(250, ("1", 25), ("FOLIE", 60), ("PE", 120), ("NEAGRA", 150), ("KGM", 405), ("\"47,400", 465), ("7,769", 565), ("\"368,230", 660), ("21,00", 760), ("77,330", 830)),
+            R(300, ("TOTAL", 400), ("368,23", 660), ("77,33", 830)),
+        ], [], DinOcr: false);
+
+        var l = Assert.Single(InterpretorFacturaPdf.Interpreteaza(doc, DateTest.CuiFirma).Linii);
+
+        Assert.Equal(("kg", 47.4m, 7.769m, 368.23m), (l.UnitateMasura.Valoare, l.Cantitate.Valoare, l.PretUnitar.Valoare, l.ValoareFaraTva.Valoare));
+    }
+
     /// <summary>
     /// Formatul SmartBill (scanat): titlul „FACTURA” pe rândul furnizorului, antetul tabelului pe trei rânduri („Preț unitar”
     /// deasupra), rândul cu numerele coloanelor, „Nr. crt.” sub primul rând al produsului, sumele totalului pe rândul vecin.
@@ -426,5 +443,30 @@ public class FacturaPrimitaTeste
     {
         // 333,33 × 0,21 = 69,9993 → 70,00
         Assert.Equal(70.00m, VerificareTotaluriFactura.TvaLinie(333.33m, 0.21m));
+    }
+}
+
+/// <summary>Greșelile tipice ale OCR-ului în sume, corectate doar când calculul le dovedește.</summary>
+public class CorectieOcrTeste
+{
+    [Fact]
+    public void O_cifra_confundata_in_valoare_se_corecteaza_din_cantitate_ori_pret()
+    {
+        // 60 × 3,6267 = 217,602 → 217,60; citit „217.80” (6 citit 8): o singură cifră diferită, prețul are 4 zecimale.
+        Assert.Equal(217.60m, CorectieOcr.ValoareCorectata(217.80m, 60m, 3.6267m, "3.6267"));
+    }
+
+    [Fact]
+    public void Pretul_rotunjit_la_doua_zecimale_nu_se_corecteaza()
+    {
+        // Carburant: 70,77 × 8,33 = 589,51, valoarea facturii 589,56 — prețul afișat e rotunjit (70,77 × 0,005 = 0,35 ≥ 0,05).
+        Assert.Null(CorectieOcr.ValoareCorectata(589.56m, 70.77m, 8.33m, "8.3300"));
+    }
+
+    [Fact]
+    public void Mai_multe_cifre_diferite_nu_sunt_o_greseala_de_OCR()
+    {
+        // 8000 × 9,35 = 74.800,00 față de 74.776,80: diferă în mai multe cifre.
+        Assert.Null(CorectieOcr.ValoareCorectata(74776.80m, 8000m, 9.35m, "9.35"));
     }
 }

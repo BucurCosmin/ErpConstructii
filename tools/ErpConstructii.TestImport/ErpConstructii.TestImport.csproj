@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Aplicația de test a importului de documente externe (D-28): citește toate fișierele din Sabloane/ cu exact codul
+    aplicației și compară cu valorile confirmate. Nu rulează în producție și nu atinge baza de date.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ErpConstructii.TestImport</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Formulare\ErpConstructii.Formulare.Infrastructure\ErpConstructii.Formulare.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Facturi\ErpConstructii.Facturi\ErpConstructii.Facturi.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Aprovizionare\ErpConstructii.Aprovizionare\ErpConstructii.Aprovizionare.csproj" />
+  </ItemGroup>
+</Project>

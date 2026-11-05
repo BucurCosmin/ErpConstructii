@@ -134,11 +134,21 @@ public class VizualizareEFacturaTeste
     }
 
     [Fact]
-    public void O_cifra_gresita_intr_o_linie_strica_verificarea_totalurilor()
+    public void Doua_cifre_gresite_intr_o_linie_strica_verificarea_totalurilor()
     {
-        // Linia 2 citită 360,00: 5 × 60 = 300 ≠ 360 (peste 1%) → avertisment pe linie; 150 + 360 = 510 ≠ 450 → totaluri de verificat.
-        var f = InterpretorVizualizareEFactura.Interpreteaza(Vizualizare("360.00"), DateTest.CuiFirma);
+        // Linia 2 citită 380,50: 5 × 60 = 300 ≠ 380,50 (două cifre diferite, nu se corectează) → avertisment pe linie;
+        // 150 + 380,50 ≠ 450 → totaluri de verificat.
+        var f = InterpretorVizualizareEFactura.Interpreteaza(Vizualizare("380.50"), DateTest.CuiFirma);
         Assert.Contains(f.Probleme, p => p.Locatie == "linia 2");
         Assert.Equal(Certitudine.Nesigur, f.TotalDePlata.Certitudine);
+    }
+
+    [Fact]
+    public void O_cifra_confundata_in_valoarea_liniei_se_corecteaza_si_ramane_de_verificat()
+    {
+        // Linia 2 citită 360,00 (0 citit 6): 5 × 60,00 = 300,00 diferă printr-o cifră → 300,00, de verificat.
+        var f = InterpretorVizualizareEFactura.Interpreteaza(Vizualizare("360.00"), DateTest.CuiFirma);
+        Assert.Equal((300m, Certitudine.Nesigur), (f.Linii[1].ValoareFaraTva.Valoare, f.Linii[1].ValoareFaraTva.Certitudine));
+        Assert.Contains(f.Probleme, p => p.Locatie == "linia 2" && p.Mesaj.Contains("o cifră", StringComparison.Ordinal));
     }
 }
