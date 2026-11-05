@@ -83,7 +83,12 @@ const rotunjeste = (v: number) => Math.round(v * 100) / 100
  * Importul unei facturi primite: XML e-Factura / ZIP din SPV (citit exact) sau PDF / scanare (citit automat, verificat).
  * Factura se înregistrează pe un proiect, cu originalul arhivat; furnizorul se adaugă în nomenclator dacă lipsește.
  */
-export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
+export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
+  poateCrea: boolean
+  /** Fișierul dat de centrul de import (un document tăiat dintr-un fișier cu mai multe documente). */
+  fisierInitial?: File
+  onImportat?: (descriere: string) => void
+}) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const interpreteaza = useInterpreteazaFactura()
@@ -97,6 +102,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
   const valori = Form.useWatch([], form) as ValoriFormular | undefined
   const [pagina, setPagina] = useState<number>()
   const [importDinDosar, setImportDinDosar] = useState<'NotaComanda' | 'NecesarMateriale'>()
+  const citit = useRef<File | undefined>(undefined)
 
   useEffect(() => () => {
     if (urlCurent.current) URL.revokeObjectURL(urlCurent.current)
@@ -204,11 +210,20 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
         },
       })
       setCreata(f)
+      onImportat?.(`Factura ${f.numar}`)
       message.success(`Factura ${f.numar} de la ${f.furnizorDenumire} a fost înregistrată pe ${f.proiectCod}.`)
     } catch (e) {
       message.error((e as Error).message)
     }
   }
+
+  useEffect(() => {
+    if (fisierInitial && citit.current !== fisierInitial) {
+      citit.current = fisierInitial
+      void citeste(fisierInitial)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fisierInitial])
 
   if (creata) {
     return (
@@ -216,7 +231,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
         status="success"
         title={`Factura ${creata.numar} a fost înregistrată`}
         subTitle={`${creata.furnizorDenumire} · ${formatLei(creata.totalDePlata)} ${creata.moneda} · proiect ${creata.proiectCod}. Originalul este arhivat.`}
-        extra={<Button type="primary" onClick={reseteaza}>Importă altă factură</Button>}
+        extra={!fisierInitial && <Button type="primary" onClick={reseteaza}>Importă altă factură</Button>}
       />
     )
   }
@@ -261,7 +276,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
         <Card
           size="small"
           title={<Space>{esteXml ? <FileDoneOutlined /> : <ScanOutlined />}<Typography.Text ellipsis style={{ maxWidth: 320 }}>{fisier.name}</Typography.Text></Space>}
-          extra={<Button size="small" onClick={reseteaza}>Altă factură</Button>}
+          extra={!fisierInitial && <Button size="small" onClick={reseteaza}>Altă factură</Button>}
           styles={{ body: { padding: 0 } }}
           style={{ position: 'sticky', top: 80 }}
         >
@@ -313,7 +328,7 @@ export function ImportFactura({ poateCrea }: { poateCrea: boolean }) {
               )}
             />
 
-            {rezultat.pagini.length > 1 && (
+            {rezultat.pagini.length > 1 && !fisierInitial && (
               <ContinutDosar
                 pagini={rezultat.pagini}
                 paginiFactura={rezultat.paginiFactura}
@@ -531,6 +546,7 @@ const culoriTip: Record<TipPagina, string> = {
   EFactura: 'geekblue',
   NotaComanda: 'purple',
   NecesarMateriale: 'magenta',
+  BonConsum: 'volcano',
   Aviz: 'cyan',
   Certificat: 'green',
   Anexa: 'gold',

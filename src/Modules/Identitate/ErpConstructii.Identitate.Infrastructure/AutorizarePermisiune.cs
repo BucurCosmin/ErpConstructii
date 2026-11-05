@@ -35,11 +35,11 @@ internal sealed class HandlerPermisiune(
 
         var evaluator = await permisiuni.PentruUtilizatorAsync(utilizatorId, http?.RequestAborted ?? default);
 
-        var permis = cerinta.DoarPeFirma
-            ? evaluator.Are(cerinta.Permisiune, new Domeniu(firmaId))
+        var permis = cerinta.Toate.Any(p => cerinta.DoarPeFirma
+            ? evaluator.Are(p, new Domeniu(firmaId))
             : proiectId is not null
-                ? evaluator.Are(cerinta.Permisiune, new Domeniu(firmaId, proiectId))
-                : evaluator.ProiecteAccesibile(cerinta.Permisiune, firmaId) is not { Count: 0 };
+                ? evaluator.Are(p, new Domeniu(firmaId, proiectId))
+                : evaluator.ProiecteAccesibile(p, firmaId) is not { Count: 0 });
 
         if (permis)
         {

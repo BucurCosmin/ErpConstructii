@@ -9,6 +9,7 @@ import {
   FileDoneOutlined,
   FileTextOutlined,
   FundProjectionScreenOutlined,
+  InboxOutlined,
   ProjectOutlined,
   SafetyCertificateOutlined,
   ScheduleOutlined,
@@ -30,8 +31,8 @@ export interface ModulAplicatie {
   eticheta: string
   icon: ReactNode
   grup: 'principal' | 'proiect' | 'executie' | 'financiar' | 'sistem'
-  /** Permisiunea de vizualizare (modul.vizualizare) cerută pentru afișare. */
-  permisiune?: string
+  /** Permisiunea de vizualizare (modul.vizualizare) cerută pentru afișare; la o listă ajunge oricare. */
+  permisiune?: string | string[]
   implementat?: boolean
   faza?: string
   descriere?: string
@@ -47,6 +48,15 @@ export const module: ModulAplicatie[] = [
     icon: <ProjectOutlined />,
     grup: 'principal',
     permisiune: 'proiecte.vizualizare',
+    implementat: true,
+  },
+  {
+    cheie: 'import',
+    cale: '/import',
+    eticheta: 'Import documente',
+    icon: <InboxOutlined />,
+    grup: 'principal',
+    permisiune: ['aprovizionare.creare', 'financiar.creare'],
     implementat: true,
   },
   {

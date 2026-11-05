@@ -85,7 +85,7 @@ export interface InterpretareFactura {
   paginiFactura: number[]
 }
 
-export type TipPagina = 'Factura' | 'EFactura' | 'NotaComanda' | 'NecesarMateriale' | 'Aviz' | 'Certificat' | 'Anexa' | 'Altele'
+export type TipPagina = 'Factura' | 'EFactura' | 'NotaComanda' | 'NecesarMateriale' | 'BonConsum' | 'Aviz' | 'Certificat' | 'Anexa' | 'Altele'
 
 export interface PaginaDocument {
   pagina: number

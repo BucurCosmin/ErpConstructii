@@ -18,6 +18,9 @@ public enum TipPagina
     /// <summary>Necesarul de materiale (cererea șantierului).</summary>
     NecesarMateriale,
 
+    /// <summary>Bonul de consum (materiale date în consum pe șantier).</summary>
+    BonConsum,
+
     /// <summary>Aviz de însoțire a mărfii.</summary>
     Aviz,
 
@@ -52,6 +55,7 @@ public static partial class ClasificarePagini
         TipPagina.EFactura => "e-Factura (vizualizare SPV)",
         TipPagina.NotaComanda => "Notă de comandă",
         TipPagina.NecesarMateriale => "Necesar de materiale",
+        TipPagina.BonConsum => "Bon de consum",
         TipPagina.Aviz => "Aviz de însoțire",
         TipPagina.Certificat => "Certificat / declarație de conformitate",
         TipPagina.Anexa => "Anexă",
@@ -80,7 +84,12 @@ public static partial class ClasificarePagini
                 tip = rezultat[^1].Tip;
             }
 
-            var (numar, data) = tip is TipPagina.NotaComanda or TipPagina.NecesarMateriale or TipPagina.Aviz ? NumarSiData(text) : (null, null);
+            var (numar, data) = tip switch
+            {
+                TipPagina.NotaComanda or TipPagina.NecesarMateriale or TipPagina.Aviz or TipPagina.BonConsum => NumarSiData(text),
+                TipPagina.Factura or TipPagina.EFactura => (NumarFactura(text), null),
+                _ => (null, null),
+            };
             rezultat.Add(new PaginaClasificata(grup.Key, tip, numar, data));
         }
 
@@ -138,6 +147,9 @@ public static partial class ClasificarePagini
         if (titlu.Contains("NECESAR", StringComparison.Ordinal))
             return TipPagina.NecesarMateriale;
 
+        if (titlu.Contains("BON DE CONSUM", StringComparison.Ordinal) || titlu.Contains("BON CONSUM", StringComparison.Ordinal))
+            return TipPagina.BonConsum;
+
         if (Cuvant(titlu, "AVIZ") && titlu.Contains("INSOTIRE", StringComparison.Ordinal) && !Cuvant(titlu, "FACTURA"))
             return TipPagina.Aviz;
 
@@ -168,6 +180,36 @@ public static partial class ClasificarePagini
         var d = PotrivireData().Match(text);
         return (n.Success ? n.Groups["n"].Value : null, d.Success ? Data(d.Value) : null);
     }
+
+    /// <summary>Numărul facturii („Seria ABC nr. 123”, „Factura nr. 123”, „Nr. factură: 123”), dacă apare clar.</summary>
+    private static string? NumarFactura(string text)
+    {
+        var s = PotrivireSerieNumar().Match(text);
+        if (s.Success)
+        {
+            return $"{s.Groups["s"].Value.ToUpperInvariant()} {s.Groups["n"].Value}";
+        }
+
+        var f = PotrivireNumarFactura().Match(text);
+        return f.Success ? f.Groups["n"].Value.Trim() : null;
+    }
+
+    /// <summary>
+    /// Cheia de comparare a numerelor de document: doar cifrele, fără zerourile din față („DQUI 0002011” = „2011”).
+    /// Seria se citește diferit în factura tipărită și în e-Factura, cifrele nu.
+    /// </summary>
+    public static string? CheieNumar(string? numar)
+    {
+        var cifre = new string((numar ?? string.Empty).Where(char.IsAsciiDigit).ToArray()).TrimStart('0');
+        return cifre.Length == 0 ? null : cifre;
+    }
+
+    /// <summary>
+    /// Același număr de document? Pe cifre; la numere lungi ajunge ca unul să-l continue pe celălalt
+    /// („MPP.76484.0” în e-Factura = „76484” în factura tipărită).
+    /// </summary>
+    public static bool AcelasiNumar(string a, string b) =>
+        a == b || (Math.Min(a.Length, b.Length) >= 4 && (a.StartsWith(b, StringComparison.Ordinal) || b.StartsWith(a, StringComparison.Ordinal)));
 
     private static DateOnly? Data(string text) =>
         DateOnly.TryParseExact(text.Replace('/', '.').Replace('-', '.'), ["d.M.yyyy", "dd.MM.yyyy"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
@@ -203,6 +245,12 @@ public static partial class ClasificarePagini
 
     [GeneratedRegex(@"(?<!\d)\d{1,2}[./]\d{1,2}[./]\d{4}(?!\d)", RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireData();
+
+    [GeneratedRegex(@"\bSeri[ae]\s*[:.]?\s*(?<s>[A-Z]{1,10})\s*,?\s*(?:nr\.?|num[aă]r(?:ul)?|no\.?)\s*[:.]?\s*(?<n>\d[\d\-]*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireSerieNumar();
+
+    [GeneratedRegex(@"\bFactur[aă](?:\s+fiscal[aă])?\s*(?:nr\.?|num[aă]r(?:ul)?|no\.?)\s*[:.]?\s*(?<n>[A-Z]{0,10}\s?\d[\d\-]*)|\b(?:Nr\.?|Num[aă]r(?:ul)?)\s*factur[aăi]+\s*[:.]?\s*(?<n>[A-Z]{0,10}[\s.]?\d[\d.\-]*\d|[A-Z]{0,10}[\s.]?\d)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireNumarFactura();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex SpatiiMultiple();

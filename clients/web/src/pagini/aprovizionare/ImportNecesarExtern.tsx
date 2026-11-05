@@ -55,7 +55,7 @@ interface ValoriFormular {
  * Importul unui necesar de materiale emis în afara sistemului (PDF scanat, poză, Word):
  * sistemul citește documentul, propune datele, iar utilizatorul le verifică și le completează înainte de creare.
  */
-export function ImportNecesarExtern({ poateCrea, fisierInitial }: { poateCrea: boolean; fisierInitial?: File }) {
+export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { poateCrea: boolean; fisierInitial?: File; onImportat?: (descriere: string) => void }) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const interpreteaza = useInterpreteazaNecesar()
@@ -148,6 +148,7 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial }: { poateCrea: b
         },
       })
       setCreata(necesar)
+      onImportat?.(`Necesarul ${necesar.numar}`)
       message.success(`Necesarul ${necesar.numar} a fost creat și trimis spre aprobare.`)
     } catch (e) {
       message.error((e as Error).message)

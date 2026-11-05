@@ -55,6 +55,7 @@ public sealed class ModulFormulare : IModul
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
     {
+        ImportDocumente.EndpointuriImportDocumente.Mapeaza(rute);
         var grup = rute.MapGroup("/formulare").WithTags("Formulare");
         var citireAdmin = Permisiuni.Pentru(ModulErp.Administrare, Actiune.Vizualizare);
         var editareAdmin = Permisiuni.Pentru(ModulErp.Administrare, Actiune.Editare);

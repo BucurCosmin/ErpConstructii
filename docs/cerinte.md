@@ -96,6 +96,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-APV-05 | Șablonul „Necesar materiale” acceptă placeholderele documentate și le mapează la controalele Word ale aplicației. | 1 | ✅ |
 | REQ-APV-06 | Notele de comandă către furnizori (formularul GC 007: furnizor, lucrare, materiale cu UM / cantitate / termen) au număr de sistem NC/AAAA/NNNN; cele emise pe hârtie se importă (PDF / scanare / Word) cu numărul original păstrat și originalul arhivat. Furnizorul se caută în nomenclator după CUI sau denumire și se adaugă dacă lipsește. | 1 | ✅ (import; emiterea din sistem rămâne) |
 | REQ-APV-07 | Dosarele scanate (factură + e-Factura + notă de comandă + aviz + certificate în același PDF) se împart pe pagini: fiecare document se citește doar din paginile lui, iar din importul facturii se pot importa nota de comandă / necesarul din același fișier. | 1 | ✅ |
+| REQ-APV-08 | Un fișier cu mai multe documente (mai multe facturi cu dosarele lor, note de comandă, necesare, bonuri de consum) se importă integral din „Import documente”: documentele propuse automat, corectabile (tip, unire, despărțire), fiecare importat separat cu originalul lui (doar paginile documentului). | 1 | ✅ (bonurile de consum: doar recunoscute) |
 
 ## STC — Stocuri
 

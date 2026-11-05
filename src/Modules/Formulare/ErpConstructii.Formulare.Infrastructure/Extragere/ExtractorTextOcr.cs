@@ -32,11 +32,11 @@ public sealed class OptiuniOcr
 
     /// <summary>
     /// Câte pagini se citesc dintr-un document. Dosarele de factură scanate au des factura, e-Factura, nota de comandă,
-    /// avizul și certificatele în același PDF.
+    /// avizul și certificatele în același PDF, iar un fișier poate conține mai multe astfel de dosare.
     /// </summary>
-    public int PaginiMaxime { get; set; } = 20;
+    public int PaginiMaxime { get; set; } = 40;
 
-    /// <summary>Cât timp se păstrează textul recunoscut al unui fișier (același fișier citit pentru factură și pentru nota de comandă).</summary>
+    /// <summary>Cât timp se păstrează textul recunoscut al paginilor unui fișier (același fișier citit pentru factură și pentru nota de comandă).</summary>
     public TimeSpan DurataCache { get; set; } = TimeSpan.FromMinutes(30);
 }
 
@@ -61,84 +61,133 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
     private const int PragCuvinteBune = 12;
 
     /// <summary>Imaginile direct; PDF-urile trec întâi prin <see cref="ExtractorTextPdf"/>, care cheamă OCR doar pentru scanări.</summary>
+    /// <summary>Câte pagini se citesc dintr-un PDF (configurabil: Ocr:PaginiMaxime).</summary>
+    public int PaginiMaxime => optiuni.Value.PaginiMaxime;
+
     public bool Accepta(string numeFisier) => ExtensiiImagine.Contains(Path.GetExtension(numeFisier).ToLowerInvariant());
 
-    public async Task<RezultatImport<TextDocument>> ExtrageAsync(SursaImport sursa, CancellationToken ct = default)
+    public Task<RezultatImport<TextDocument>> ExtrageAsync(SursaImport sursa, CancellationToken ct = default) =>
+        ExtragePaginiAsync(sursa, null, ct);
+
+    /// <summary>
+    /// Doar paginile date (numerotate de la 1) ale unui PDF: în PDF-urile combinate, paginile cu text digital se citesc
+    /// direct, iar OCR-ul trece doar prin paginile scanate. Null = toate paginile.
+    /// </summary>
+    public Task<RezultatImport<TextDocument>> ExtragePaginiAsync(SursaImport sursa, IReadOnlyCollection<int>? pagini, CancellationToken ct = default) =>
+        Task.Run(() => Extrage(sursa, pagini, ct), ct);
+
+    /// <summary>
+    /// Pune în cache textul deja recunoscut al paginilor unui fișier (numerotarea paginilor din acel fișier): documentele
+    /// tăiate dintr-un fișier citit în centrul de import nu mai trec încă o dată prin OCR.
+    /// </summary>
+    public void Memoreaza(byte[] continut, string extensie, IEnumerable<RandText> randuri)
     {
-        var cheie = "ocr:" + Convert.ToHexString(SHA256.HashData(sursa.Continut)) + sursa.Extensie;
-        if (cache?.TryGetValue(cheie, out RezultatImport<TextDocument>? citit) == true && citit is not null)
+        var amprenta = Amprenta(continut, extensie);
+        foreach (var pagina in randuri.GroupBy(r => r.Pagina))
         {
-            return citit;
+            cache?.Set(CheiePagina(amprenta, pagina.Key), pagina.ToList(), optiuni.Value.DurataCache);
         }
-
-        var rezultat = await Task.Run(() => Extrage(sursa, ct), ct);
-        if (rezultat.Valoare is not null)
-        {
-            cache?.Set(cheie, rezultat, optiuni.Value.DurataCache);
-        }
-
-        return rezultat;
     }
 
-    private RezultatImport<TextDocument> Extrage(SursaImport sursa, CancellationToken ct)
+    private static string Amprenta(byte[] continut, string extensie) => Convert.ToHexString(SHA256.HashData(continut)) + extensie;
+
+    /// <summary>Cache pe pagină: același fișier citit pentru factură, apoi pentru nota de comandă, trece o singură dată prin OCR.</summary>
+    private static string CheiePagina(string amprenta, int pagina) => $"ocr:{amprenta}:{pagina}";
+
+    private RezultatImport<TextDocument> Extrage(SursaImport sursa, IReadOnlyCollection<int>? doarPaginile, CancellationToken ct)
     {
         var o = optiuni.Value;
-        var cale = Path.IsPathRooted(o.CaleTessdata) ? o.CaleTessdata : Path.Combine(AppContext.BaseDirectory, o.CaleTessdata);
-        if (!Directory.Exists(cale) || !Directory.EnumerateFiles(cale, "*.traineddata").Any())
-        {
-            cale = CaleAlternativa(o.CaleTessdata) ?? cale;
-        }
-
-        if (!Directory.Exists(cale) || !Directory.EnumerateFiles(cale, "*.traineddata").Any())
-        {
-            logger.LogError("Modelele OCR lipsesc din {Cale}. Rulează scripts/descarca-tessdata.ps1.", cale);
-            return RezultatImport<TextDocument>.Esuat(
-                "Recunoașterea textului (OCR) nu este instalată pe server. Completează datele manual sau cere administratorului să instaleze modelele OCR.");
-        }
-
-        List<byte[]> imagini;
+        var amprenta = Amprenta(sursa.Continut, sursa.Extensie);
         var probleme = new List<ProblemaImport>();
+
+        int numar;
         try
         {
-            imagini = sursa.Extensie == ".pdf" ? PaginiPdf(sursa.Continut, o, probleme) : [sursa.Continut];
+            numar = sursa.Extensie == ".pdf" ? Conversion.GetPageCount(sursa.Continut) : 1;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            logger.LogWarning(ex, "PDF-ul {Fisier} nu a putut fi randat.", sursa.NumeFisier);
+            logger.LogWarning(ex, "PDF-ul {Fisier} nu a putut fi deschis.", sursa.NumeFisier);
             return RezultatImport<TextDocument>.Esuat("PDF-ul nu poate fi deschis (fișier deteriorat sau protejat cu parolă).");
         }
 
-        var randuri = new List<RandText>();
-        try
+        if (numar > o.PaginiMaxime)
         {
-            using var motor = new TesseractEngine(cale, o.Limbi, EngineMode.LstmOnly);
-            for (var i = 0; i < imagini.Count; i++)
-            {
-                ct.ThrowIfCancellationRequested();
-                using var original = Pix.LoadFromMemory(imagini[i]);
-                using var pix = o.EliminaLiniiTabel ? FaraLiniiTabel(original) : original.Clone();
-                var cuvinte = Citeste(motor, pix, o.ModSegmentare);
-                if (CuvinteBune(cuvinte) < PragCuvinteBune && OrientareMaiBuna(motor, pix, CuvinteBune(cuvinte)) is { } rotire and not 0)
-                {
-                    using var rotita = pix.Rotate90(rotire);
-                    cuvinte = Citeste(motor, rotita, o.ModSegmentare);
-                    logger.LogDebug("Pagina {Pagina} din {Fisier} a fost rotită ({Rotire}).", i + 1, sursa.NumeFisier, rotire);
-                }
+            probleme.Add(new ProblemaImport(Severitate.Informare, "fișier",
+                $"Documentul are {numar} pagini; am citit primele {o.PaginiMaxime}."));
+        }
 
-                randuri.AddRange(GrupareRanduri.PeRanduri(cuvinte, i + 1));
+        var pagini = Enumerable.Range(1, Math.Min(numar, o.PaginiMaxime)).Where(p => doarPaginile is null || doarPaginile.Contains(p)).ToList();
+        var citite = new Dictionary<int, List<RandText>>();
+        foreach (var p in pagini)
+        {
+            if (cache?.TryGetValue(CheiePagina(amprenta, p), out List<RandText>? r) == true && r is not null)
+            {
+                citite[p] = r;
             }
         }
-        catch (IOException ex)
+
+        var lipsa = pagini.Where(p => !citite.ContainsKey(p)).ToList();
+        if (lipsa.Count > 0)
         {
-            logger.LogWarning(ex, "Imaginea {Fisier} nu a putut fi citită.", sursa.NumeFisier);
-            return RezultatImport<TextDocument>.Esuat("Imaginea nu poate fi citită. Încarcă un PDF, JPG sau PNG.");
-        }
-        catch (TesseractException ex)
-        {
-            logger.LogError(ex, "Motorul OCR nu a putut porni.");
-            return RezultatImport<TextDocument>.Esuat("Recunoașterea textului (OCR) nu a putut porni pe server.");
+            var cale = Path.IsPathRooted(o.CaleTessdata) ? o.CaleTessdata : Path.Combine(AppContext.BaseDirectory, o.CaleTessdata);
+            if (!Directory.Exists(cale) || !Directory.EnumerateFiles(cale, "*.traineddata").Any())
+            {
+                cale = CaleAlternativa(o.CaleTessdata) ?? cale;
+            }
+
+            if (!Directory.Exists(cale) || !Directory.EnumerateFiles(cale, "*.traineddata").Any())
+            {
+                logger.LogError("Modelele OCR lipsesc din {Cale}. Rulează scripts/descarca-tessdata.ps1.", cale);
+                return RezultatImport<TextDocument>.Esuat(
+                    "Recunoașterea textului (OCR) nu este instalată pe server. Completează datele manual sau cere administratorului să instaleze modelele OCR.");
+            }
+
+            try
+            {
+                using var motor = new TesseractEngine(cale, o.Limbi, EngineMode.LstmOnly);
+                foreach (var p in lipsa)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    byte[] imagine;
+                    try
+                    {
+                        imagine = sursa.Extensie == ".pdf" ? Randeaza(sursa.Continut, p - 1, o) : sursa.Continut;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        logger.LogWarning(ex, "Pagina {Pagina} din PDF-ul {Fisier} nu a putut fi randată.", p, sursa.NumeFisier);
+                        return RezultatImport<TextDocument>.Esuat("PDF-ul nu poate fi deschis (fișier deteriorat sau protejat cu parolă).");
+                    }
+
+                    using var original = Pix.LoadFromMemory(imagine);
+                    using var pix = o.EliminaLiniiTabel ? FaraLiniiTabel(original) : original.Clone();
+                    var cuvinte = Citeste(motor, pix, o.ModSegmentare);
+                    if (CuvinteBune(cuvinte) < PragCuvinteBune && OrientareMaiBuna(motor, pix, CuvinteBune(cuvinte)) is { } rotire and not 0)
+                    {
+                        using var rotita = pix.Rotate90(rotire);
+                        cuvinte = Citeste(motor, rotita, o.ModSegmentare);
+                        logger.LogDebug("Pagina {Pagina} din {Fisier} a fost rotită ({Rotire}).", p, sursa.NumeFisier, rotire);
+                    }
+
+                    var randuriPagina = GrupareRanduri.PeRanduri(cuvinte, p).ToList();
+                    citite[p] = randuriPagina;
+                    cache?.Set(CheiePagina(amprenta, p), randuriPagina, o.DurataCache);
+                }
+            }
+            catch (IOException ex)
+            {
+                logger.LogWarning(ex, "Imaginea {Fisier} nu a putut fi citită.", sursa.NumeFisier);
+                return RezultatImport<TextDocument>.Esuat("Imaginea nu poate fi citită. Încarcă un PDF, JPG sau PNG.");
+            }
+            catch (TesseractException ex)
+            {
+                logger.LogError(ex, "Motorul OCR nu a putut porni.");
+                return RezultatImport<TextDocument>.Esuat("Recunoașterea textului (OCR) nu a putut porni pe server.");
+            }
         }
 
+        var randuri = pagini.SelectMany(p => citite[p]).ToList();
         if (randuri.Count == 0)
         {
             probleme.Add(new ProblemaImport(Severitate.Avertisment, "fișier",
@@ -157,24 +206,11 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
         return RezultatImport<TextDocument>.Ok(new TextDocument(randuri, [], DinOcr: true), probleme);
     }
 
-    private static List<byte[]> PaginiPdf(byte[] pdf, OptiuniOcr o, List<ProblemaImport> probleme)
+    private static byte[] Randeaza(byte[] pdf, int index, OptiuniOcr o)
     {
-        var numar = Conversion.GetPageCount(pdf);
-        if (numar > o.PaginiMaxime)
-        {
-            probleme.Add(new ProblemaImport(Severitate.Informare, "fișier",
-                $"Documentul are {numar} pagini; am citit primele {o.PaginiMaxime}."));
-        }
-
-        var pagini = new List<byte[]>();
-        for (var i = 0; i < Math.Min(numar, o.PaginiMaxime); i++)
-        {
-            using var ms = new MemoryStream();
-            Conversion.SavePng(ms, pdf, i, options: new RenderOptions(Dpi: o.Dpi, WithAnnotations: true, Grayscale: true));
-            pagini.Add(ms.ToArray());
-        }
-
-        return pagini;
+        using var ms = new MemoryStream();
+        Conversion.SavePng(ms, pdf, index, options: new RenderOptions(Dpi: o.Dpi, WithAnnotations: true, Grayscale: true));
+        return ms.ToArray();
     }
 
     /// <summary>

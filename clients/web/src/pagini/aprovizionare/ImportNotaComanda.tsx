@@ -53,7 +53,7 @@ interface ValoriFormular {
  * Importul unei note de comandă către furnizor emise pe hârtie (formularul GC 007; PDF scanat, poză, Word):
  * sistemul citește documentul, caută furnizorul în nomenclator și propune proiectul; utilizatorul verifică și înregistrează.
  */
-export function ImportNotaComanda({ poateCrea, fisierInitial }: { poateCrea: boolean; fisierInitial?: File }) {
+export function ImportNotaComanda({ poateCrea, fisierInitial, onImportat }: { poateCrea: boolean; fisierInitial?: File; onImportat?: (descriere: string) => void }) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const interpreteaza = useInterpreteazaNotaComanda()
@@ -153,6 +153,7 @@ export function ImportNotaComanda({ poateCrea, fisierInitial }: { poateCrea: boo
         },
       })
       setCreata(nota)
+      onImportat?.(`Nota de comandă ${nota.numar}`)
       message.success(`Nota de comandă ${nota.numar} a fost înregistrată.`)
     } catch (e) {
       message.error((e as Error).message)

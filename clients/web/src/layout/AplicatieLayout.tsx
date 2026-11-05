@@ -49,7 +49,7 @@ export function AplicatieLayout() {
 
   const elementeMeniu = useMemo<MenuProps['items']>(() => {
     const acordate = new Set(permisiuni.data ?? [])
-    const vizibile = module.filter((m) => !m.permisiune || acordate.has(m.permisiune))
+    const vizibile = module.filter((m) => !m.permisiune || [m.permisiune].flat().some((p) => acordate.has(p)))
     const elemente: NonNullable<MenuProps['items']> = []
     for (const [grup, titlu] of Object.entries(grupuri)) {
       const dinGrup = vizibile

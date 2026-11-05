@@ -9,7 +9,8 @@ namespace ErpConstructii.Formulare.Infrastructure.Extragere;
 
 /// <summary>
 /// PDF-uri: textul digital (PDF generat de un program de facturare / Word) se citește exact, cu pozițiile cuvintelor;
-/// un PDF fără text (scanare) trece la OCR. Pozițiile sunt aduse la scara unei imagini de 300 DPI, ca regulile
+/// un PDF fără text (scanare) trece la OCR. În PDF-urile combinate (scanări + documente generate), doar paginile fără
+/// text trec prin OCR. Pozițiile sunt aduse la scara unei imagini de 300 DPI, ca regulile
 /// interpretorilor (toleranțe în pixeli) să fie aceleași pentru text digital și OCR.
 /// </summary>
 [SupportedOSPlatform("windows")]
@@ -19,21 +20,20 @@ public sealed class ExtractorTextPdf(ExtractorTextOcr ocr, ILogger<ExtractorText
 {
     private const double Scara = 300.0 / 72.0;
 
-    /// <summary>Sub atâtea litere, PDF-ul e considerat scanat (doar imagini, eventual un antet tipărit).</summary>
+    /// <summary>Sub atâtea litere, pagina (sau tot PDF-ul) e considerată scanată (doar imagini, eventual un antet tipărit).</summary>
     private const int LitereMinime = 40;
-
-    private const int PaginiMaxime = 20;
 
     public bool Accepta(string numeFisier) => Path.GetExtension(numeFisier).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
 
     public async Task<RezultatImport<TextDocument>> ExtrageAsync(SursaImport sursa, CancellationToken ct = default)
     {
         var randuri = new List<RandText>();
+        var scanate = new List<int>();
         try
         {
             using var pdf = PdfDocument.Open(sursa.Continut);
             var offset = 0;
-            foreach (var pagina in pdf.GetPages().Take(PaginiMaxime))
+            foreach (var pagina in pdf.GetPages().Take(ocr.PaginiMaxime))
             {
                 ct.ThrowIfCancellationRequested();
                 var cuvinte = pagina.GetWords()
@@ -46,7 +46,16 @@ public sealed class ExtractorTextPdf(ExtractorTextOcr ocr, ILogger<ExtractorText
                         offset + (int)((pagina.Height - w.BoundingBox.Bottom) * Scara),
                         100f))
                     .ToList();
-                randuri.AddRange(GrupareRanduri.PeRanduri(cuvinte, pagina.Number));
+                var randuriPagina = GrupareRanduri.PeRanduri(cuvinte, pagina.Number);
+                if (randuriPagina.Sum(r => r.Text.Count(char.IsLetter)) < LitereMinime)
+                {
+                    scanate.Add(pagina.Number);
+                }
+                else
+                {
+                    randuri.AddRange(randuriPagina);
+                }
+
                 offset += (int)(pagina.Height * Scara) + 100; // paginile una sub alta, fără suprapuneri
             }
         }
@@ -56,11 +65,19 @@ public sealed class ExtractorTextPdf(ExtractorTextOcr ocr, ILogger<ExtractorText
             return await ocr.ExtrageAsync(sursa, ct);
         }
 
-        if (randuri.Sum(r => r.Text.Count(char.IsLetter)) < LitereMinime)
+        if (randuri.Count == 0)
         {
             return await ocr.ExtrageAsync(sursa, ct); // scanare: PDF fără text
         }
 
-        return RezultatImport<TextDocument>.Ok(new TextDocument(randuri, [], DinOcr: false));
+        if (scanate.Count == 0)
+        {
+            return RezultatImport<TextDocument>.Ok(new TextDocument(randuri, [], DinOcr: false));
+        }
+
+        // PDF combinat: paginile scanate prin OCR, puse la locul lor.
+        var citite = await ocr.ExtragePaginiAsync(sursa, scanate, ct);
+        var toate = randuri.Concat(citite.Valoare?.Randuri ?? []).OrderBy(r => r.Pagina).ToList();
+        return RezultatImport<TextDocument>.Ok(new TextDocument(toate, [], DinOcr: true), citite.Probleme);
     }
 }
