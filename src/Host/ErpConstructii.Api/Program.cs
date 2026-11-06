@@ -134,7 +134,21 @@ if (radacinaWeb is not null)
 {
     var fisiere = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(radacinaWeb);
     app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fisiere });
-    app.UseStaticFiles(new StaticFileOptions { FileProvider = fisiere });
+    // Aplicația Windows de import (/descarcari/ErpImport.exe, D-29): tip explicit și descărcare ca fișier.
+    var tipuri = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    tipuri.Mappings[".exe"] = "application/octet-stream";
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = fisiere,
+        ContentTypeProvider = tipuri,
+        OnPrepareResponse = c =>
+        {
+            if (c.Context.Request.Path.StartsWithSegments("/descarcari"))
+            {
+                c.Context.Response.Headers.ContentDisposition = $"attachment; filename=\"{c.File.Name}\"";
+            }
+        },
+    });
 }
 app.UseExceptionHandler();
 app.UseRateLimiter();
@@ -188,6 +202,15 @@ if (radacinaWeb is not null)
             cale.StartsWith("/.well-known", StringComparison.OrdinalIgnoreCase))
         {
             ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        // Un fișier de descărcat care lipsește NU primește pagina aplicației (salvată ca „ErpImport.exe”, Windows o vede coruptă).
+        if (cale.StartsWith("/descarcari", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status404NotFound;
+            ctx.Response.ContentType = "text/plain; charset=utf-8";
+            await ctx.Response.WriteAsync("Fișierul nu este publicat pe server. Rulează deploy\\pregateste-productie.ps1.");
             return;
         }
 

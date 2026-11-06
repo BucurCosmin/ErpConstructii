@@ -37,7 +37,7 @@ const interval = (ps: number[]) => (ps.length === 1 ? `p. ${ps[0]}` : ps[ps.leng
  * utilizatorul verifică împărțirea (tip, unire, despărțire), apoi importă fiecare document prin ecranul tipului lui.
  */
 export function CentruImport() {
-  const { message } = App.useApp()
+  const { message, modal } = App.useApp()
   const navigheaza = useNavigate()
   const permisiuni = usePermisiuni()
   const drepturi = new Set(permisiuni.data ?? [])
@@ -113,6 +113,37 @@ export function CentruImport() {
   const importat = (id: number, descriere: string) =>
     setDocumente((lista) => lista.map((d) => (d.id === id ? { ...d, importat: descriere } : d)))
 
+  /** Descarcă ErpImport.exe doar dacă e publicat pe server (altfel browserul ar salva pagina aplicației ca .exe). */
+  const descarcaAplicatia = async () => {
+    const url = '/descarcari/ErpImport.exe'
+    try {
+      const r = await fetch(url, { method: 'HEAD' })
+      if (!r.ok || (r.headers.get('content-type') ?? '').startsWith('text/html')) {
+        modal.warning({
+          title: 'Aplicația Windows nu este publicată pe acest server',
+          content: 'Administratorul rulează o dată deploy\\pregateste-productie.ps1 pe calculatorul serverului: publică ErpImport.exe aici. ' +
+            'În dezvoltare, aplicația se pornește cu: dotnet run --project clients/desktop/ErpConstructii.ImportDesktop',
+        })
+        return
+      }
+    } catch {
+      message.error('Serverul nu răspunde.')
+      return
+    }
+
+    window.location.href = url
+    modal.info({
+      title: 'După descărcare',
+      content: (
+        <ol style={{ paddingInlineStart: 18, margin: 0 }}>
+          <li>Pornește <b>ErpImport.exe</b> din Descărcări (îl poți muta oriunde, nu cere instalare).</li>
+          <li>Dacă Windows afișează „Windows a protejat computerul”: <b>Mai multe informații → Rulează oricum</b> (aplicația nu e semnată digital).</li>
+          <li>După prima pornire, butonul „Deschide în aplicația Windows” o deschide direct, conectată la acest server.</li>
+        </ol>
+      ),
+    })
+  }
+
   const antet = (
     <AntetPagina
       titlu="Import documente"
@@ -125,7 +156,7 @@ export function CentruImport() {
               Deschide în aplicația Windows
             </Button>
           </Tooltip>
-          <Button type="link" icon={<DownloadOutlined />} href="/descarcari/ErpImport.exe" download>
+          <Button type="link" icon={<DownloadOutlined />} onClick={() => void descarcaAplicatia()}>
             Descarcă aplicația Windows
           </Button>
         </>

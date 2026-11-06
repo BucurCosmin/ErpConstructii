@@ -11,6 +11,16 @@ public partial class MainWindow : Window
     public MainWindow(Setari setari, Uri? server, string? fisier)
     {
         InitializeComponent();
+
+        // Dimensiunea „normală” (după restaurare) încape mereu pe ecran, și pe laptop sau cu scalare 125–150%:
+        // fereastra mai mare decât ecranul își pierde bara de titlu (nu se mai poate muta, minimiza, redimensiona).
+        var zona = SystemParameters.WorkArea;
+        Width = Math.Min(Width, zona.Width * 0.95);
+        Height = Math.Min(Height, zona.Height * 0.95);
+        MinWidth = Math.Min(MinWidth, zona.Width);
+        MinHeight = Math.Min(MinHeight, zona.Height);
+        Left = zona.Left + (zona.Width - Width) / 2;
+        Top = zona.Top + (zona.Height - Height) / 2;
         _model = new FereastraModel(setari, server, ConfirmaCertificat, (titlu, mesaj) =>
             Dispatcher.Invoke(() => MessageBox.Show(this, mesaj, titlu, MessageBoxButton.OK, MessageBoxImage.Information)));
         DataContext = _model;
