@@ -79,10 +79,10 @@ export function Facturi() {
                     layout="inline"
                     style={{ marginBottom: 16, rowGap: 8 }}
                     initialValues={{ stare: 'Inregistrata' }}
-                    onFinish={(v: { proiectId?: string; furnizor?: string; perioada?: [Dayjs, Dayjs]; stare?: FacturaPrimita['stare'] }) =>
+                    onFinish={(v: { proiectId?: string; cauta?: string; perioada?: [Dayjs, Dayjs]; stare?: FacturaPrimita['stare'] }) =>
                       setFiltre({
                         proiectId: v.proiectId,
-                        furnizor: v.furnizor?.trim() || undefined,
+                        cauta: v.cauta?.trim() || undefined,
                         dataDe: v.perioada?.[0]?.format('YYYY-MM-DD'),
                         dataPanaLa: v.perioada?.[1]?.format('YYYY-MM-DD'),
                         stare: v.stare,
@@ -93,8 +93,8 @@ export function Facturi() {
                       <Select allowClear placeholder="Toate proiectele" style={{ width: 240 }} showSearch={{ optionFilterProp: 'label' }}
                         options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
                     </Form.Item>
-                    <Form.Item name="furnizor">
-                      <Input allowClear placeholder="Furnizor sau CUI" style={{ width: 200 }} />
+                    <Form.Item name="cauta">
+                      <Input allowClear placeholder="Furnizor, CUI, număr sau material" style={{ width: 280 }} />
                     </Form.Item>
                     <Form.Item name="perioada">
                       <DatePicker.RangePicker format="DD.MM.YYYY" />
@@ -161,6 +161,12 @@ export function Facturi() {
                           <div>
                             <Typography.Text strong>{f.furnizorDenumire}</Typography.Text>
                             {f.furnizorCui && <div><Typography.Text type="secondary">CUI {f.furnizorCui}</Typography.Text></div>}
+                            {(f.materialeGasite?.length ?? 0) > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                {f.materialeGasite!.slice(0, 3).map((m) => <Tag key={m} color="gold" style={{ marginBottom: 2 }}>{m}</Tag>)}
+                                {f.materialeGasite!.length > 3 && <Typography.Text type="secondary">+{f.materialeGasite!.length - 3}</Typography.Text>}
+                              </div>
+                            )}
                           </div>
                         ),
                       },

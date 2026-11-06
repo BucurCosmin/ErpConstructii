@@ -78,7 +78,7 @@ internal sealed class ConfigurareNir : IEntityTypeConfiguration<Nir>
         b.Ignore(x => x.Linii);
         b.Ignore(x => x.AreDiferente);
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
-        b.HasIndex(x => new { x.FirmaId, x.FacturaId }); // o singură recepție activă pe factură (verificată sub blocarea stocului; după storno se poate recepționa din nou)
+        b.HasIndex(x => new { x.FirmaId, x.FacturaId }); // o factură poate avea mai multe recepții (parțiale); liniile deschise se verifică sub blocarea stocului
     }
 }
 

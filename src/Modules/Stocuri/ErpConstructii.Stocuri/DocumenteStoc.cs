@@ -4,7 +4,8 @@ using ErpConstructii.SharedKernel;
 namespace ErpConstructii.Stocuri;
 
 /// <param name="IndexFactura">Poziția liniei în factură.</param>
-/// <param name="CantitateFactura">Cantitatea de pe factură.</param>
+/// <param name="CantitateFactura">Cât era de recepționat din linie la emiterea NIR-ului (cantitatea de pe factură, minus
+/// recepțiile anterioare ale aceleiași linii).</param>
 /// <param name="CantitateReceptionata">Ce a primit efectiv gestionarul (diferența = lipsă la recepție).</param>
 /// <param name="PretUnitar">Prețul fără TVA de pe factură.</param>
 /// <param name="Valoare">Cantitatea recepționată × prețul, rotunjită la ban: valoarea intrată în stoc.</param>
@@ -18,17 +19,21 @@ public sealed record LinieNir(
     decimal CantitateReceptionata,
     decimal PretUnitar,
     decimal Valoare,
-    string? Observatii)
+    string? Observatii,
+    bool Partiala = false)
 {
-    public decimal Diferenta => CantitateReceptionata - CantitateFactura;
+    /// <summary>Diferența față de factură: doar la liniile închise (lipsă definitivă sau surplus); restul unei recepții parțiale nu e diferență.</summary>
+    public decimal Diferenta => Partiala ? 0 : CantitateReceptionata - CantitateFactura;
 }
 
+/// <param name="Partiala">Restul liniei vine mai târziu (altă recepție); fără, linia se închide cu ce s-a primit acum.</param>
 public sealed record LinieNirCerere(int IndexFactura, Guid ArticolId, string ArticolCod, string Denumire, string UnitateMasura,
-    decimal CantitateFactura, decimal CantitateReceptionata, decimal PretUnitar, string? Observatii);
+    decimal CantitateFactura, decimal CantitateReceptionata, decimal PretUnitar, string? Observatii, bool Partiala = false);
 
 /// <summary>
 /// Nota de intrare-recepție: gestionarul confirmă ce a primit din factura unui furnizor, în depozitul ales.
-/// La emitere, materialele intră în stoc la prețul facturii. Imuabilă (regula 6); o singură recepție pe factură.
+/// La emitere, materialele intră în stoc la prețul facturii. Imuabilă (regula 6). O factură se poate recepționa în mai multe
+/// NIR-uri, pe linii și cantități (<see cref="StareReceptie"/>).
 /// </summary>
 public sealed class Nir : EntitateFirma, IDocumentCuStare
 {
@@ -73,9 +78,12 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
         if (linii.Count == 0) probleme.Add("Recepția trebuie să conțină cel puțin un material.");
         if (linii.Any(l => l.ArticolId == Guid.Empty)) probleme.Add("Fiecare linie trebuie legată de un articol de stoc.");
         if (linii.Any(l => l.CantitateReceptionata < 0 || l.CantitateFactura <= 0 || l.PretUnitar < 0)) probleme.Add("Cantitățile și prețurile nu pot fi negative.");
-        if (linii.All(l => l.CantitateReceptionata == 0)) probleme.Add("Nu s-a recepționat nimic; verifică cantitățile.");
-        if (linii.Any(l => l.CantitateReceptionata != l.CantitateFactura && string.IsNullOrWhiteSpace(l.Observatii)))
-            probleme.Add("La liniile cu diferențe față de factură, completează observația (ex. lipsă la livrare).");
+        // Restul care „vine mai târziu” n-are sens când s-a primit tot ce era de primit.
+        linii = linii.Select(l => l.Partiala && l.CantitateReceptionata >= l.CantitateFactura ? l with { Partiala = false } : l).ToList();
+        if (linii.All(l => l.CantitateReceptionata == 0 && l.Partiala)) probleme.Add("Nu s-a recepționat nimic; verifică cantitățile.");
+        if (linii.Any(l => l.Partiala && l.CantitateReceptionata == 0)) probleme.Add("O linie fără cantitate recepționată se lasă în afara recepției.");
+        if (linii.Any(l => !l.Partiala && l.CantitateReceptionata != l.CantitateFactura && string.IsNullOrWhiteSpace(l.Observatii)))
+            probleme.Add("La liniile închise cu diferențe față de factură (lipsă definitivă sau surplus), completează observația.");
         if (linii.GroupBy(l => l.IndexFactura).Any(g => g.Count() > 1)) probleme.Add("O linie de factură apare de două ori.");
         if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume)) probleme.Add("Gestionarul este obligatoriu.");
         if (probleme.Count > 0)
@@ -83,7 +91,8 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
 
         var liniiNir = linii.Select(l => new LinieNir(
             l.IndexFactura, l.ArticolId, l.ArticolCod, l.Denumire.Trim(), l.UnitateMasura.Trim(), l.CantitateFactura, l.CantitateReceptionata,
-            l.PretUnitar, Rotunjire.Lei.Aplica(l.CantitateReceptionata * l.PretUnitar), string.IsNullOrWhiteSpace(l.Observatii) ? null : l.Observatii.Trim())).ToList();
+            l.PretUnitar, Rotunjire.Lei.Aplica(l.CantitateReceptionata * l.PretUnitar), string.IsNullOrWhiteSpace(l.Observatii) ? null : l.Observatii.Trim(),
+            l.Partiala)).ToList();
 
         return Rezultat.Ok(new Nir
         {

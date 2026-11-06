@@ -51,6 +51,9 @@ export interface FacturaDeReceptionat {
   proiectCod: string
   linii: number
   valoare: number | null
+  /** Liniile încă de recepționat (parțial sau deloc). */
+  liniiDeschise: number
+  receptionataPartial: boolean
 }
 
 export interface PropunereReceptie {
@@ -68,6 +71,12 @@ export interface PropunereReceptie {
     pretUnitar: number | null
     valoare: number | null
     articol: { id: string; cod: string; denumire: string; unitateMasura: string; sursa: 'AliasFurnizor' | 'Alias' | 'Denumire' } | null
+    /** Primit prin NIR-urile anterioare. */
+    receptionat: number
+    /** De recepționat. */
+    ramas: number
+    /** Linia nu mai așteaptă nimic (primită complet sau închisă). */
+    inchisa: boolean
   }[]
 }
 
@@ -75,7 +84,9 @@ export interface ReceptieCerere {
   facturaId: string
   gestiuneId: string
   data: string
-  linii: { indexFactura: number; articolId: string | null; articolNouDenumire: string | null; articolNouUm: string | null; cantitateReceptionata: number; observatii: string | null }[]
+  linii: { indexFactura: number; articolId: string | null; articolNouDenumire: string | null; articolNouUm: string | null; cantitateReceptionata: number; observatii: string | null
+    /** Restul liniei vine mai târziu; altfel linia se închide cu ce s-a primit acum. */
+    restulVine: boolean }[]
   observatii: string | null
 }
 
@@ -235,6 +246,37 @@ export const useDevizReferinta = (proiectId?: string) =>
     queryFn: () => api.get<DevizReferinta>(`/api/stocuri/proiecte/${proiectId}/deviz`),
     enabled: !!proiectId,
     retry: false,
+  })
+
+export interface LinieFacturaConsum {
+  articolId: string
+  articolCod: string
+  denumire: string
+  unitateMasura: string
+  /** Recepționat prin NIR-urile facturii. */
+  cantitate: number
+  inSantier: number
+  depozitId: string
+  depozit: string
+  inDepozit: number
+}
+
+export interface FacturaPentruConsum {
+  facturaId: string
+  numar: string
+  data: string
+  furnizorDenumire: string
+  proiectCod: string
+  acelasiProiect: boolean
+  linii: LinieFacturaConsum[]
+}
+
+/** Facturile recepționate, cu materialele lor și stocul din șantier / depozit (consumul unei facturi întregi). */
+export const useFacturiPentruConsum = (proiectId?: string, cauta?: string) =>
+  useQuery({
+    queryKey: [...chei.toate, 'consum-facturi', proiectId, cauta],
+    queryFn: () => api.get<FacturaPentruConsum[]>(`/api/stocuri/proiecte/${proiectId}/consum/facturi${cauta ? `?cauta=${encodeURIComponent(cauta)}` : ''}`),
+    enabled: !!proiectId,
   })
 
 export const useBonuriConsum = () => useQuery({ queryKey: ['stocuri', 'consumuri'], queryFn: () => api.get<BonConsum[]>('/api/stocuri/consumuri') })

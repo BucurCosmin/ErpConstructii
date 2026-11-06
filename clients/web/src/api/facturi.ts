@@ -39,11 +39,15 @@ export interface FacturaPrimita {
   inregistrataLa: string
   motivAnulare: string | null
   linii: LinieFactura[]
+  /** Materialele din factură care au potrivit căutarea. */
+  materialeGasite?: string[] | null
 }
 
 export interface FiltreFacturi {
   proiectId?: string
   furnizor?: string
+  /** Text liber: furnizor, CUI, numărul facturii sau un material din linii. */
+  cauta?: string
   dataDe?: string
   dataPanaLa?: string
   stare?: FacturaPrimita['stare']

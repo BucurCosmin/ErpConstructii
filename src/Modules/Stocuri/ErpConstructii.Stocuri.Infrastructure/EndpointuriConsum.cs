@@ -25,6 +25,16 @@ public sealed record LinieConsumDto(string ArticolCod, string Denumire, string U
 public sealed record BonConsumDto(Guid Id, string Numar, DateOnly Data, Guid ProiectId, string ProiectCod, IReadOnlyList<LinieConsumDto> Linii, decimal? Valoare,
     string EmisDe, string? Observatii);
 
+/// <param name="Cantitate">Cât s-a recepționat din material prin NIR-urile facturii (în depozitul <paramref name="Depozit"/>).</param>
+/// <param name="InSantier">Cât e acum în șantierul proiectului (stocul din care se consumă).</param>
+/// <param name="InDepozit">Cât e acum în depozitul recepției (de unde se poate transfera ce lipsește în șantier).</param>
+public sealed record LinieFacturaConsumDto(Guid ArticolId, string ArticolCod, string Denumire, string UnitateMasura, decimal Cantitate,
+    decimal InSantier, Guid DepozitId, string Depozit, decimal InDepozit);
+
+/// <param name="AcelasiProiect">Factura e înregistrată pe proiectul pe care se consumă.</param>
+public sealed record FacturaPentruConsumDto(Guid FacturaId, string Numar, DateOnly Data, string FurnizorDenumire, string ProiectCod, bool AcelasiProiect,
+    IReadOnlyList<LinieFacturaConsumDto> Linii);
+
 public sealed record ReturCerere(Guid GestiuneDestinatieId, DateOnly Data, IReadOnlyList<LinieTransferCerere> Linii, string? Observatii);
 
 public sealed record MaterialConsumatDto(string Cod, string Denumire, string UnitateMasura, decimal Cantitate, decimal? Valoare);
@@ -51,6 +61,9 @@ internal static class EndpointuriConsum
         g.MapPost("/proiecte/{proiectId:guid}/consumuri", Consuma).WithName("BonConsum")
             .WithSummary("Bon de consum: materiale din șantier consumate pe articolele devizului, la CMP")
             .Produces<BonConsumDto>(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(creare);
+        g.MapGet("/proiecte/{proiectId:guid}/consum/facturi", FacturiPentruConsum).WithName("FacturiPentruConsum")
+            .WithSummary("Facturile recepționate (NIR), cu materialele lor și stocul din șantier / depozit: consumul unei facturi întregi")
+            .Produces<IReadOnlyList<FacturaPentruConsumDto>>().CerePermisiune(vizualizare);
         g.MapGet("/consumuri", ListaConsumuri).WithName("ListaBonuriConsum").WithSummary("Bonurile de consum").Produces<IReadOnlyList<BonConsumDto>>().CerePermisiune(vizualizare);
         g.MapPost("/proiecte/{proiectId:guid}/retururi", Returneaza).WithName("ReturInDepozit")
             .WithSummary("Retur: materiale nefolosite din șantier înapoi în depozit, la CMP-ul din șantier")
@@ -134,6 +147,44 @@ internal static class EndpointuriConsum
         await db.SaveChangesAsync(ct);
         await tranzactie.CommitAsync(ct);
         return Results.Created($"/api/stocuri/consumuri/{bc.Id}", Dto(bc, await ModulStocuri.VedePreturiAsync(permisiuni, utilizator, firma, ct)));
+    }
+
+    /// <summary>
+    /// Facturile recepționate în stoc, cele de pe proiect întâi: materialele fiecăreia (din NIR-urile active), cu ce e în
+    /// șantierul proiectului și ce a rămas în depozitul recepției. Interfața completează bonul de consum cu toată factura și
+    /// transferă întâi din depozit ce lipsește în șantier.
+    /// </summary>
+    private static async Task<IResult> FacturiPentruConsum(Guid proiectId, string? cauta, StocuriDbContext db, CancellationToken ct)
+    {
+        var q = db.Nir.AsNoTracking().Where(n => !db.StornariNir.Any(s => s.NirId == n.Id));
+        if (!string.IsNullOrWhiteSpace(cauta))
+        {
+            var t = $"%{cauta.Trim()}%";
+            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar, t) || EF.Functions.ILike(n.FurnizorDenumire, t));
+        }
+
+        var nir = await q.OrderByDescending(n => n.ProiectId == proiectId).ThenByDescending(n => n.FacturaData).Take(300).ToListAsync(ct);
+        var santier = await db.Gestiuni.AsNoTracking().FirstOrDefaultAsync(x => x.ProiectId == proiectId, ct);
+        var depozite = await db.Gestiuni.AsNoTracking().Where(x => x.ProiectId == null).ToDictionaryAsync(x => x.Id, x => x.Denumire, ct);
+        var articole = nir.SelectMany(n => n.Linii).Select(l => l.ArticolId).Distinct().ToList();
+        var solduri = await db.Solduri.AsNoTracking().Where(s => articole.Contains(s.ArticolId)).ToListAsync(ct);
+        decimal Sold(Guid? gestiune, Guid articol) => solduri.Where(s => s.GestiuneId == gestiune && s.ArticolId == articol).Sum(s => s.Cantitate);
+
+        var rezultat = nir.GroupBy(n => n.FacturaId).Select(g =>
+        {
+            var primul = g.First();
+            var linii = g.SelectMany(n => n.Linii.Where(l => l.CantitateReceptionata > 0).Select(l => (n.GestiuneId, Linie: l)))
+                .GroupBy(x => (x.Linie.ArticolId, x.GestiuneId))
+                .Select(x =>
+                {
+                    var l = x.First().Linie;
+                    return new LinieFacturaConsumDto(l.ArticolId, l.ArticolCod, l.Denumire, l.UnitateMasura, x.Sum(y => y.Linie.CantitateReceptionata),
+                        santier is null ? 0 : Sold(santier.Id, l.ArticolId), x.Key.GestiuneId, depozite.GetValueOrDefault(x.Key.GestiuneId, "depozit"), Sold(x.Key.GestiuneId, l.ArticolId));
+                })
+                .ToList();
+            return new FacturaPentruConsumDto(g.Key, primul.FacturaNumar, primul.FacturaData, primul.FurnizorDenumire, primul.ProiectCod, primul.ProiectId == proiectId, linii);
+        }).Where(f => f.Linii.Count > 0).Take(100).ToList();
+        return Results.Ok(rezultat);
     }
 
     private static async Task<IResult> ListaConsumuri(

@@ -1,10 +1,10 @@
-import { DeleteOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { DeleteOutlined, FileDoneOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
-import { useBonuriConsum, useConsuma, useConsumPeArticole, useDevizReferinta, useSoldStoc } from '../../api/stocuri'
-import type { BonConsum, ConsumPeArticole } from '../../api/stocuri'
+import { useBonuriConsum, useConsuma, useConsumPeArticole, useDevizReferinta, useFacturiPentruConsum, useSoldStoc, useTransfera } from '../../api/stocuri'
+import type { BonConsum, ConsumPeArticole, FacturaPentruConsum } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 
@@ -33,6 +33,75 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
   const sold = useSoldStoc({ tip: 'Santier', proiectId })
   const deviz = useDevizReferinta(proiectId)
   const disponibil = useMemo(() => new Map((proiectId ? sold.data ?? [] : []).map((s) => [s.articolId, s])), [sold.data, proiectId])
+  const transfera = useTransfera()
+  const [dinFactura, setDinFactura] = useState(false)
+  const [cautaFactura, setCautaFactura] = useState<string>()
+  const [facturaAleasa, setFacturaAleasa] = useState<FacturaPentruConsum>()
+  const [devizToate, setDevizToate] = useState<string>(GENERALE)
+  const [transferaLipsa, setTransferaLipsa] = useState(true)
+  const facturi = useFacturiPentruConsum(dinFactura ? proiectId : undefined, cautaFactura)
+
+  /** Pe material: cât e de consumat din factură, cât e în șantier, cât lipsește și de unde se poate transfera. */
+  const necesar = useMemo(() => {
+    const m = new Map<string, { articolId: string; cod: string; denumire: string; um: string; cantitate: number; inSantier: number; depozite: { id: string; nume: string; disponibil: number }[] }>()
+    for (const l of facturaAleasa?.linii ?? []) {
+      const x = m.get(l.articolId) ?? { articolId: l.articolId, cod: l.articolCod, denumire: l.denumire, um: l.unitateMasura, cantitate: 0, inSantier: l.inSantier, depozite: [] }
+      x.cantitate += l.cantitate
+      if (!x.depozite.some((d) => d.id === l.depozitId)) x.depozite.push({ id: l.depozitId, nume: l.depozit, disponibil: l.inDepozit })
+      m.set(l.articolId, x)
+    }
+    return [...m.values()].map((x) => {
+      const lipsa = Math.max(0, x.cantitate - x.inSantier)
+      const transferabil = Math.min(lipsa, x.depozite.reduce((a, d) => a + d.disponibil, 0))
+      return { ...x, lipsa, transferabil }
+    })
+  }, [facturaAleasa])
+
+  /**
+   * Toată factura în bon: transferă întâi din depozit în șantier ce lipsește (bon de transfer, cum cere evidența), apoi
+   * completează liniile bonului de consum cu materialele facturii, pe articolul de deviz ales.
+   */
+  const adaugaFactura = async () => {
+    if (!proiectId || !facturaAleasa) return
+    const data = (form.getFieldValue('data') as Dayjs | undefined) ?? dayjs()
+    try {
+      if (transferaLipsa && necesar.some((n) => n.transferabil > 0)) {
+        const peDepozit = new Map<string, { articolId: string; cantitate: number }[]>()
+        for (const n of necesar) {
+          let rest = n.transferabil
+          for (const d of n.depozite) {
+            const cat = Math.min(rest, d.disponibil)
+            if (cat <= 0) continue
+            peDepozit.set(d.id, [...(peDepozit.get(d.id) ?? []), { articolId: n.articolId, cantitate: cat }])
+            rest -= cat
+          }
+        }
+        for (const [gestiuneSursaId, liniiTransfer] of peDepozit) {
+          const bt = await transfera.mutateAsync({
+            proiectId, gestiuneSursaId, data: data.format('YYYY-MM-DD'), linii: liniiTransfer,
+            observatii: `Pentru consumul facturii ${facturaAleasa.numar} (${facturaAleasa.furnizorDenumire})`,
+          })
+          message.success(`${bt.numar}: materialele facturii au fost transferate în șantier.`)
+        }
+      }
+
+      const liniiNoi = necesar
+        .map((n) => ({ articolId: n.articolId, cantitate: Math.min(n.cantitate, n.inSantier + (transferaLipsa ? n.transferabil : 0)), articolDeviz: devizToate }))
+        .filter((l) => l.cantitate > 0)
+      const existente = (form.getFieldValue('linii') as Valori['linii'] | undefined)?.filter((l) => l.articolId) ?? []
+      form.setFieldsValue({
+        linii: [...existente, ...liniiNoi],
+        observatii: (form.getFieldValue('observatii') as string | undefined) || `Consum factura ${facturaAleasa.numar} (${facturaAleasa.furnizorDenumire})`,
+      })
+      if (liniiNoi.length < necesar.length || necesar.some((n) => n.lipsa > (transferaLipsa ? n.transferabil : 0))) {
+        message.warning('Unele materiale nu sunt în stoc în cantitatea din factură: s-a pus în bon cât există. Verifică liniile.')
+      }
+      setDinFactura(false)
+      setFacturaAleasa(undefined)
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
 
   const optiuniDeviz = [
     { value: GENERALE, label: 'Cheltuieli generale de șantier (fără articol)' },
@@ -125,13 +194,86 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
                     </Row>
                   )
                 })}
-                <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} block style={{ marginBottom: 16 }}>Adaugă material</Button>
+                <Space.Compact block style={{ marginBottom: 16 }}>
+                  <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} style={{ width: '60%' }}>Adaugă material</Button>
+                  <Button type="dashed" icon={<FileDoneOutlined />} onClick={() => setDinFactura(true)} disabled={!proiectId} style={{ width: '40%' }}>
+                    Adaugă o factură întreagă
+                  </Button>
+                </Space.Compact>
               </>
             )}
           </Form.List>
           <Button type="primary" htmlType="submit" loading={consuma.isPending}>Emite bonul de consum</Button>
         </Form>
       </Card>
+
+      <Modal
+        open={dinFactura}
+        onCancel={() => { setDinFactura(false); setFacturaAleasa(undefined) }}
+        width="min(1100px, 96vw)"
+        title="Consumă o factură întreagă"
+        okText={necesar.some((n) => n.transferabil > 0) && transferaLipsa ? 'Transferă ce lipsește și adaugă în bon' : 'Adaugă în bon'}
+        okButtonProps={{ disabled: !facturaAleasa, loading: transfera.isPending }}
+        onOk={() => void adaugaFactura()}
+        destroyOnHidden
+      >
+        <Input.Search allowClear placeholder="Caută factura după număr sau furnizor" onSearch={(v) => setCautaFactura(v.trim() || undefined)} style={{ marginBottom: 12 }} />
+        <Table<FacturaPentruConsum>
+          size="small"
+          rowKey="facturaId"
+          loading={facturi.isLoading}
+          dataSource={facturi.data}
+          pagination={{ pageSize: 6, hideOnSinglePage: true }}
+          rowSelection={{ type: 'radio', selectedRowKeys: facturaAleasa ? [facturaAleasa.facturaId] : [], onChange: (_, r) => setFacturaAleasa(r[0]) }}
+          onRow={(f) => ({ onClick: () => setFacturaAleasa(f) })}
+          locale={{ emptyText: 'Nicio factură recepționată (NIR) cu materiale.' }}
+          columns={[
+            { title: 'Factura', dataIndex: 'numar', width: 140 },
+            { title: 'Data', dataIndex: 'data', width: 100, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
+            { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
+            { title: 'Proiect', width: 140, render: (_, f) => (f.acelasiProiect ? <Tag color="green">{f.proiectCod}</Tag> : f.proiectCod) },
+            { title: 'Materiale', width: 90, align: 'right', render: (_, f) => f.linii.length },
+          ]}
+        />
+        {facturaAleasa && (
+          <>
+            <Typography.Title level={5} style={{ marginTop: 12 }}>Materialele facturii {facturaAleasa.numar}</Typography.Title>
+            <Table
+              size="small"
+              rowKey="articolId"
+              pagination={false}
+              dataSource={necesar}
+              columns={[
+                { title: 'Material', render: (_, n) => `${n.cod} — ${n.denumire}` },
+                { title: 'Din factură', width: 120, align: 'right', render: (_, n) => `${formatCantitate(n.cantitate)} ${n.um}` },
+                { title: 'În șantier', width: 110, align: 'right', render: (_, n) => formatCantitate(n.inSantier) },
+                {
+                  title: 'Lipsește în șantier', width: 220,
+                  render: (_, n) => n.lipsa <= 0 ? <Tag color="green">disponibil</Tag> : (
+                    <>
+                      <Tag color={n.transferabil >= n.lipsa ? 'blue' : 'red'}>{formatCantitate(n.lipsa)} {n.um}</Tag>
+                      <Typography.Text type="secondary">
+                        {n.transferabil > 0 ? `${formatCantitate(n.transferabil)} în ${n.depozite.map((d) => d.nume).join(', ')}` : 'nici în depozit'}
+                      </Typography.Text>
+                    </>
+                  ),
+                },
+              ]}
+            />
+            <Space wrap style={{ marginTop: 12 }} size="large">
+              {necesar.some((n) => n.transferabil > 0) && (
+                <Checkbox checked={transferaLipsa} onChange={(e) => setTransferaLipsa(e.target.checked)}>
+                  Transferă întâi din depozit în șantier ce lipsește (bon de transfer)
+                </Checkbox>
+              )}
+              <Space>
+                <Typography.Text>Articol de deviz pentru toate liniile:</Typography.Text>
+                <Select style={{ width: 380 }} showSearch={{ optionFilterProp: 'label' }} value={devizToate} onChange={setDevizToate} options={optiuniDeviz} />
+              </Space>
+            </Space>
+          </>
+        )}
+      </Modal>
 
       <Card title="Bonuri de consum">
         <Table<BonConsum>
@@ -155,9 +297,17 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
             { title: 'Număr', dataIndex: 'numar', width: 140 },
             { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
             { title: 'Proiect', dataIndex: 'proiectCod', width: 140 },
-            { title: 'Linii', width: 80, align: 'right', render: (_, b) => b.linii.length },
+            {
+              title: 'Materiale',
+              render: (_, b) => (
+                <Typography.Text>
+                  {b.linii.slice(0, 2).map((l) => `${l.denumire}: ${formatCantitate(l.cantitate)} ${l.unitateMasura}`).join(' · ')}
+                  {b.linii.length > 2 && <Typography.Text type="secondary"> · +{b.linii.length - 2}</Typography.Text>}
+                </Typography.Text>
+              ),
+            },
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
-            { title: 'Emis de', dataIndex: 'emisDe' },
+            { title: 'Emis de', dataIndex: 'emisDe', width: 160, responsive: ['xl'] },
             {
               title: '', width: 80,
               render: (_, b) => <Button size="small" icon={<FilePdfOutlined />} onClick={() => void deschidePdf(`/api/stocuri/consumuri/${b.id}/pdf`).catch((x) => message.error((x as Error).message))}>PDF</Button>,

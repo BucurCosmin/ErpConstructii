@@ -25,3 +25,8 @@ body,
     display: none !important;
   }
 }
+
+/* Liniile de factură neselectate / deja recepționate în fereastra NIR */
+.rand-inactiv td {
+  opacity: 0.55;
+}

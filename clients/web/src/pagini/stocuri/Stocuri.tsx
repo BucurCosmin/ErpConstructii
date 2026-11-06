@@ -170,7 +170,12 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
             { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
             { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
             { title: 'Proiect', dataIndex: 'proiectCod', width: 130 },
-            { title: 'Linii de stoc', dataIndex: 'linii', width: 110, align: 'right' },
+            {
+              title: 'Linii de stoc', width: 170, align: 'right',
+              render: (_, f) => f.receptionataPartial
+                ? <><Tag color="orange">parțial</Tag>{f.liniiDeschise} din {f.linii} de primit</>
+                : f.linii,
+            },
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
             {
               title: '',

@@ -106,7 +106,8 @@ public sealed record FacturaPrimitaDto(
     string InregistrataDeNume,
     DateTimeOffset InregistrataLa,
     string? MotivAnulare,
-    IReadOnlyList<LinieFactura> Linii);
+    IReadOnlyList<LinieFactura> Linii,
+    IReadOnlyList<string>? MaterialeGasite = null);
 
 public sealed record AnuleazaFacturaCerere(string Motiv);
 
@@ -152,8 +153,9 @@ public sealed class ModulFacturi : IModul
 
     // ---------------------------------------------------------------- listă / detalii
 
+    /// <param name="cauta">Text liber: furnizor, CUI, numărul facturii sau un material din liniile ei (fără diacritice / majuscule).</param>
     private static async Task<IResult> Lista(
-        Guid? proiectId, string? furnizor, DateOnly? dataDe, DateOnly? dataPanaLa, string? stare,
+        Guid? proiectId, string? furnizor, string? cauta, DateOnly? dataDe, DateOnly? dataPanaLa, string? stare,
         FacturiDbContext db, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
     {
         if (utilizator.UtilizatorId is not { } uid || firma.FirmaId is not { } fid)
@@ -171,6 +173,18 @@ public sealed class ModulFacturi : IModul
 
         if (proiectId is { } p) q = q.Where(f => f.ProiectId == p);
         if (!string.IsNullOrWhiteSpace(furnizor)) q = q.Where(f => EF.Functions.ILike(f.FurnizorDenumire, $"%{furnizor.Trim()}%") || f.FurnizorCui == furnizor.Trim());
+        string? termen = null;
+        if (!string.IsNullOrWhiteSpace(cauta))
+        {
+            termen = FaraDiacritice(cauta.Trim());
+            var tipar = $"%{termen}%";
+            var cui = cauta.Trim().ToUpperInvariant().Replace("RO", string.Empty, StringComparison.Ordinal);
+            // Materialele stau în liniile facturii (jsonb); textul se compară fără diacritice și fără majuscule.
+            var cuMaterial = db.Database.SqlQuery<Guid>(
+                $"""SELECT f.id AS "Value" FROM facturi.facturi_primite f WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(f.linii_json) e WHERE translate(lower(e->>'Denumire'), 'ăâîșşțţ', 'aaisstt') LIKE {tipar})""");
+            q = q.Where(f => EF.Functions.ILike(f.FurnizorDenumire, tipar) || f.FurnizorCui == cui || EF.Functions.ILike(f.Numar, tipar) || cuMaterial.Contains(f.Id));
+        }
+
         if (dataDe is { } d1) q = q.Where(f => f.DataEmitere >= d1);
         if (dataPanaLa is { } d2) q = q.Where(f => f.DataEmitere <= d2);
         if (string.Equals(stare, "Anulata", StringComparison.OrdinalIgnoreCase)) q = q.Where(f => db.Anulari.Any(a => a.FacturaId == f.Id));
@@ -179,7 +193,17 @@ public sealed class ModulFacturi : IModul
         var facturi = await q.OrderByDescending(f => f.DataEmitere).ThenByDescending(f => f.CreatLa).Take(500).ToListAsync(ct);
         var id = facturi.Select(f => f.Id).ToList();
         var anulari = await db.Anulari.AsNoTracking().Where(a => id.Contains(a.FacturaId)).ToDictionaryAsync(a => a.FacturaId, ct);
-        return Results.Ok(facturi.Select(f => CaDto(f, anulari.GetValueOrDefault(f.Id))));
+        return Results.Ok(facturi.Select(f => CaDto(f, anulari.GetValueOrDefault(f.Id)) with
+        {
+            // Ce materiale din factură au potrivit căutarea (afișate în listă).
+            MaterialeGasite = termen is null ? null : f.Linii.Select(l => l.Denumire).Where(d => FaraDiacritice(d).Contains(termen, StringComparison.Ordinal)).Distinct().ToList(),
+        }));
+    }
+
+    private static string FaraDiacritice(string text)
+    {
+        var fd = text.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        return new string(fd.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
     }
 
     private static async Task<IResult> Detalii(Guid id, FacturiDbContext db, CancellationToken ct) =>
