@@ -1,0 +1,352 @@
+<Window x:Class="ErpConstructii.ImportDesktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:m="clr-namespace:ErpConstructii.ImportDesktop.Model"
+        Title="ERP Construcții – Import documente" Width="1680" Height="1000" MinWidth="1200" MinHeight="700"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource Fundal}" AllowDrop="True" FontFamily="Segoe UI" FontSize="13">
+    <Grid>
+        <DockPanel>
+            <!-- Conexiunea: serverul aplicației principale, utilizatorul, firma activă; fișierul -->
+            <Border DockPanel.Dock="Top" Background="#14213D" Padding="12,8">
+                <DockPanel LastChildFill="False">
+                    <TextBlock Text="Import documente" Foreground="White" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,20,0" />
+                    <TextBlock Text="Server:" Foreground="#C9D3E6" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox Text="{Binding Server, UpdateSourceTrigger=PropertyChanged}" Width="240" VerticalContentAlignment="Center"
+                             ToolTip="Adresa aplicației web (ex. https://sdaq.home.ro sau, în dezvoltare, http://localhost:5173)" />
+                    <Button Content="Conectare" Command="{Binding Conectare}" Margin="6,0,16,0" />
+                    <TextBlock Text="{Binding Utilizator}" Foreground="White" VerticalAlignment="Center" Margin="0,0,12,0" />
+                    <TextBlock Text="Firma:" Foreground="#C9D3E6" VerticalAlignment="Center" Margin="0,0,6,0"
+                               Visibility="{Binding Conectat, Converter={StaticResource Vizibil}}" />
+                    <ComboBox ItemsSource="{Binding Firme}" SelectedItem="{Binding FirmaSelectata}" DisplayMemberPath="Denumire" Width="260"
+                              Visibility="{Binding Conectat, Converter={StaticResource Vizibil}}" />
+                    <Button DockPanel.Dock="Right" Content="Deschide fișier…" Command="{Binding Deschide}" Style="{StaticResource Principal}" />
+                </DockPanel>
+            </Border>
+
+            <Border DockPanel.Dock="Top" Background="White" BorderBrush="{StaticResource Margine}" BorderThickness="0,0,0,1" Padding="12,6">
+                <DockPanel>
+                    <TextBlock Text="{Binding TitluFisier}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Rezumat}" Foreground="#4A5568" Margin="16,0,0,0" VerticalAlignment="Center" />
+                    <ItemsControl ItemsSource="{Binding ProblemeFisier}" Margin="16,0,0,0" VerticalAlignment="Center">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Foreground="#AD4E00" TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300" />
+                    <ColumnDefinition Width="5" />
+                    <ColumnDefinition Width="*" MinWidth="300" />
+                    <ColumnDefinition Width="5" />
+                    <ColumnDefinition Width="640" MinWidth="460" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Documentele din fișier -->
+                <DockPanel Grid.Column="0" Background="White">
+                    <TextBlock DockPanel.Dock="Top" Text="Documente în fișier" Style="{StaticResource Sectiune}" Margin="10,10,10,4" />
+                    <TextBlock DockPanel.Dock="Bottom" TextWrapping="Wrap" Foreground="#667085" Margin="10" FontSize="12"
+                               Text="Trage un fișier peste fereastră sau apasă „Deschide fișier…”. Fiecare document se verifică lângă paginile lui, apoi se importă." />
+                    <ListBox ItemsSource="{Binding Documente}" SelectedItem="{Binding DocumentSelectat}" BorderThickness="0"
+                             HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="{x:Type m:DocumentImport}">
+                                <Grid Margin="4,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="18" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse Width="10" Height="10" VerticalAlignment="Top" Margin="0,4,0,0" Fill="{Binding Stare, Converter={StaticResource CuloareStare}}" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Titlu}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Foreground="#667085" FontSize="12">
+                                            <Run Text="{Binding IntervalPagini, Mode=OneWay}" /> · <Run Text="{Binding TextStare, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="{StaticResource Margine}" />
+
+                <!-- Paginile documentului selectat -->
+                <DockPanel Grid.Column="2">
+                    <DockPanel DockPanel.Dock="Top" Margin="10,8">
+                        <TextBlock Text="Paginile documentului" Style="{StaticResource Sectiune}" Margin="0" VerticalAlignment="Center" />
+                        <Button DockPanel.Dock="Right" Content="↻ Rotește" Command="{Binding Roteste}" Margin="12,0,0,0" ToolTip="Rotește paginile cu 90° (e-Factura e tipărită des pe orizontală)" />
+                        <Slider x:Name="Zoom" DockPanel.Dock="Right" Minimum="0.4" Maximum="2.5" Value="1" Width="160" VerticalAlignment="Center" />
+                        <TextBlock DockPanel.Dock="Right" Text="Mărire" Foreground="#4A5568" VerticalAlignment="Center" Margin="0,0,6,0" HorizontalAlignment="Right" />
+                    </DockPanel>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Padding="10,0">
+                        <ItemsControl ItemsSource="{Binding PaginiAfisate}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type m:PaginaAfisata}">
+                                    <StackPanel Margin="0,0,0,14">
+                                        <TextBlock Margin="0,0,0,4">
+                                            <Run Text="p." FontWeight="SemiBold" /><Run Text="{Binding Numar, Mode=OneWay}" FontWeight="SemiBold" />
+                                            <Run Text="·" /> <Run Text="{Binding Descriere, Mode=OneWay}" Foreground="#4A5568" />
+                                        </TextBlock>
+                                        <Border BorderBrush="{StaticResource Margine}" BorderThickness="1" Background="White" HorizontalAlignment="Left">
+                                            <Image Source="{Binding Imagine}" Stretch="Uniform" Width="800" RenderOptions.BitmapScalingMode="HighQuality">
+                                                <Image.LayoutTransform>
+                                                    <TransformGroup>
+                                                        <ScaleTransform ScaleX="{Binding Value, ElementName=Zoom}" ScaleY="{Binding Value, ElementName=Zoom}" />
+                                                        <RotateTransform Angle="{Binding DataContext.Rotire, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                    </TransformGroup>
+                                                </Image.LayoutTransform>
+                                            </Image>
+                                        </Border>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+
+                <GridSplitter Grid.Column="3" HorizontalAlignment="Stretch" Background="{StaticResource Margine}" />
+
+                <!-- Verificarea documentului selectat -->
+                <Border Grid.Column="4" Background="White">
+                    <DockPanel DataContext="{Binding DocumentSelectat}" Visibility="{Binding DataContext.AreDocumentSelectat, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource Vizibil}}">
+                        <!-- Antet: tip, pagini, unire / despărțire -->
+                        <StackPanel DockPanel.Dock="Top" Margin="14,10,14,0">
+                            <DockPanel>
+                                <TextBlock Text="{Binding Titlu}" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding IntervalPagini}" Foreground="#667085" Margin="10,0,0,0" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <WrapPanel Margin="0,8,0,0">
+                                <TextBlock Text="Tip:" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <ComboBox ItemsSource="{x:Static m:DocumentImport.Tipuri}" SelectedItem="{Binding Tip}" Width="180" Margin="0,0,10,0"
+                                          IsEnabled="{Binding ProiectEditabil}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Converter={StaticResource DenumireTip}}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Content="Unește cu documentul de deasupra" Command="{Binding DataContext.Uneste, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                <ComboBox x:Name="PaginaDespartire" ItemsSource="{Binding DataContext.PaginiDeDespartire, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          Width="60" Margin="0,0,4,0" ToolTip="Pagina de la care începe documentul nou" />
+                                <Button Content="Desparte de la pagina aleasă" Command="{Binding DataContext.Desparte, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        CommandParameter="{Binding SelectedItem, ElementName=PaginaDespartire}" />
+                            </WrapPanel>
+                            <TextBlock Text="{Binding Mesaj}" TextWrapping="Wrap" Margin="0,8,0,0" FontWeight="SemiBold" Foreground="#1F4E9C"
+                                       Visibility="{Binding Mesaj, Converter={StaticResource NulAscuns}}" />
+                            <TextBlock Text="Se citește documentul…" Foreground="#2F54EB" Margin="0,8,0,0" Visibility="{Binding SeCiteste, Converter={StaticResource Vizibil}}" />
+                        </StackPanel>
+
+                        <!-- Butoanele de import -->
+                        <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Margine}" BorderThickness="0,1,0,0" Padding="14,10">
+                            <DockPanel LastChildFill="False">
+                                <Button Content="Sari peste" Command="{Binding DataContext.SariPeste, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        ToolTip="Documentul nu se importă din acest fișier" />
+                                <Button Content="Recitește" Command="{Binding DataContext.Reciteste, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                <Button DockPanel.Dock="Right" Content="Următorul →" Command="{Binding DataContext.Urmatorul, RelativeSource={RelativeSource AncestorType=Window}}" Margin="0" />
+                                <Button DockPanel.Dock="Right" Content="Importă în aplicație" Style="{StaticResource Principal}" Margin="0,0,8,0"
+                                        Command="{Binding DataContext.Importa, RelativeSource={RelativeSource AncestorType=Window}}" />
+                            </DockPanel>
+                        </Border>
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,0,14,10">
+                            <StackPanel>
+                                <ItemsControl ItemsSource="{Binding Probleme}" Margin="0,6,0,0">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="#FFF7E6" BorderBrush="#FFD591" BorderThickness="1" Padding="8,4" Margin="0,0,0,4">
+                                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#AD4E00" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="Documentul fiscal e citit exact din XML-ul e-Factura; alege doar proiectul." TextWrapping="Wrap" Foreground="#389E0D"
+                                           Visibility="{Binding EsteXml, Converter={StaticResource Vizibil}}" Margin="0,6,0,0" />
+
+                                <TextBlock Text="Proiectul" Style="{StaticResource Sectiune}" />
+                                <ComboBox ItemsSource="{Binding DataContext.Proiecte, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          SelectedValuePath="Id" SelectedValue="{Binding ProiectId}" DisplayMemberPath="Eticheta" IsEnabled="{Binding ProiectEditabil}"
+                                          Background="{Binding ProiectDeVerificat, Converter={StaticResource DeVerificat}}" IsTextSearchEnabled="True"
+                                          ToolTip="Proiectul pe care se înregistrează documentul (propus după referința / lucrarea din document)" />
+                                <TextBlock Text="{Binding Referinta, StringFormat='Referință în document: {0}'}" Foreground="#667085" FontSize="12" Margin="0,2,0,0"
+                                           Visibility="{Binding Referinta, Converter={StaticResource NulAscuns}}" />
+
+                                <!-- Antetul documentului -->
+                                <StackPanel IsEnabled="{Binding Editabil}">
+                                    <TextBlock Text="Date document" Style="{StaticResource Sectiune}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Seria și numărul / numărul documentului" Style="{StaticResource Eticheta}" />
+                                            <TextBox Text="{Binding Numar, UpdateSourceTrigger=PropertyChanged}" Background="{Binding NumarDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                            <TextBlock Text="Data" Style="{StaticResource Eticheta}" />
+                                            <DatePicker SelectedDate="{Binding Data}" Background="{Binding DataDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <StackPanel Visibility="{Binding EsteFactura, Converter={StaticResource Vizibil}}">
+                                                <TextBlock Text="Scadența" Style="{StaticResource Eticheta}" />
+                                                <DatePicker SelectedDate="{Binding DataScadenta}" />
+                                                <TextBlock Text="Moneda" Style="{StaticResource Eticheta}" />
+                                                <TextBox Text="{Binding Moneda}" MaxLength="3" Width="80" HorizontalAlignment="Left" />
+                                            </StackPanel>
+                                            <StackPanel Visibility="{Binding EsteNecesar, Converter={StaticResource Vizibil}}">
+                                                <TextBlock Text="Compartiment / șantier" Style="{StaticResource Eticheta}" />
+                                                <TextBox Text="{Binding Compartiment}" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <StackPanel Visibility="{Binding EsteNecesar, Converter={StaticResource Ascuns}}">
+                                        <TextBlock Text="Furnizor" Style="{StaticResource Eticheta}" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="150" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox Text="{Binding Furnizor}" Background="{Binding FurnizorDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                            <TextBox Grid.Column="2" Text="{Binding FurnizorCui}" Background="{Binding CuiDeVerificat, Converter={StaticResource DeVerificat}}" ToolTip="CUI furnizor" />
+                                        </Grid>
+                                        <TextBlock Text="{Binding FurnizorInNomenclator, StringFormat='✓ Furnizor existent în nomenclator: {0}'}" Foreground="#389E0D" Margin="0,4,0,0"
+                                                   Visibility="{Binding FurnizorInNomenclator, Converter={StaticResource NulAscuns}}" />
+                                        <CheckBox Content="Adaugă furnizorul în nomenclator" IsChecked="{Binding AdaugaFurnizor}" Margin="0,6,0,0"
+                                                  Visibility="{Binding EsteFactura, Converter={StaticResource Vizibil}}" />
+                                    </StackPanel>
+
+                                    <StackPanel Visibility="{Binding EsteFactura, Converter={StaticResource Ascuns}}">
+                                        <TextBlock Text="Lucrare (din document)" Style="{StaticResource Eticheta}" />
+                                        <TextBox Text="{Binding Lucrare}" TextWrapping="Wrap" Background="{Binding LucrareDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Liniile: coloanele tipului de document -->
+                                <DockPanel Margin="0,14,0,4">
+                                    <TextBlock Text="Linii" Style="{StaticResource Sectiune}" Margin="0" VerticalAlignment="Center" />
+                                    <Button DockPanel.Dock="Right" Content="+ Linie" Margin="0" HorizontalAlignment="Right"
+                                            Command="{Binding DataContext.AdaugaLinie, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                </DockPanel>
+                                <TextBlock Text="Liniile portocalii sunt de verificat (citite neclar)." Foreground="#667085" FontSize="12" Margin="0,0,0,4" />
+
+                                <DataGrid x:Name="LiniiFactura" ItemsSource="{Binding Linii}" IsReadOnly="{Binding EsteXml}" IsEnabled="{Binding ProiectEditabil}"
+                                          Visibility="{Binding EsteFactura, Converter={StaticResource Vizibil}}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Denumire" Binding="{Binding Denumire}" Width="*" />
+                                        <DataGridTextColumn Header="UM" Binding="{Binding Um}" Width="55" />
+                                        <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue=''}" Width="75" />
+                                        <DataGridTextColumn Header="Preț" Binding="{Binding Pret, TargetNullValue=''}" Width="75" />
+                                        <DataGridTextColumn Header="Valoare" Binding="{Binding Valoare, TargetNullValue='', StringFormat=N2}" Width="85" />
+                                        <DataGridTextColumn Header="TVA %" Binding="{Binding CotaProcent, TargetNullValue=''}" Width="50" />
+                                        <DataGridCheckBoxColumn Header="Stoc" Binding="{Binding IntraInStoc, UpdateSourceTrigger=PropertyChanged}" Width="40" />
+                                        <DataGridTemplateColumn Width="28">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="✕" Padding="2,0" Margin="0" BorderThickness="0" ToolTip="Șterge linia"
+                                                            Command="{Binding DataContext.StergeLinie, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <DataGrid ItemsSource="{Binding Linii}" IsEnabled="{Binding Editabil}" Visibility="{Binding EsteNota, Converter={StaticResource Vizibil}}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Material / produs" Binding="{Binding Denumire}" Width="*" />
+                                        <DataGridTextColumn Header="UM" Binding="{Binding Um}" Width="60" />
+                                        <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue=''}" Width="80" />
+                                        <DataGridTextColumn Header="Termen" Binding="{Binding Termen}" Width="100" />
+                                        <DataGridTemplateColumn Width="28">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="✕" Padding="2,0" Margin="0" BorderThickness="0" ToolTip="Șterge linia"
+                                                            Command="{Binding DataContext.StergeLinie, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <DataGrid ItemsSource="{Binding Linii}" IsEnabled="{Binding Editabil}" Visibility="{Binding EsteNecesar, Converter={StaticResource Vizibil}}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Denumire material" Binding="{Binding Denumire}" Width="*" />
+                                        <DataGridTextColumn Header="UM" Binding="{Binding Um}" Width="60" />
+                                        <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue=''}" Width="80" />
+                                        <DataGridTextColumn Header="Observații" Binding="{Binding Observatii}" Width="140" />
+                                        <DataGridTemplateColumn Width="28">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="✕" Padding="2,0" Margin="0" BorderThickness="0" ToolTip="Șterge linia"
+                                                            Command="{Binding DataContext.StergeLinie, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <!-- Totalurile facturii -->
+                                <StackPanel Visibility="{Binding EsteFactura, Converter={StaticResource Vizibil}}" IsEnabled="{Binding Editabil}">
+                                    <TextBlock Text="Totaluri" Style="{StaticResource Sectiune}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="10" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="10" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Total fără TVA" Style="{StaticResource Eticheta}" />
+                                            <TextBox Text="{Binding TotalFaraTva, TargetNullValue='', StringFormat=N2}" Background="{Binding TotaluriDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="TVA" Style="{StaticResource Eticheta}" />
+                                            <TextBox Text="{Binding TotalTva, TargetNullValue='', StringFormat=N2}" Background="{Binding TotaluriDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="4">
+                                            <TextBlock Text="Total de plată" Style="{StaticResource Eticheta}" />
+                                            <TextBox Text="{Binding TotalDePlata, TargetNullValue='', StringFormat=N2}" Background="{Binding TotaluriDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Text="{Binding VerificareTotaluri}" TextWrapping="Wrap" Margin="0,6,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#AD4E00" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding TotaluriCorecte}" Value="True">
+                                                        <Setter Property="Foreground" Value="#389E0D" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <TextBlock Text="Observații" Style="{StaticResource Sectiune}" Visibility="{Binding EsteNecesar, Converter={StaticResource Ascuns}}" />
+                                <TextBox Text="{Binding Observatii}" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="44" IsEnabled="{Binding ProiectEditabil}"
+                                         Visibility="{Binding EsteNecesar, Converter={StaticResource Ascuns}}" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </DockPanel>
+
+        <!-- Operația în curs -->
+        <Border Background="#99FFFFFF" Visibility="{Binding Ocupat, Converter={StaticResource NulAscuns}}">
+            <Border Background="White" BorderBrush="{StaticResource Margine}" BorderThickness="1" Padding="28,20" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="560">
+                <StackPanel>
+                    <ProgressBar IsIndeterminate="True" Height="6" Margin="0,0,0,12" />
+                    <TextBlock Text="{Binding Ocupat}" TextWrapping="Wrap" FontSize="14" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>

@@ -15,7 +15,7 @@
 # Ce face (idempotent; se rulează din nou la fiecare versiune nouă a aplicației):
 #   1. folderul productie\ (ignorat de git): api\, web\, certificate\, loguri\
 #   2. certificatele: HTTPS (pentru domeniu + IP-urile din rețea) și semnarea / criptarea token-urilor (o singură dată)
-#   3. compilează interfața web și publică API-ul (Release)
+#   3. compilează interfața web, aplicația Windows de import (descărcabilă din web) și publică API-ul (Release)
 #   4. scrie configurarea cu secretele în productie\api\appsettings.Production.local.json
 #   5. regula de firewall pentru port (cere drepturi de administrator; altfel afișează comanda)
 
@@ -84,6 +84,16 @@ finally { Pop-Location }
 $web = Join-Path $productie "web"
 Get-ChildItem $web | Remove-Item -Recurse -Force
 Copy-Item (Join-Path $radacina "clients\web\dist\*") $web -Recurse
+
+# Aplicația Windows de import documente (D-29): un singur .exe (fără .NET instalat), descărcat din aplicația web
+# (pagina Import documente → „Descarcă aplicația Windows”).
+Write-Host "Public aplicația de import documente (Windows)..."
+$desktop = Join-Path $productie "desktop"
+dotnet publish (Join-Path $radacina "clients\desktop\ErpConstructii.ImportDesktop") -c Release -r win-x64 --self-contained true `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $desktop --nologo -v quiet
+if ($LASTEXITCODE -ne 0) { throw "Publicarea aplicației de import a eșuat." }
+New-Item -ItemType Directory -Force (Join-Path $web "descarcari") | Out-Null
+Copy-Item (Join-Path $desktop "ErpImport.exe") (Join-Path $web "descarcari\ErpImport.exe") -Force
 
 Write-Host "Public API-ul (Release)..."
 & (Join-Path $PSScriptRoot "opreste-productie.ps1") -Liniste

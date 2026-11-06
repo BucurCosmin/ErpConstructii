@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Aplicația de import documente (D-29): Windows, WPF. Auxiliară: lucrează doar prin API-ul aplicației principale
+    (aceleași drepturi, verificări și bază de date), deci cere serverul instalat și pornit.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>ErpConstructii.ImportDesktop</RootNamespace>
+    <AssemblyName>ErpImport</AssemblyName>
+    <Product>ERP Construcții – Import documente</Product>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Previzualizarea paginilor PDF (PDFium), fără server. -->
+    <PackageReference Include="PDFtoImage" />
+  </ItemGroup>
+</Project>

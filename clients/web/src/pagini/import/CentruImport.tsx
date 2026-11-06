@@ -1,4 +1,4 @@
-import { CheckCircleOutlined, InboxOutlined, MergeCellsOutlined, MoreOutlined, ScissorOutlined } from '@ant-design/icons'
+import { CheckCircleOutlined, DesktopOutlined, DownloadOutlined, InboxOutlined, MergeCellsOutlined, MoreOutlined, ScissorOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Dropdown, Flex, Modal, Progress, Result, Row, Select, Space, Spin, Tag, Tooltip, Typography, Upload } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
@@ -118,6 +118,18 @@ export function CentruImport() {
       titlu="Import documente"
       subtitlu="Un fișier scanat cu mai multe documente: facturi (cu e-Factura, aviz, certificate), note de comandă, necesare de materiale, bonuri de consum."
       cale={[{ titlu: 'Acasă', la: '/' }, { titlu: 'Import documente' }]}
+      actiuni={
+        <>
+          <Tooltip title="Aplicația Windows de import: același flux, cu formularul lângă paginile documentului. Prima dată descarc-o și pornește-o o dată.">
+            <Button icon={<DesktopOutlined />} href={`erp-import://deschide?server=${encodeURIComponent(window.location.origin)}`}>
+              Deschide în aplicația Windows
+            </Button>
+          </Tooltip>
+          <Button type="link" icon={<DownloadOutlined />} href="/descarcari/ErpImport.exe" download>
+            Descarcă aplicația Windows
+          </Button>
+        </>
+      }
     />
   )
 
