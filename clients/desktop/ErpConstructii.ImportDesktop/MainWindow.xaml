@@ -205,7 +205,7 @@
                                         </StackPanel>
                                     </Grid>
 
-                                    <StackPanel Visibility="{Binding EsteNecesar, Converter={StaticResource Ascuns}}">
+                                    <StackPanel Visibility="{Binding AreFurnizor, Converter={StaticResource Vizibil}}">
                                         <TextBlock Text="Furnizor" Style="{StaticResource Eticheta}" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -225,6 +225,15 @@
                                     <StackPanel Visibility="{Binding EsteFactura, Converter={StaticResource Ascuns}}">
                                         <TextBlock Text="Lucrare (din document)" Style="{StaticResource Eticheta}" />
                                         <TextBox Text="{Binding Lucrare}" TextWrapping="Wrap" Background="{Binding LucrareDeVerificat, Converter={StaticResource DeVerificat}}" />
+                                    </StackPanel>
+
+                                    <StackPanel Visibility="{Binding EsteBon, Converter={StaticResource Vizibil}}">
+                                        <TextBlock Style="{StaticResource Eticheta}" Visibility="{Binding Gestiune, Converter={StaticResource NulAscuns}}">
+                                            <Run Text="Gestiunea din bon:" /> <Run Text="{Binding Gestiune, Mode=OneWay}" Foreground="#1F2933" />
+                                        </TextBlock>
+                                        <TextBlock Style="{StaticResource Eticheta}" Visibility="{Binding Primitor, Converter={StaticResource NulAscuns}}">
+                                            <Run Text="Primitor:" /> <Run Text="{Binding Primitor, Mode=OneWay}" Foreground="#1F2933" />
+                                        </TextBlock>
                                     </StackPanel>
                                 </StackPanel>
 
@@ -290,6 +299,55 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+
+                                <!-- Bon de consum: materialul din stocul șantierului și articolul de deviz pentru fiecare linie -->
+                                <StackPanel Visibility="{Binding EsteBon, Converter={StaticResource Vizibil}}">
+                                    <TextBlock Text="{Binding MesajMateriale}" TextWrapping="Wrap" Foreground="#AD4E00" Margin="0,0,0,4"
+                                               Visibility="{Binding MesajMateriale, Converter={StaticResource NulAscuns}}" />
+                                    <DataGrid ItemsSource="{Binding Linii}" IsEnabled="{Binding Editabil}">
+                                        <DataGrid.Columns>
+                                            <DataGridTextColumn Header="Denumire în bon" Binding="{Binding Denumire}" Width="1.2*" IsReadOnly="True" />
+                                            <DataGridTextColumn Header="UM" Binding="{Binding Um}" Width="45" IsReadOnly="True" />
+                                            <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue=''}" Width="75" />
+                                            <DataGridComboBoxColumn Header="Material din stocul șantierului" Width="1.6*" SelectedValueBinding="{Binding ArticolId}"
+                                                                    SelectedValuePath="ArticolId" DisplayMemberPath="Eticheta">
+                                                <DataGridComboBoxColumn.ElementStyle>
+                                                    <Style TargetType="ComboBox">
+                                                        <Setter Property="ItemsSource" Value="{Binding DataContext.Materiale, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                                    </Style>
+                                                </DataGridComboBoxColumn.ElementStyle>
+                                                <DataGridComboBoxColumn.EditingElementStyle>
+                                                    <Style TargetType="ComboBox">
+                                                        <Setter Property="ItemsSource" Value="{Binding DataContext.Materiale, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                                    </Style>
+                                                </DataGridComboBoxColumn.EditingElementStyle>
+                                                <DataGridComboBoxColumn.CellStyle>
+                                                    <Style TargetType="DataGridCell">
+                                                        <Setter Property="Background" Value="{Binding FaraMaterial, Converter={StaticResource DeVerificat}}" />
+                                                    </Style>
+                                                </DataGridComboBoxColumn.CellStyle>
+                                            </DataGridComboBoxColumn>
+                                            <DataGridComboBoxColumn Header="Articol de deviz (opțional)" Width="1.3*" SelectedValueBinding="{Binding ArticolDevizCheie}"
+                                                                    SelectedValuePath="Cheie" DisplayMemberPath="Eticheta">
+                                                <DataGridComboBoxColumn.ElementStyle>
+                                                    <Style TargetType="ComboBox">
+                                                        <Setter Property="ItemsSource" Value="{Binding DataContext.ArticoleDeviz, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                                    </Style>
+                                                </DataGridComboBoxColumn.ElementStyle>
+                                                <DataGridComboBoxColumn.EditingElementStyle>
+                                                    <Style TargetType="ComboBox">
+                                                        <Setter Property="ItemsSource" Value="{Binding DataContext.ArticoleDeviz, RelativeSource={RelativeSource AncestorType=DataGrid}}" />
+                                                    </Style>
+                                                </DataGridComboBoxColumn.EditingElementStyle>
+                                            </DataGridComboBoxColumn>
+                                            <DataGridTextColumn Header="Valoare în bon" Binding="{Binding Valoare, TargetNullValue='', StringFormat=N2}" Width="80" IsReadOnly="True" />
+                                        </DataGrid.Columns>
+                                    </DataGrid>
+                                    <TextBlock TextWrapping="Wrap" Foreground="#667085" FontSize="12" Margin="0,6,0,0">
+                                        <Run Text="Total în bon (informativ):" /> <Run Text="{Binding TotalBon, Mode=OneWay, StringFormat=N2}" FontWeight="SemiBold" />
+                                        <Run Text="lei. În aplicație consumul se evaluează la costul mediu (CMP) din stocul șantierului; fără articol de deviz, consumul merge la cheltuielile generale ale proiectului." />
+                                    </TextBlock>
+                                </StackPanel>
 
                                 <!-- Totalurile facturii -->
                                 <StackPanel Visibility="{Binding EsteFactura, Converter={StaticResource Vizibil}}" IsEnabled="{Binding Editabil}">

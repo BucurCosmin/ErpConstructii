@@ -84,6 +84,9 @@ public enum SursaPotrivire
 
     /// <summary>Denumirea articolului din nomenclator coincide (după normalizare).</summary>
     Denumire,
+
+    /// <summary>Denumirea seamănă (cuvinte comune): propunere de verificat (ex. importul bonurilor de consum).</summary>
+    Asemanare,
 }
 
 public sealed record ArticolPotrivit(ArticolCandidat Articol, SursaPotrivire Sursa);
@@ -122,4 +125,43 @@ public static class PotrivireArticol
             return new ArticolPotrivit(a3, SursaPotrivire.Denumire);
         return null;
     }
+
+    /// <summary>Pragul de asemănare (cuvinte comune / cuvinte în total) sub care nu se propune nimic.</summary>
+    public const double PragAsemanare = 0.5;
+
+    /// <summary>
+    /// Ca <see cref="Propune"/>, iar dacă nu găsește nimic, articolul cu denumirea cea mai asemănătoare (indicele Jaccard
+    /// pe cuvinte, peste <see cref="PragAsemanare"/>; la egalitate, aceeași UM). Pentru bonurile de consum importate din
+    /// hârtie: materialul trebuie să fie deja în stocul șantierului, cu denumirea din nomenclator.
+    /// </summary>
+    public static ArticolPotrivit? PropuneSauAsemanator(string denumire, string? unitateMasura, IReadOnlyList<AliasCandidat> aliasuri, IReadOnlyList<ArticolCandidat> articole)
+    {
+        if (Propune(denumire, null, aliasuri, articole) is { } sigur)
+            return sigur;
+
+        var cuvinte = Cuvinte(denumire);
+        if (cuvinte.Count == 0)
+            return null;
+
+        var um = PotrivireArticolUm(unitateMasura);
+        var cel = articole
+            .Select(a => (Articol: a, Scor: Jaccard(cuvinte, Cuvinte(a.Denumire)), AceeasiUm: um is not null && PotrivireArticolUm(a.UnitateMasura) == um))
+            .Where(x => x.Scor >= PragAsemanare)
+            .OrderByDescending(x => x.Scor)
+            .ThenByDescending(x => x.AceeasiUm)
+            .FirstOrDefault();
+        return cel.Articol is null ? null : new ArticolPotrivit(cel.Articol, SursaPotrivire.Asemanare);
+    }
+
+    private static HashSet<string> Cuvinte(string text) => [.. Cheie(text).Split(' ', StringSplitOptions.RemoveEmptyEntries)];
+
+    private static double Jaccard(HashSet<string> a, HashSet<string> b) =>
+        a.Count == 0 || b.Count == 0 ? 0 : (double)a.Intersect(b).Count() / a.Union(b).Count();
+
+    private static string? PotrivireArticolUm(string? um) => string.IsNullOrWhiteSpace(um) ? null : Cheie(um) switch
+    {
+        "L" or "LT" or "LITRI" or "LITRU" => "L",
+        "BUC" or "BUCATA" or "BUCATI" => "BUC",
+        var u => u,
+    };
 }

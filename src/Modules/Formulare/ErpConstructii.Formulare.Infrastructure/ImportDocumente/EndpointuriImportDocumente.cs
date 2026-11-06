@@ -19,7 +19,8 @@ namespace ErpConstructii.Formulare.Infrastructure.ImportDocumente;
 
 public sealed record PaginaImportDto(int Pagina, string Tip, string Descriere, string? Numar);
 
-public sealed record DocumentImportDto(string Tip, IReadOnlyList<int> Pagini, string? Numar, DateOnly? Data);
+/// <param name="Zona">Al câtelea document de pe aceste pagini (bonurile de consum, câte două pe pagină).</param>
+public sealed record DocumentImportDto(string Tip, IReadOnlyList<int> Pagini, string? Numar, DateOnly? Data, int? Zona = null);
 
 public sealed record ProblemaImportDto(string Severitate, string Locatie, string Mesaj);
 
@@ -127,7 +128,7 @@ internal static class EndpointuriImportDocumente
         }
 
         var clasificare = ClasificarePagini.Clasifica(text.Valoare);
-        var documente = ImpartireDocumente.Imparte(clasificare);
+        var documente = ImpartireDocumente.Imparte(clasificare, text.Valoare);
         var probleme = text.Probleme.ToList();
         if (documente.Count == 0)
         {
@@ -141,7 +142,7 @@ internal static class EndpointuriImportDocumente
             extensie == ".pdf" && clasificare.Count > 1,
             text.Valoare.DinOcr,
             clasificare.Select(p => new PaginaImportDto(p.Pagina, p.Tip.ToString(), p.Descriere, p.Numar)).ToList(),
-            documente.Select(d => new DocumentImportDto(d.Tip.ToString(), d.Pagini, d.Numar, d.Data)).ToList(),
+            documente.Select(d => new DocumentImportDto(d.Tip.ToString(), d.Pagini, d.Numar, d.Data, d.Zona)).ToList(),
             probleme.Select(p => new ProblemaImportDto(p.Severitate.ToString(), p.Locatie, p.Mesaj)).ToList()));
     }
 

@@ -94,7 +94,35 @@ public sealed class ClientErp : IDisposable
     public Task<DocumentInregistrat> ImportaNecesarAsync(Guid proiectId, byte[] fisier, string nume, ConfirmaNecesar date, CancellationToken ct) =>
         TrimiteAsync<DocumentInregistrat>(() => CuFisier($"/api/aprovizionare/proiecte/{proiectId}/necesare-materiale/import", fisier, nume, date), ct);
 
+    public Task<InterpretareBonConsum> InterpreteazaBonAsync(byte[] fisier, string nume, int zona, CancellationToken ct) =>
+        TrimiteAsync<InterpretareBonConsum>(() => CuFisier($"/api/stocuri/bonuri-consum/import/interpretare?zona={zona}", fisier, nume, null), ct);
+
+    /// <summary>Materialele din stocul șantierului proiectului, cu propunerea pentru fiecare linie a bonului.</summary>
+    public Task<PotrivireBon> PotrivesteBonAsync(Guid proiectId, IEnumerable<(string Denumire, string? Um)> linii, CancellationToken ct) =>
+        TrimiteAsync<PotrivireBon>(() => CuJson($"/api/stocuri/proiecte/{proiectId}/bonuri-consum/import/potrivire",
+            new { linii = linii.Select(l => new { denumire = l.Denumire, unitateMasura = l.Um }) }), ct);
+
+    /// <summary>Devizul de referință al proiectului (articolele pe care se consumă); null dacă proiectul n-are deviz.</summary>
+    public async Task<DevizReferinta?> DevizAsync(Guid proiectId, CancellationToken ct)
+    {
+        try
+        {
+            return await GetAsync<DevizReferinta>($"/api/stocuri/proiecte/{proiectId}/deviz", ct);
+        }
+        catch (EroareServer e) when (e.Cod == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Bonul de consum din aplicație (număr de sistem BC/AAAA/NNNN, evaluat la CMP).</summary>
+    public Task<DocumentInregistrat> ImportaBonAsync(Guid proiectId, ConsumCerere cerere, CancellationToken ct) =>
+        TrimiteAsync<DocumentInregistrat>(() => CuJson($"/api/stocuri/proiecte/{proiectId}/consumuri", cerere), ct);
+
     // ------------------------------------------------------------------ transport
+
+    private static HttpRequestMessage CuJson(string url, object corp) =>
+        new(HttpMethod.Post, url) { Content = JsonContent.Create(corp, options: Json) };
 
     private Task<T> GetAsync<T>(string url, CancellationToken ct) => TrimiteAsync<T>(() => new HttpRequestMessage(HttpMethod.Get, url), ct);
 

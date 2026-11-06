@@ -26,7 +26,7 @@ public sealed record PartenerGasit(Guid Id, string Denumire, string? Cui);
 
 public sealed record PaginaImport(int Pagina, string Tip, string Descriere, string? Numar);
 
-public sealed record DocumentPropus(string Tip, List<int> Pagini, string? Numar, DateOnly? Data);
+public sealed record DocumentPropus(string Tip, List<int> Pagini, string? Numar, DateOnly? Data, int? Zona);
 
 public sealed record AnalizaImport(
     string Cheie, string NumeFisier, bool Separabil, bool DinOcr, List<PaginaImport> Pagini, List<DocumentPropus> Documente, List<Problema> Probleme);
@@ -125,3 +125,49 @@ public sealed record ConfirmaNecesar(string? NumarExtern, DateOnly DataDocument,
 
 /// <summary>Răspunsul la confirmarea unei note de comandă / unui necesar: numărul de sistem.</summary>
 public sealed record DocumentInregistrat(Guid Id, string Numar);
+
+// ------------------------------------------------------------------ bonuri de consum
+
+public sealed record LinieBonCitita(
+    int Rand, CampCitit<string> Denumire, string? Cod, CampCitit<string> UnitateMasura, CampCitit<decimal?> Cantitate,
+    CampCitit<decimal?> PretUnitar, CampCitit<decimal?> Valoare);
+
+public sealed record InterpretareBonConsum(
+    string NumeFisier,
+    bool DinOcr,
+    int NumarBonuri,
+    int Zona,
+    bool Gol,
+    CampCitit<string> Numar,
+    CampCitit<DateOnly?> Data,
+    CampCitit<string> Lucrare,
+    CampCitit<string> Gestiune,
+    string? Primitor,
+    string? Gestionar,
+    string? SefCompartiment,
+    List<LinieBonCitita> Linii,
+    CampCitit<decimal?> Total,
+    ProiectPropus? ProiectPropus,
+    List<Problema> Probleme,
+    string? BonExistent,
+    string ObservatiiPropuse);
+
+public sealed record MaterialSantier(Guid ArticolId, string Cod, string Denumire, string UnitateMasura, decimal Cantitate)
+{
+    public string Eticheta => $"{Cod} — {Denumire} ({Cantitate:0.###} {UnitateMasura} în șantier)";
+}
+
+public sealed record PropunereMaterial(Guid ArticolId, string Sursa);
+
+public sealed record PotrivireBon(Guid? GestiuneId, List<MaterialSantier> Materiale, List<PropunereMaterial?> Propuneri, string? Mesaj);
+
+public sealed record ArticolDeviz(Guid Cheie, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, string Obiect, string Categorie)
+{
+    public string Eticheta => $"{Simbol} — {Denumire}";
+}
+
+public sealed record DevizReferinta(Guid VersiuneId, string Denumire, string Tip, string Stare, List<ArticolDeviz> Articole);
+
+public sealed record LinieConsumCerere(Guid ArticolId, decimal Cantitate, Guid? ArticolDevizCheie);
+
+public sealed record ConsumCerere(DateOnly Data, List<LinieConsumCerere> Linii, string? Observatii);

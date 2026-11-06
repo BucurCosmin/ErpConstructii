@@ -144,6 +144,11 @@ public static partial class ClasificarePagini
         if (tot.Contains("GC 007", StringComparison.Ordinal) || tot.Contains("GC007", StringComparison.Ordinal))
             return TipPagina.NotaComanda;
 
+        // Bonul de consum (GC-087, două pe pagină): titlul „BON DE CONSUM” e mare și OCR-ul îl strică des; codul
+        // formularului și coloanele „predator / primitor / cantitatea eliberată” rămân lizibile.
+        if (PotrivireFormularBonConsum().IsMatch(tot) || (Cuvant(tot, "PREDATOR") && Cuvant(tot, "PRIMITOR") && tot.Contains("ELIBERAT", StringComparison.Ordinal)))
+            return TipPagina.BonConsum;
+
         if (titlu.Contains("NECESAR", StringComparison.Ordinal))
             return TipPagina.NecesarMateriale;
 
@@ -251,6 +256,9 @@ public static partial class ClasificarePagini
 
     [GeneratedRegex(@"\bFactur[aă](?:\s+fiscal[aă])?\s*(?:nr\.?|num[aă]r(?:ul)?|no\.?)\s*[:.]?\s*(?<n>[A-Z]{0,10}\s?\d[\d\-]*)|\b(?:Nr\.?|Num[aă]r(?:ul)?)\s*factur[aăi]+\s*[:.]?\s*(?<n>[A-Z]{0,10}[\s.]?\d[\d.\-]*\d|[A-Z]{0,10}[\s.]?\d)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PotrivireNumarFactura();
+
+    [GeneratedRegex(@"\bGC\s*-?\s*087\b", RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireFormularBonConsum();
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex SpatiiMultiple();

@@ -268,7 +268,7 @@ public sealed class FereastraModel : Observabil
 
         foreach (var d in _analiza.Documente)
         {
-            Adauga(new DocumentImport(d.Tip, d.Pagini, d.Numar, d.Data));
+            Adauga(new DocumentImport(d.Tip, d.Pagini, d.Numar, d.Data, d.Zona));
         }
 
         Ocupat = null;
@@ -312,6 +312,10 @@ public sealed class FereastraModel : Observabil
         if (e.PropertyName == nameof(DocumentImport.Stare))
         {
             Notifica(nameof(Rezumat));
+        }
+        else if (e.PropertyName == nameof(DocumentImport.ProiectId) && d is { EsteBon: true, Stare: StareDocument.DeVerificat })
+        {
+            Ruleaza(() => IncarcaMaterialeAsync(d), elibereaza: false); // stocul șantierului noului proiect
         }
         else if (e.PropertyName == nameof(DocumentImport.Tip) && d.Importabil)
         {
@@ -391,6 +395,17 @@ public sealed class FereastraModel : Observabil
                 d.NumeFisier = nume;
                 d.Incarca(n);
             }
+            else if (d.EsteBon)
+            {
+                var b = await _client.InterpreteazaBonAsync(fisier, nume, d.Zona ?? 1, CancellationToken.None);
+                d.Fisier = fisier;
+                d.NumeFisier = nume;
+                d.Incarca(b);
+                if (d is { Stare: StareDocument.DeVerificat, ProiectId: not null })
+                {
+                    await IncarcaMaterialeAsync(d);
+                }
+            }
             else
             {
                 var n = await _client.InterpreteazaNecesarAsync(fisier, nume, CancellationToken.None);
@@ -405,6 +420,55 @@ public sealed class FereastraModel : Observabil
             d.Mesaj = ex is EroareServer ? ex.Message : $"Serverul nu răspunde: {ex.Message}";
             throw;
         }
+    }
+
+    /// <summary>
+    /// Bon de consum: materialele din stocul șantierului proiectului ales (cu materialul propus pentru fiecare linie) și
+    /// articolele devizului. Consumul se face doar din ce e în șantier, la CMP.
+    /// </summary>
+    private async Task IncarcaMaterialeAsync(DocumentImport d)
+    {
+        if (d.ProiectId is not { } proiect)
+        {
+            d.Materiale.Clear();
+            d.ArticoleDeviz.Clear();
+            return;
+        }
+
+        d.MesajMateriale = "Se caută materialele în stocul șantierului…";
+        var potrivire = await _client!.PotrivesteBonAsync(proiect, d.Linii.Select(l => (l.Denumire, (string?)l.Um)), CancellationToken.None);
+        var deviz = await _client.DevizAsync(proiect, CancellationToken.None);
+        if (d.ProiectId != proiect)
+        {
+            return; // între timp s-a ales alt proiect
+        }
+
+        d.Materiale.Clear();
+        foreach (var m in potrivire.Materiale)
+        {
+            d.Materiale.Add(m);
+        }
+
+        d.ArticoleDeviz.Clear();
+        foreach (var a in deviz?.Articole ?? [])
+        {
+            d.ArticoleDeviz.Add(a);
+        }
+
+        var asemanatoare = 0;
+        foreach (var (linie, i) in d.Linii.Select((l, i) => (l, i)))
+        {
+            var propunere = potrivire.Propuneri.ElementAtOrDefault(i);
+            linie.ArticolId = propunere?.ArticolId;
+            asemanatoare += propunere?.Sursa == "Asemanare" ? 1 : 0;
+        }
+
+        var propuse = d.Linii.Count(l => l.ArticolId is not null);
+        d.MesajMateriale = potrivire.Mesaj ?? (propuse == d.Linii.Count && asemanatoare == 0
+            ? "Materialele au fost găsite în stocul șantierului."
+            : $"Material propus pentru {propuse} din {d.Linii.Count} linii" +
+              (asemanatoare > 0 ? $" ({asemanatoare} după o denumire asemănătoare: verifică)" : string.Empty) +
+              ". Alege materialul din stocul șantierului pentru fiecare linie.");
     }
 
     /// <summary>Numele PDF-ului tăiat (ca în aplicația web); fișierele care nu se pot tăia își păstrează numele.</summary>
@@ -482,6 +546,13 @@ public sealed class FereastraModel : Observabil
                     Gol(d.Observatii)), CancellationToken.None);
                 d.Mesaj = $"Nota de comandă {n.Numar} înregistrată pe proiectul {cod}.";
             }
+            else if (d.EsteBon)
+            {
+                var n = await _client!.ImportaBonAsync(proiect, new ConsumCerere(data,
+                    d.Linii.Select(l => new LinieConsumCerere(l.ArticolId!.Value, l.Cantitate!.Value, l.ArticolDevizCheie)).ToList(),
+                    Gol(d.Observatii)), CancellationToken.None);
+                d.Mesaj = $"Bonul de consum {n.Numar} înregistrat pe proiectul {cod}: materialele au ieșit din stocul șantierului, la CMP.";
+            }
             else
             {
                 var n = await _client!.ImportaNecesarAsync(proiect, d.Fisier!, d.NumeFisier!, new ConfirmaNecesar(
@@ -516,6 +587,7 @@ public sealed class FereastraModel : Observabil
             if (linie.Cantitate is null or 0) l.Add($"Linia {i}: cantitatea.");
             if (d.EsteFactura && linie.Valoare is null) l.Add($"Linia {i}: valoarea.");
             if (d.EsteFactura && linie.CotaProcent is null) l.Add($"Linia {i}: cota TVA.");
+            if (d.EsteBon && linie.ArticolId is null) l.Add($"Linia {i}: materialul din stocul șantierului.");
         }
 
         if (d.EsteFactura && (d.TotalFaraTva is null || d.TotalTva is null || d.TotalDePlata is null)) l.Add("Totalurile facturii.");

@@ -108,6 +108,7 @@ public sealed class ModulStocuri : IModul
             .Produces<TransferDto>(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(creare);
         // Consum pe articolele devizului, retur în depozit, consum real față de bugetul de materiale.
         EndpointuriConsum.Mapeaza(g);
+        EndpointuriImportBonConsum.Mapeaza(g);
 
         // Inventarul gestiunilor și stornarea NIR-urilor.
         EndpointuriInventar.Mapeaza(g);

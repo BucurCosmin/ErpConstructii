@@ -98,6 +98,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-APV-07 | Dosarele scanate (factură + e-Factura + notă de comandă + aviz + certificate în același PDF) se împart pe pagini: fiecare document se citește doar din paginile lui, iar din importul facturii se pot importa nota de comandă / necesarul din același fișier. | 1 | ✅ |
 | REQ-APV-08 | Un fișier cu mai multe documente (mai multe facturi cu dosarele lor, note de comandă, necesare, bonuri de consum) se importă integral din „Import documente”: documentele propuse automat, corectabile (tip, unire, despărțire), fiecare importat separat cu originalul lui (doar paginile documentului). | 1 | ✅ (bonurile de consum: doar recunoscute) |
 | REQ-APV-09 | Aplicație Windows de sine stătătoare pentru importul fișierelor cu mai multe documente (pornită din web sau direct): verificare pe rând lângă imaginea paginilor, import în aplicația principală prin API-ul ei, cu login-ul și drepturile utilizatorului. | 1 | ✅ |
+| REQ-STC-10 | Bonurile de consum de pe hârtie (formularul GC-087, mai multe pe pagină) se citesc din scanări și se importă ca bonuri de consum din stocul șantierului (materialul ales din stoc, articolul de deviz opțional, evaluare la CMP); un bon deja importat e recunoscut. | 1 | ✅ (în aplicația Windows) |
 
 ## STC — Stocuri
 

@@ -18,7 +18,11 @@ public enum TipDocumentImport
 
 /// <param name="Pagini">Paginile documentului (numerotarea din fișier, crescător).</param>
 /// <param name="Numar">Numărul documentului, dacă s-a citit (pentru factură: din factura tipărită sau din e-Factura).</param>
-public sealed record DocumentDetectat(TipDocumentImport Tip, IReadOnlyList<int> Pagini, string? Numar, DateOnly? Data);
+/// <param name="Zona">
+/// Al câtelea document de acest tip de pe aceste pagini (de la 1), când pe o pagină sunt mai multe (bonurile de consum,
+/// câte două pe foaie); interpretorul îl alege după <see cref="ZoneDocumente"/>. Null = documentul ocupă paginile întregi.
+/// </param>
+public sealed record DocumentDetectat(TipDocumentImport Tip, IReadOnlyList<int> Pagini, string? Numar, DateOnly? Data, int? Zona = null);
 
 /// <summary>
 /// Împarte un fișier scanat în documente: pe hârtie, oamenii țin la un loc mai multe achiziții (fiecare cu factura,
@@ -49,7 +53,8 @@ public static class ImpartireDocumente
         public DateOnly? Data => Principale.FirstOrDefault(p => p.Data is not null)?.Data;
     }
 
-    public static IReadOnlyList<DocumentDetectat> Imparte(IReadOnlyList<PaginaClasificata> pagini)
+    /// <param name="text">Textul paginilor: cu el, bonurile de consum de pe aceeași pagină devin documente separate.</param>
+    public static IReadOnlyList<DocumentDetectat> Imparte(IReadOnlyList<PaginaClasificata> pagini, TextDocument? text = null)
     {
         var grupuri = new List<Grup>();
         var inainte = new List<PaginaClasificata>(); // anexe dinaintea primului document
@@ -100,8 +105,30 @@ public static class ImpartireDocumente
 
         return grupuri
             .Select(g => new DocumentDetectat(g.Tip, g.Pagini.Select(p => p.Pagina).Order().ToList(), g.Numar, g.Data))
+            .SelectMany(d => d.Tip == TipDocumentImport.BonConsum && text is not null ? PeBonuri(d, text) : [d])
             .OrderBy(d => d.Pagini[0])
+            .ThenBy(d => d.Zona ?? 0)
             .ToList();
+    }
+
+    /// <summary>Bonurile de consum de pe paginile documentului, fiecare cu paginile lui și numărul lui pe aceste pagini.</summary>
+    private static IEnumerable<DocumentDetectat> PeBonuri(DocumentDetectat d, TextDocument text)
+    {
+        var pagini = d.Pagini.ToHashSet();
+        var zone = ZoneDocumente.Bonuri(text.Randuri.Where(r => pagini.Contains(r.Pagina)));
+        var deja = new Dictionary<string, int>();
+        foreach (var zona in zone)
+        {
+            var paginiZona = zona.Select(r => r.Pagina).Distinct().Order().ToList();
+            if (paginiZona.Count == 0)
+            {
+                continue;
+            }
+
+            var cheie = string.Join(',', paginiZona);
+            deja[cheie] = deja.GetValueOrDefault(cheie) + 1;
+            yield return new DocumentDetectat(TipDocumentImport.BonConsum, paginiZona, ZoneDocumente.NumarBon(zona), null, deja[cheie]);
+        }
     }
 
     private static TipDocumentImport? TipDocument(TipPagina tip) => tip switch

@@ -3,6 +3,7 @@ using ErpConstructii.Aprovizionare.Import;
 using ErpConstructii.Facturi.Import;
 using ErpConstructii.Formulare.Infrastructure.Extragere;
 using ErpConstructii.SharedKernel.Import;
+using ErpConstructii.Stocuri.Import;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -22,7 +23,10 @@ public sealed record DocumentCitit(
     decimal? TotalFaraTva = null,
     decimal? TotalTva = null,
     decimal? TotalDePlata = null,
-    List<LinieCitita>? Linii = null)
+    List<LinieCitita>? Linii = null,
+    string? Gestiune = null,
+    string? Primitor = null,
+    int? Zona = null)
 {
     /// <summary>Câmpurile marcate „de verificat” / „de completat” de interpretor (doar în raport).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
@@ -67,7 +71,7 @@ public sealed class Citire(string radacina, string folderCache, bool faraCache, 
         }
 
         var pagini = ClasificarePagini.Clasifica(text).ToList();
-        var documente = ImpartireDocumente.Imparte(pagini)
+        var documente = ImpartireDocumente.Imparte(pagini, text)
             .Select(d => Interpreteaza(d, text))
             .ToList();
         return new RezultatCitire(new FisierCitit(documente), text, pagini, null, dinCache);
@@ -77,7 +81,7 @@ public sealed class Citire(string radacina, string folderCache, bool faraCache, 
     {
         var pagini = d.Pagini.ToHashSet();
         var doc = text with { Randuri = text.Randuri.Where(r => pagini.Contains(r.Pagina)).ToList() };
-        var baza = new DocumentCitit(d.Tip.ToString(), [.. d.Pagini]);
+        var baza = new DocumentCitit(d.Tip.ToString(), [.. d.Pagini], Zona: d.Zona);
         switch (d.Tip)
         {
             case TipDocumentImport.Factura:
@@ -134,8 +138,32 @@ public sealed class Citire(string radacina, string folderCache, bool faraCache, 
                 };
             }
 
+            case TipDocumentImport.BonConsum:
+            {
+                var bonuri = InterpretorBonConsum.Interpreteaza(doc);
+                if (bonuri.ElementAtOrDefault((d.Zona ?? 1) - 1) is not { } b)
+                {
+                    return baza;
+                }
+
+                return baza with
+                {
+                    Numar = b.Numar.Valoare,
+                    Data = Data(b.Data),
+                    Lucrare = b.Lucrare.Valoare,
+                    Gestiune = b.Gestiune.Valoare,
+                    Primitor = b.Primitor,
+                    TotalFaraTva = Suma(b.Total),
+                    Linii = b.Linii.Select(l => new LinieCitita(l.Denumire.Valoare, l.UnitateMasura.Valoare, Suma(l.Cantitate),
+                        Suma(l.PretUnitar), Suma(l.Valoare), null)).ToList(),
+                    Certitudini = Certitudini(("numar", b.Numar.Certitudine), ("data", b.Data.Certitudine), ("lucrare", b.Lucrare.Certitudine),
+                        ("totalFaraTva", b.Total.Certitudine)),
+                    Probleme = b.Probleme.Select(p => p.Mesaj).ToList(),
+                };
+            }
+
             default:
-                return baza; // bon de consum (fără interpretor încă), anexe
+                return baza; // anexe
         }
     }
 

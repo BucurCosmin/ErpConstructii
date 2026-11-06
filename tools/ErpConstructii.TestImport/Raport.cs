@@ -105,7 +105,7 @@ public static class Raport
 
     private static void Document(StringBuilder h, DocumentCitit d, DocumentCitit? c)
     {
-        h.Append(CultureInfo.InvariantCulture, $"<div class=\"doc\"><h3>{Enc(d.Tip)} · p. {string.Join(", ", d.Pagini)}</h3>");
+        h.Append(CultureInfo.InvariantCulture, $"<div class=\"doc\"><h3>{Enc(d.Tip)} · p. {string.Join(", ", d.Pagini)}{(d.Zona is { } z ? $" · al {z}-lea de pe pagină" : string.Empty)}</h3>");
         if (d.Probleme.Count > 0)
         {
             h.Append("<div class=\"probleme\">").Append(string.Join("<br>", d.Probleme.Select(Enc))).Append("</div>");
@@ -117,6 +117,8 @@ public static class Raport
         Rand(h, "Furnizor", "furnizor", d, d.Furnizor, c?.Furnizor);
         Rand(h, "CUI furnizor", "furnizorCui", d, d.FurnizorCui, c?.FurnizorCui);
         Rand(h, "Lucrare", "lucrare", d, d.Lucrare, c?.Lucrare);
+        Rand(h, "Gestiune", "gestiune", d, d.Gestiune, c?.Gestiune);
+        Rand(h, "Primitor", "primitor", d, d.Primitor, c?.Primitor);
         Rand(h, "Total fără TVA", "totalFaraTva", d, Bani(d.TotalFaraTva), Bani(c?.TotalFaraTva));
         Rand(h, "TVA", "totalTva", d, Bani(d.TotalTva), Bani(c?.TotalTva));
         Rand(h, "Total de plată", "totalDePlata", d, Bani(d.TotalDePlata), Bani(c?.TotalDePlata));

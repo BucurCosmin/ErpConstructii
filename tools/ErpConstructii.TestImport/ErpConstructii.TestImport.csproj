@@ -11,5 +11,6 @@
     <ProjectReference Include="..\..\src\Modules\Formulare\ErpConstructii.Formulare.Infrastructure\ErpConstructii.Formulare.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Facturi\ErpConstructii.Facturi\ErpConstructii.Facturi.csproj" />
     <ProjectReference Include="..\..\src\Modules\Aprovizionare\ErpConstructii.Aprovizionare\ErpConstructii.Aprovizionare.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Stocuri\ErpConstructii.Stocuri\ErpConstructii.Stocuri.csproj" />
   </ItemGroup>
 </Project>

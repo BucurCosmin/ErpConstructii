@@ -28,7 +28,7 @@ public static class Comparare
 
         foreach (var (c, a) in citit.Documente.Zip(confirmat.Documente))
         {
-            var doc = $"{a.Tip} p.{string.Join(",", a.Pagini)}";
+            var doc = Descriere(a);
             Camp(d, doc, "tip", c.Tip, a.Tip);
             Camp(d, doc, "pagini", string.Join(",", c.Pagini), string.Join(",", a.Pagini));
             Camp(d, doc, "număr", c.Numar, a.Numar);
@@ -36,6 +36,8 @@ public static class Comparare
             Camp(d, doc, "furnizor", c.Furnizor, a.Furnizor);
             Camp(d, doc, "CUI furnizor", c.FurnizorCui, a.FurnizorCui);
             Camp(d, doc, "lucrare", c.Lucrare, a.Lucrare);
+            Camp(d, doc, "gestiune", c.Gestiune, a.Gestiune);
+            Camp(d, doc, "primitor", c.Primitor, a.Primitor);
             Camp(d, doc, "total fără TVA", c.TotalFaraTva, a.TotalFaraTva);
             Camp(d, doc, "TVA", c.TotalTva, a.TotalTva);
             Camp(d, doc, "total de plată", c.TotalDePlata, a.TotalDePlata);
@@ -65,7 +67,7 @@ public static class Comparare
         return d;
     }
 
-    public static string Descriere(DocumentCitit d) => $"{d.Tip} p.{string.Join(",", d.Pagini)}";
+    public static string Descriere(DocumentCitit d) => $"{d.Tip} p.{string.Join(",", d.Pagini)}{(d.Zona is { } z ? $" #{z}" : string.Empty)}";
 
     private static void Camp(List<Diferenta> d, string doc, string camp, string? citit, string? confirmat)
     {

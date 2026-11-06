@@ -30,6 +30,20 @@ public sealed class LinieEditabila : Observabil
     public decimal? CotaProcent { get => _cota; set => Seteaza(ref _cota, value); }
 
     public bool IntraInStoc { get => _intraInStoc; set => Seteaza(ref _intraInStoc, value); }
+
+    private Guid? _articolId;
+    private Guid? _articolDevizCheie;
+
+    /// <summary>Bon de consum: materialul din stocul șantierului care se consumă (propus, ales de utilizator).</summary>
+    public Guid? ArticolId { get => _articolId; set { if (Seteaza(ref _articolId, value)) Notifica(nameof(FaraMaterial)); } }
+
+    /// <summary>Bon de consum: articolul de deviz pe care se consumă (null = cheltuieli generale ale proiectului).</summary>
+    public Guid? ArticolDevizCheie { get => _articolDevizCheie; set => Seteaza(ref _articolDevizCheie, value); }
+
+    public bool FaraMaterial => ArticolId is null;
+
+    /// <summary>Bon de consum: codul materialului scris pe bon (ex. „R20681”).</summary>
+    public string? Cod { get; init; }
     public string? Termen { get => _termen; set => Seteaza(ref _termen, value); }
     public string? Observatii { get => _observatii; set => Seteaza(ref _observatii, value); }
 
@@ -61,9 +75,10 @@ public sealed class DocumentImport : Observabil
     private decimal? _totalTva;
     private decimal? _totalDePlata;
 
-    public DocumentImport(string tip, List<int> pagini, string? numar, DateOnly? data)
+    public DocumentImport(string tip, List<int> pagini, string? numar, DateOnly? data, int? zona = null)
     {
         _tip = tip;
+        Zona = zona;
         Pagini = pagini;
         NumarPropus = numar;
         DataPropusa = data;
@@ -75,6 +90,9 @@ public sealed class DocumentImport : Observabil
     }
 
     public List<int> Pagini { get; private set; }
+
+    /// <summary>Al câtelea document de pe aceste pagini (bonurile de consum, câte două pe pagină).</summary>
+    public int? Zona { get; private set; }
     public string? NumarPropus { get; private set; }
     public DateOnly? DataPropusa { get; }
 
@@ -86,7 +104,7 @@ public sealed class DocumentImport : Observabil
             if (Seteaza(ref _tip, value))
             {
                 Reseteaza();
-                Notifica(nameof(Titlu), nameof(EsteFactura), nameof(EsteNota), nameof(EsteNecesar), nameof(Importabil), nameof(EticheteTip));
+                Notifica(nameof(Titlu), nameof(EsteFactura), nameof(EsteNota), nameof(EsteNecesar), nameof(EsteBon), nameof(AreFurnizor), nameof(Importabil), nameof(EticheteTip));
             }
         }
     }
@@ -106,10 +124,13 @@ public sealed class DocumentImport : Observabil
     public bool EsteFactura => Tip == "Factura";
     public bool EsteNota => Tip == "NotaComanda";
     public bool EsteNecesar => Tip == "NecesarMateriale";
-    public bool Importabil => EsteFactura || EsteNota || EsteNecesar;
+    public bool EsteBon => Tip == "BonConsum";
+    public bool AreFurnizor => EsteFactura || EsteNota;
+    public bool Importabil => EsteFactura || EsteNota || EsteNecesar || EsteBon;
 
-    public string IntervalPagini => Pagini.Count == 1 ? $"p. {Pagini[0]}"
-        : Pagini[^1] - Pagini[0] == Pagini.Count - 1 ? $"p. {Pagini[0]}–{Pagini[^1]}" : $"p. {string.Join(", ", Pagini)}";
+    public string IntervalPagini => (Pagini.Count == 1 ? $"p. {Pagini[0]}"
+        : Pagini[^1] - Pagini[0] == Pagini.Count - 1 ? $"p. {Pagini[0]}–{Pagini[^1]}" : $"p. {string.Join(", ", Pagini)}")
+        + (Zona is { } z && EsteBon ? (z == 1 ? " (sus)" : z == 2 ? " (jos)" : $" (#{z})") : string.Empty);
 
     public string Titlu => Denumire(Tip) + ((Numar ?? NumarPropus) is { Length: > 0 } n ? $" nr. {n}" : string.Empty);
 
@@ -134,7 +155,7 @@ public sealed class DocumentImport : Observabil
         StareDocument.Importat => "importat",
         StareDocument.Eroare => "eroare",
         StareDocument.Sarit => "sărit",
-        _ => Tip == "BonConsum" ? "se introduce în Stocuri" : "nu se importă",
+        _ => "nu se importă",
     };
 
     /// <summary>Mesajul stării: eroarea serverului sau ce s-a creat la import.</summary>
@@ -171,6 +192,19 @@ public sealed class DocumentImport : Observabil
     public decimal? TotalDePlata { get => _totalDePlata; set { if (Seteaza(ref _totalDePlata, value)) Notifica(nameof(VerificareTotaluri)); } }
 
     public ObservableCollection<LinieEditabila> Linii { get; } = [];
+
+    // Bon de consum: stocul șantierului proiectului ales și articolele devizului lui.
+    public ObservableCollection<MaterialSantier> Materiale { get; } = [];
+    public ObservableCollection<ArticolDeviz> ArticoleDeviz { get; } = [];
+
+    private string? _mesajMateriale;
+
+    /// <summary>De ce nu sunt materiale de ales (proiect fără stoc în șantier) sau cum s-au propus.</summary>
+    public string? MesajMateriale { get => _mesajMateriale; set => Seteaza(ref _mesajMateriale, value); }
+
+    public string? Gestiune { get; private set; }
+    public string? Primitor { get; private set; }
+    public decimal? TotalBon { get; private set; }
     public ObservableCollection<string> Probleme { get; } = [];
 
     // Citite din document, de afișat lângă formular.
@@ -245,6 +279,9 @@ public sealed class DocumentImport : Observabil
     {
         Linii.Clear();
         Probleme.Clear();
+        Materiale.Clear();
+        ArticoleDeviz.Clear();
+        MesajMateriale = null;
         Fisier = null;
         Existent = null;
         EsteXml = false;
@@ -331,6 +368,42 @@ public sealed class DocumentImport : Observabil
         }
 
         Finalizeaza(n.Probleme);
+    }
+
+    public void Incarca(InterpretareBonConsum b)
+    {
+        DinOcr = b.DinOcr;
+        Numar = b.Numar.Valoare;
+        Data = Zi(b.Data);
+        Lucrare = b.Lucrare.Valoare;
+        Gestiune = b.Gestiune.Valoare;
+        Primitor = b.Primitor;
+        TotalBon = b.Total.Valoare;
+        Observatii = b.ObservatiiPropuse;
+        Existent = b.BonExistent is { } e ? $"Bonul a fost deja importat: {e}." : null;
+        Propune(b.ProiectPropus);
+        (NumarDeVerificat, DataDeVerificat, LucrareDeVerificat) = (b.Numar.DeVerificat, b.Data.DeVerificat, b.Lucrare.DeVerificat);
+        foreach (var l in b.Linii)
+        {
+            Linii.Add(new LinieEditabila
+            {
+                Denumire = l.Denumire.Valoare ?? string.Empty,
+                Um = l.UnitateMasura.Valoare ?? string.Empty,
+                Cantitate = l.Cantitate.Valoare,
+                Pret = l.PretUnitar.Valoare,
+                Valoare = l.Valoare.Valoare,
+                Cod = l.Cod,
+                DeVerificat = l.Denumire.DeVerificat || l.Cantitate.DeVerificat,
+            });
+        }
+
+        Finalizeaza(b.Probleme.Where(p => p.Locatie != "bon" || !p.Mesaj.StartsWith("Bonul a fost deja", StringComparison.Ordinal)).ToList());
+        Notifica(nameof(Gestiune), nameof(Primitor), nameof(TotalBon));
+        if (b.Gol)
+        {
+            Stare = StareDocument.Sarit;
+            Mesaj = "Bon necompletat (formular fără materiale): nu se importă.";
+        }
     }
 
     public void Incarca(InterpretareNecesar n)
