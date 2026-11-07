@@ -34,6 +34,8 @@ Abia după ce build-ul și testele sunt verzi, treci la backlog-ul de mai jos.
 powershell -File db/creeaza-baza-locala.ps1           # PostgreSQL local: baza erp, roluri, migrări
 docker compose up -d                                   # alternativ: PostgreSQL 17 + Gotenberg (PDF)
 dotnet run --project src/Host/ErpConstructii.Api       # http://localhost:5080, OpenAPI la /openapi/v1.json
+powershell -File scripts/reporneste-dezvoltare.ps1     # oprește API-ul de pe 5080, recompilează, pornește (+ Vite dacă nu rulează; -Web îl repornește)
+powershell -File deploy/reporneste-productie.ps1       # repornește producția; -Actualizeaza = recompilează codul curent cu setările existente
 
 # Migrări EF: una per modul, rulate cu rolul erp_owner (NU erp_app).
 dotnet ef migrations add Initial \
