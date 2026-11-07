@@ -119,6 +119,9 @@ public sealed class ModulStocuri : IModul
         // Inventarul gestiunilor și stornarea NIR-urilor.
         EndpointuriInventar.Mapeaza(g);
 
+        // Proveniența stocului: pe ce NIR / factură a intrat ce e acum în gestiuni.
+        EndpointuriTrasabilitate.Mapeaza(g);
+
         // PDF-urile documentelor (NIR, bon de consum, bon de transfer).
         DocumenteStocPdf.Mapeaza(g);
 
@@ -404,11 +407,7 @@ public sealed class ModulStocuri : IModul
         }).ToList());
     }
 
-    private static string FaraDiacritice(string text)
-    {
-        var fd = text.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
-        return new string(fd.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
-    }
+    private static string FaraDiacritice(string text) => Text.FaraDiacritice(text);
 
     // ---------------------------------------------------------------- transferuri în șantier
 

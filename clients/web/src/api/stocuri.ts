@@ -392,3 +392,38 @@ export const useRenuntaInventar = () => {
   const qc = useQueryClient()
   return useMutation({ mutationFn: (id: string) => api.delete<void>(`/api/stocuri/inventare/${id}`), onSuccess: () => reincarca(qc) })
 }
+
+/** O cantitate din stocul curent, cu documentul prin care a intrat (NIR + factură, sau plus la inventar). */
+export interface LotStoc {
+  gestiuneId: string
+  gestiune: string
+  gestiuneTip: 'Depozit' | 'Santier'
+  articolId: string
+  articolCod: string
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  origine: 'NIR' | 'Inventar' | 'Transfer'
+  documentId: string
+  documentNumar: string
+  dataIntrare: string
+  facturaId: string | null
+  facturaNumar: string | null
+  facturaData: string | null
+  furnizorDenumire: string | null
+  facturaProiectCod: string | null
+  /** Prețul de intrare (NIR); null fără dreptul „prețuri de cost”. */
+  pretIntrare: number | null
+  valoare: number | null
+}
+
+export interface FiltreTrasabilitate {
+  gestiuneId?: string
+  tip?: string
+  material?: string
+  cauta?: string
+}
+
+/** Proveniența stocului: pe ce NIR / factură a intrat fiecare cantitate din gestiuni. */
+export const useTrasabilitate = (f: FiltreTrasabilitate) =>
+  useQuery({ queryKey: [...chei.toate, 'trasabilitate', f], queryFn: () => api.get<LotStoc[]>(`/api/stocuri/trasabilitate${interogare({ ...f })}`) })

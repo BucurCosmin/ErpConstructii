@@ -21,6 +21,7 @@ import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { PrevizualizareFactura } from './PrevizualizareFactura'
+import { ProvenientaStoc } from './ProvenientaStoc'
 import { ReceptieFactura, type ModReceptie } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
 import { InventarGestiune } from './InventarGestiune'
@@ -415,6 +416,7 @@ export function Stocuri() {
         items={[
           { key: 'depozite', label: 'Stoc în depozite', children: <StocDepozite poateEdita={poateEdita} /> },
           { key: 'santier', label: 'Materiale în șantier', children: <MaterialeInSantier /> },
+          { key: 'provenienta', label: 'Proveniență (NIR / factură)', children: <ProvenientaStoc /> },
           { key: 'receptii', label: 'Recepții (NIR)', children: <Receptii poateCrea={poateCrea} poateAnula={poateAnula} /> },
           { key: 'transfer', label: 'Transfer / retur', children: <TransferSantier poateCrea={poateCrea} /> },
           { key: 'consum', label: 'Consum în șantier', children: <ConsumSantier poateCrea={poateCrea} /> },
