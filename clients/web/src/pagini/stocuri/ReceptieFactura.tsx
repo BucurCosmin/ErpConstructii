@@ -38,7 +38,10 @@ const sursaPropunere: Record<string, string> = {
  * cantitățile; ce nu a sosit rămâne de recepționat (alt NIR), dacă nu se închide linia („restul nu mai vine”, cu
  * observație). Fiecare linie se leagă de un material din nomenclator (propus automat; altfel unul nou din textul facturii).
  */
-export function ReceptieFactura({ facturaId, onInchide }: { facturaId?: string; onInchide: () => void }) {
+/** „tot” = toate liniile deschise bifate, cu tot ce a rămas; „partial” = nicio linie bifată, gestionarul le alege. */
+export type ModReceptie = 'tot' | 'partial'
+
+export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { facturaId?: string; mod?: ModReceptie; onInchide: () => void }) {
   const { message } = App.useApp()
   const propunere = usePropunereReceptie(facturaId)
   const gestiuni = useGestiuni()
@@ -61,7 +64,7 @@ export function ReceptieFactura({ facturaId, onInchide }: { facturaId?: string; 
       data: dayjs().isBefore(dayjs(p.data)) ? dayjs(p.data) : dayjs(),
       linii: p.linii.map((l) => ({
         indexFactura: l.indexFactura,
-        selectata: !l.inchisa,
+        selectata: mod === 'tot' && !l.inchisa,
         articolId: l.articol?.id ?? NOU,
         articolNouDenumire: l.denumire,
         articolNouUm: l.unitateMasura,
@@ -69,7 +72,7 @@ export function ReceptieFactura({ facturaId, onInchide }: { facturaId?: string; 
         restulVine: true,
       })),
     })
-  }, [p, depozite, form])
+  }, [p, depozite, form, mod])
 
   /** Toate liniile deschise, cu tot ce a rămas de primit (sau nicio linie). */
   const selecteazaTot = (tot: boolean) => {
@@ -146,7 +149,9 @@ export function ReceptieFactura({ facturaId, onInchide }: { facturaId?: string; 
                 style={{ marginBottom: 16 }}
                 title={partial
                   ? `Factura a fost deja recepționată parțial: mai sunt ${deschise} linii de primit.`
-                  : 'Bifează liniile sosite și verifică cantitățile; ce nu a sosit încă rămâne de recepționat (alt NIR).'}
+                  : mod === 'partial'
+                  ? 'Recepție parțială: bifează liniile sosite și scrie cantitatea primită; restul rămâne de recepționat (alt NIR).'
+                  : 'Toate liniile sunt bifate cu cantitatea din factură. Debifează ce nu a sosit sau micșorează cantitatea.'}
                 description="Cantitatea recepționată intră în stoc la prețul facturii. Dacă restul unei linii nu mai vine, debifează „restul vine” și scrie motivul."
               />
               <Space size="large" wrap align="end">

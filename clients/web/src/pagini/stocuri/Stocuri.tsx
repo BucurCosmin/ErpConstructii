@@ -1,5 +1,5 @@
 import { EditOutlined, EyeOutlined, FilePdfOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Drawer, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, Drawer, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useState } from 'react'
 import { useSearchParams } from 'react-router'
@@ -21,7 +21,7 @@ import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { PrevizualizareFactura } from './PrevizualizareFactura'
-import { ReceptieFactura } from './ReceptieFactura'
+import { ReceptieFactura, type ModReceptie } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
 import { InventarGestiune } from './InventarGestiune'
 import { TransferSantier } from './TransferSantier'
@@ -183,6 +183,8 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
   )
   const storneaza = useStorneazaNir()
   const [facturaId, setFacturaId] = useState<string>()
+  const [mod, setMod] = useState<ModReceptie>('tot')
+  const deschide = (id: string, m: ModReceptie) => { setMod(m); setFacturaId(id) }
   const [deStornat, setDeStornat] = useState<Nir>()
   const [deVazut, setDeVazut] = useState<FacturaDeReceptionat>()
   const [formStorno] = Form.useForm<{ motiv: string }>()
@@ -223,11 +225,16 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
             {
               title: '',
-              width: 230,
+              width: 330,
               render: (_, f) => (
                 <Space size={4} onClick={(e) => e.stopPropagation()}>
                   <Button size="small" icon={<EyeOutlined />} onClick={() => setDeVazut(f)}>Factura</Button>
-                  <Button type="primary" size="small" disabled={!poateCrea} onClick={() => setFacturaId(f.facturaId)}>Recepționează</Button>
+                  <Tooltip title="Toate liniile, cu cantitățile din factură">
+                    <Button type="primary" size="small" disabled={!poateCrea} onClick={() => deschide(f.facturaId, 'tot')}>Recepționează tot</Button>
+                  </Tooltip>
+                  <Tooltip title="Alegi liniile sosite și cantitățile; restul rămâne de recepționat">
+                    <Button size="small" disabled={!poateCrea} onClick={() => deschide(f.facturaId, 'partial')}>Parțial</Button>
+                  </Tooltip>
                 </Space>
               ),
             },
@@ -294,11 +301,14 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
           ]}
         />
       </Card>
-      <ReceptieFactura facturaId={facturaId} onInchide={() => setFacturaId(undefined)} />
+      <ReceptieFactura facturaId={facturaId} mod={mod} onInchide={() => setFacturaId(undefined)} />
       <Drawer open={!!deVazut} onClose={() => setDeVazut(undefined)} size={1100} destroyOnHidden
         title={deVazut && `Factura ${deVazut.numar} din ${dayjs(deVazut.data).format('DD.MM.YYYY')} — ${deVazut.furnizorDenumire}`}
         extra={deVazut && (
-          <Button type="primary" disabled={!poateCrea} onClick={() => { setFacturaId(deVazut.facturaId); setDeVazut(undefined) }}>Recepționează</Button>
+          <Space>
+            <Button type="primary" disabled={!poateCrea} onClick={() => { deschide(deVazut.facturaId, 'tot'); setDeVazut(undefined) }}>Recepționează tot</Button>
+            <Button disabled={!poateCrea} onClick={() => { deschide(deVazut.facturaId, 'partial'); setDeVazut(undefined) }}>Parțial</Button>
+          </Space>
         )}>
         {deVazut && (
           <Space orientation="vertical" style={{ width: '100%' }} size="middle">
