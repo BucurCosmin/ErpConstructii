@@ -108,7 +108,8 @@ public sealed record FacturaPrimitaDto(
     string? MotivAnulare,
     IReadOnlyList<LinieFactura> Linii,
     IReadOnlyList<string>? MaterialeGasite = null,
-    bool LiniiConcordante = true);
+    bool LiniiConcordante = true,
+    int Corectii = 0);
 
 public sealed record AnuleazaFacturaCerere(string Motiv);
 
@@ -145,6 +146,8 @@ public sealed class ModulFacturi : IModul
         g.MapPost("/primite/{id:guid}/anulare", Anuleaza).CerePermisiune(anulare);
         // Rapoartele (registru, totaluri) și tipărirea originalelor.
         EndpointuriRapoarteFacturi.Mapeaza(g);
+        // Corectura facturilor înregistrate cu date greșite (istoric păstrat).
+        EndpointuriCorectieFacturi.Mapeaza(g);
 
         g.MapPost("/primite/import/interpretare", Interpreteaza)
             .DisableAntiforgery()
@@ -205,8 +208,11 @@ public sealed class ModulFacturi : IModul
         var facturi = await q.OrderByDescending(f => f.DataEmitere).ThenByDescending(f => f.CreatLa).Take(2000).ToListAsync(ct);
         var id = facturi.Select(f => f.Id).ToList();
         var anulari = await db.Anulari.AsNoTracking().Where(a => id.Contains(a.FacturaId)).ToDictionaryAsync(a => a.FacturaId, ct);
+        var corectii = await db.Corectii.AsNoTracking().Where(c => id.Contains(c.FacturaId)).GroupBy(c => c.FacturaId)
+            .Select(g => new { g.Key, Numar = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Numar, ct);
         return Results.Ok(facturi.Select(f => CaDto(f, anulari.GetValueOrDefault(f.Id)) with
         {
+            Corectii = corectii.GetValueOrDefault(f.Id),
             // Ce materiale din factură au potrivit căutarea (afișate în listă).
             MaterialeGasite = termen is null ? null : f.Linii.Select(l => l.Denumire).Where(d => FaraDiacritice(d).Contains(termen, StringComparison.Ordinal)).Distinct().ToList(),
         }));

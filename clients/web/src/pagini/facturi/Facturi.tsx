@@ -13,6 +13,7 @@ export function Facturi() {
   const permisiuni = usePermisiuni()
   const poateCrea = permisiuni.data?.includes('financiar.creare') ?? false
   const poateAnula = permisiuni.data?.includes('financiar.anulare') ?? false
+  const poateEdita = permisiuni.data?.includes('financiar.editare') ?? false
 
   return (
     <>
@@ -29,7 +30,7 @@ export function Facturi() {
             {
               key: 'primite',
               label: 'Facturi primite',
-              children: <ListaFacturiPrimite poateCrea={poateCrea} poateAnula={poateAnula} onImport={() => navigheaza('/facturi?tab=import')} />,
+              children: <ListaFacturiPrimite poateCrea={poateCrea} poateAnula={poateAnula} poateEdita={poateEdita} onImport={() => navigheaza('/facturi?tab=import')} />,
             },
             { key: 'import', label: 'Import factură', children: <ImportFactura poateCrea={poateCrea} /> },
           ]}

@@ -1,5 +1,5 @@
 import { CheckOutlined, DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, DatePicker, Drawer, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, DatePicker, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import {
@@ -13,6 +13,7 @@ import {
 } from '../../api/stocuri'
 import type { Inventar, LinieInventar } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
+import { NumarRo } from '../../componente/NumarRo'
 
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
 
@@ -112,7 +113,7 @@ function FisaInventar({ inventar, onInchide, poateEdita, poateAproba }: { invent
           {
             title: 'Faptic', width: 140,
             render: (_, l) => editabil
-              ? <InputNumber min={0} decimalSeparator="," style={{ width: '100%' }} value={valori[l.articolId]?.faptic ?? null}
+              ? <NumarRo min={0} style={{ width: '100%' }} value={valori[l.articolId]?.faptic ?? null}
                   onChange={(v) => setValori({ ...valori, [l.articolId]: { faptic: v, pret: valori[l.articolId]?.pret ?? null } })} />
               : l.cantitateFaptica === null ? '—' : formatCantitate(l.cantitateFaptica),
           },
@@ -131,7 +132,7 @@ function FisaInventar({ inventar, onInchide, poateEdita, poateAproba }: { invent
               const f = valori[l.articolId]?.faptic
               const cerePret = l.cantitateScriptica === 0 && f != null && f > 0
               if (!editabil) return l.pretUnitarPlus === null ? '' : formatLei(l.pretUnitarPlus)
-              return cerePret ? <InputNumber min={0} decimalSeparator="," style={{ width: '100%' }} placeholder="lei/UM" value={valori[l.articolId]?.pret ?? null}
+              return cerePret ? <NumarRo min={0} style={{ width: '100%' }} placeholder="lei/UM" value={valori[l.articolId]?.pret ?? null}
                 onChange={(v) => setValori({ ...valori, [l.articolId]: { faptic: f ?? null, pret: v } })} /> : ''
             },
           },

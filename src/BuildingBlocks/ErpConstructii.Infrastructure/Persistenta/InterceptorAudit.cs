@@ -38,6 +38,11 @@ public sealed class InterceptorAudit(IFirmaCurenta firmaCurenta, IUtilizatorCure
         }
 
         var acum = ceas.Acum;
+        // Documentele blocate care primesc o corectură (entitate separată) în această salvare.
+        var corectate = context.ChangeTracker.Entries()
+            .Where(e => e.State == EntityState.Added && e.Entity is ICorectieDocument)
+            .Select(e => ((ICorectieDocument)e.Entity).DocumentCorectatId)
+            .ToHashSet();
         foreach (var intrare in context.ChangeTracker.Entries())
         {
             if (intrare.State == EntityState.Added && intrare.Entity is IApartineFirmei deFirma)
@@ -51,7 +56,8 @@ public sealed class InterceptorAudit(IFirmaCurenta firmaCurenta, IUtilizatorCure
             // Informațiile care se schimbă după aprobare (ex. starea în e-Factura, plățile) stau în
             // entități separate, nu pe documentul aprobat.
             if (intrare.State == EntityState.Modified && intrare.Entity is IDocumentCuStare
-                && intrare.OriginalValues.ToObject() is IDocumentCuStare { EsteBlocat: true })
+                && intrare.OriginalValues.ToObject() is IDocumentCuStare { EsteBlocat: true }
+                && !(intrare.Entity is Entitate e && corectate.Contains(e.Id)))
             {
                 throw new InvalidOperationException(
                     $"{intrare.Entity.GetType().Name} este aprobat și nu mai poate fi modificat. Folosește storno sau o versiune nouă.");

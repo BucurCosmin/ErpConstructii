@@ -43,6 +43,8 @@ export interface FacturaPrimita {
   materialeGasite?: string[] | null
   /** Suma liniilor dă totalurile facturii; altfel liniile au fost citite greșit (de verificat). */
   liniiConcordante: boolean
+  /** Câte corecturi are factura (istoric). */
+  corectii: number
 }
 
 export interface FiltreFacturi {
@@ -149,6 +151,52 @@ export const useAnuleazaFactura = () => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, motiv }: { id: string; motiv: string }) => api.post<FacturaPrimita>(`/api/facturi/primite/${id}/anulare`, { motiv }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: cheiFacturi.primite }),
+  })
+}
+
+/** Linia trimisă la corectură (cota TVA ca fracție: 0,21; TVA-ul liniei îl recalculează serverul). */
+export interface LinieCorectie {
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  pretUnitar: number
+  valoareFaraTva: number
+  cotaTva: number
+  intraInStoc: boolean
+}
+
+export interface CorectieFacturaCerere {
+  numar: string
+  dataEmitere: string
+  dataScadenta: string | null
+  moneda: string
+  furnizorDenumire: string
+  furnizorCui: string | null
+  proiectId: string
+  linii: LinieCorectie[]
+  totalFaraTva: number
+  totalTva: number
+  totalDePlata: number
+  referinta: string | null
+  observatii: string | null
+  motiv: string
+}
+
+export interface StareCorectieFactura {
+  /** Pozițiile liniilor intrate în stoc (NIR activ): materialul, cantitatea și prețul lor nu se mai schimbă. */
+  liniiReceptionate: number[]
+  corectii: { id: string; corectatLa: string; corectatDe: string; motiv: string; rezumat: string }[]
+}
+
+export const useStareCorectie = (id?: string) =>
+  useQuery({ queryKey: [...cheiFacturi.primite, 'corectare', id], queryFn: () => api.get<StareCorectieFactura>(`/api/facturi/primite/${id}/corectare`), enabled: !!id })
+
+/** Corectează datele unei facturi primite (cu motiv; istoricul se păstrează). */
+export const useCorecteazaFactura = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, date }: { id: string; date: CorectieFacturaCerere }) => api.put<{ mesaj: string; rezumat: string }>(`/api/facturi/primite/${id}`, date),
     onSuccess: () => qc.invalidateQueries({ queryKey: cheiFacturi.primite }),
   })
 }

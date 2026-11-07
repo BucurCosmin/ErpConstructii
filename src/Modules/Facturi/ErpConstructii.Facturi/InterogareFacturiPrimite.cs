@@ -29,3 +29,12 @@ public interface IInterogareFacturiPrimite
     /// <summary>Factura, dacă există, nu e anulată și are linii de stoc.</summary>
     Task<FacturaPentruReceptie?> PentruReceptieAsync(Guid facturaId, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Contractul invers, implementat de modulul Stocuri: ce linii ale unei facturi au intrat deja în stoc (NIR-uri active).
+/// Corectura facturii nu le mai poate schimba (întâi se stornează NIR-ul). Fără modulul Stocuri: nicio linie.
+/// </summary>
+public interface IInterogareReceptiiFactura
+{
+    Task<IReadOnlySet<int>> LiniiReceptionateAsync(Guid facturaId, CancellationToken ct = default);
+}

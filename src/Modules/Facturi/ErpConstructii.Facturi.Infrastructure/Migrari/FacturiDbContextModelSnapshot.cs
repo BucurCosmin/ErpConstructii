@@ -84,6 +84,85 @@ namespace ErpConstructii.Facturi.Infrastructure.Migrari
                     b.ToTable("anulari_facturi_primite", "facturi");
                 });
 
+            modelBuilder.Entity("ErpConstructii.Facturi.CorectieFacturaPrimita", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CorectatDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("corectat_de_id");
+
+                    b.Property<string>("CorectatDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("corectat_de_nume");
+
+                    b.Property<DateTimeOffset>("CorectatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("corectat_la");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("DateNoiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("date_noi_json");
+
+                    b.Property<string>("DateVechiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("date_vechi_json");
+
+                    b.Property<Guid>("FacturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("factura_id");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv");
+
+                    b.Property<string>("Rezumat")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("rezumat");
+
+                    b.HasKey("Id")
+                        .HasName("pk_corectii_facturi_primite");
+
+                    b.HasIndex("FacturaId")
+                        .HasDatabaseName("ix_corectii_facturi_primite_factura_id");
+
+                    b.HasIndex("FirmaId", "FacturaId")
+                        .HasDatabaseName("ix_corectii_facturi_primite_firma_id_factura_id");
+
+                    b.ToTable("corectii_facturi_primite", "facturi");
+                });
+
             modelBuilder.Entity("ErpConstructii.Facturi.DocumentFactura", b =>
                 {
                     b.Property<Guid>("Id")
@@ -296,6 +375,16 @@ namespace ErpConstructii.Facturi.Infrastructure.Migrari
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_anulari_facturi_primite_facturi_primite_factura_id");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Facturi.CorectieFacturaPrimita", b =>
+                {
+                    b.HasOne("ErpConstructii.Facturi.FacturaPrimita", null)
+                        .WithMany()
+                        .HasForeignKey("FacturaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_corectii_facturi_primite_facturi_primite_factura_id");
                 });
 #pragma warning restore 612, 618
         }

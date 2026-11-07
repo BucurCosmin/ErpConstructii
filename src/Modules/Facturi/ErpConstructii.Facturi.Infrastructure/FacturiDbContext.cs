@@ -13,6 +13,23 @@ public sealed class FacturiDbContext(DbContextOptions<FacturiDbContext> optiuni)
     public DbSet<FacturaPrimita> FacturiPrimite => Set<FacturaPrimita>();
     public DbSet<DocumentFactura> Documente => Set<DocumentFactura>();
     public DbSet<AnulareFacturaPrimita> Anulari => Set<AnulareFacturaPrimita>();
+    public DbSet<CorectieFacturaPrimita> Corectii => Set<CorectieFacturaPrimita>();
+}
+
+internal sealed class ConfigurareCorectie : IEntityTypeConfiguration<CorectieFacturaPrimita>
+{
+    public void Configure(EntityTypeBuilder<CorectieFacturaPrimita> b)
+    {
+        b.ToTable("corectii_facturi_primite");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Motiv).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.Rezumat).HasMaxLength(4000).IsRequired();
+        b.Property(x => x.DateVechiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.DateNoiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.CorectatDeNume).HasMaxLength(200).IsRequired();
+        b.HasIndex(x => new { x.FirmaId, x.FacturaId });
+        b.HasOne<FacturaPrimita>().WithMany().HasForeignKey(x => x.FacturaId).OnDelete(DeleteBehavior.Restrict);
+    }
 }
 
 internal sealed class ConfigurareAnulare : IEntityTypeConfiguration<AnulareFacturaPrimita>

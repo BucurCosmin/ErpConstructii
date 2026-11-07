@@ -12,7 +12,6 @@ import {
   Flex,
   Form,
   Input,
-  InputNumber,
   Modal,
   Result,
   Row,
@@ -33,6 +32,7 @@ import { ImportNecesarExtern } from '../aprovizionare/ImportNecesarExtern'
 import { ImportNotaComanda } from '../aprovizionare/ImportNotaComanda'
 import { useProiecte } from '../../api/interogari'
 import { formatLei } from '../../util/format'
+import { NumarRo } from '../../componente/NumarRo'
 
 const UNITATI = ['buc', 'kg', 't', 'm', 'ml', 'mp', 'mc', 'l', 'set', 'sac', 'cut', 'rola', 'pac', 'palet', 'ora', 'zi', 'forfetar']
 
@@ -446,23 +446,23 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                           </Col>
                           <Col flex="100px">
                             <Form.Item name={[name, 'cantitate']} rules={[{ required: true, message: '?' }]} {...stareCamp(c?.cantitate, l?.cantitate)}>
-                              <InputNumber decimalSeparator="," style={{ width: '100%' }} disabled={esteXml} />
+                              <NumarRo style={{ width: '100%' }} disabled={esteXml} />
                             </Form.Item>
                           </Col>
                           <Col flex="110px">
                             <Form.Item name={[name, 'pretUnitar']} {...stareCamp(c?.pretUnitar, l?.pretUnitar)}>
-                              <InputNumber decimalSeparator="," style={{ width: '100%' }} disabled={esteXml} />
+                              <NumarRo style={{ width: '100%' }} disabled={esteXml} />
                             </Form.Item>
                           </Col>
                           <Col flex="120px">
                             <Form.Item name={[name, 'valoareFaraTva']} rules={[{ required: true, message: '?' }]} {...stareCamp(c?.valoareFaraTva, l?.valoareFaraTva)}>
-                              <InputNumber decimalSeparator="," precision={2} style={{ width: '100%' }} disabled={esteXml} />
+                              <NumarRo precision={2} style={{ width: '100%' }} disabled={esteXml} />
                             </Form.Item>
                           </Col>
                           <Col flex="76px">
                             <Form.Item name={[name, 'cotaProcent']} rules={[{ required: true, message: '?' }]}
                               {...stareCamp(c?.cotaTva, l?.cotaProcent, (v) => rotunjeste(v * 100))}>
-                              <InputNumber min={0} max={100} style={{ width: '100%' }} disabled={esteXml} />
+                              <NumarRo min={0} max={100} style={{ width: '100%' }} disabled={esteXml} />
                             </Form.Item>
                           </Col>
                           <Col flex="52px" style={{ textAlign: 'center' }}>
@@ -496,7 +496,7 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                       rules={[{ required: true, message: 'Completează totalul.' }]}
                       {...stareCamp(rezultat[k], valori?.[k])}
                     >
-                      <InputNumber decimalSeparator="," precision={2} style={{ width: '100%' }} disabled={esteXml} addonAfter={valori?.moneda ?? 'RON'} />
+                      <NumarRo precision={2} style={{ width: '100%' }} disabled={esteXml} addonAfter={valori?.moneda ?? 'RON'} />
                     </Form.Item>
                   </Col>
                 ))}

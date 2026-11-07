@@ -83,8 +83,11 @@ public sealed class ModulStocuri : IModul
 {
     public string Nume => StocuriDbContext.NumeSchema;
 
-    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare) =>
+    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare)
+    {
         servicii.AdaugaDbContextModul<StocuriDbContext>(configurare, Nume);
+        servicii.AddScoped<IInterogareReceptiiFactura, InterogareReceptiiFactura>();
+    }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
     {

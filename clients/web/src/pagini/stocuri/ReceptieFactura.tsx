@@ -1,9 +1,10 @@
-import { Alert, App, AutoComplete, Button, Checkbox, DatePicker, Flex, Form, Input, InputNumber, Modal, Select, Space, Spin, Switch, Table, Tag, Tooltip, Typography } from 'antd'
+import { Alert, App, AutoComplete, Button, Checkbox, DatePicker, Flex, Form, Input, Modal, Select, Space, Spin, Switch, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useArticoleStoc, useGestiuni, usePropunereReceptie, useReceptioneaza } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { PrevizualizareFactura } from './PrevizualizareFactura'
+import { NumarRo } from '../../componente/NumarRo'
 
 const NOU = '__nou__'
 
@@ -245,7 +246,7 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
                           return (
                             <Form.Item name={[c.name, 'cantitateReceptionata']} style={{ marginBottom: 0 }}
                               rules={activa ? [{ required: true, message: '?' }, { type: 'number', min: 0.0001, message: '> 0' }] : []}>
-                              <InputNumber min={0} decimalSeparator="," style={{ width: '100%' }} disabled={!activa} addonAfter={p.linii[c.name].unitateMasura} />
+                              <NumarRo min={0} style={{ width: '100%' }} disabled={!activa} addonAfter={p.linii[c.name].unitateMasura} />
                             </Form.Item>
                           )
                         },

@@ -1,4 +1,4 @@
-import { DownloadOutlined, FilePdfOutlined, PrinterOutlined, SearchOutlined, StopOutlined, WarningOutlined } from '@ant-design/icons'
+import { DownloadOutlined, EditOutlined, FilePdfOutlined, PrinterOutlined, SearchOutlined, StopOutlined, WarningOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, DatePicker, Dropdown, Form, Input, Modal, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
@@ -8,6 +8,7 @@ import type { FacturaPrimita, FiltreFacturi, LinieFactura } from '../../api/fact
 import { useProiecte } from '../../api/interogari'
 import { formatData, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
+import { CorectieFactura } from './CorectieFactura'
 
 type Grupare = 'Furnizor' | 'Proiect' | 'Luna' | 'CotaTva'
 
@@ -94,7 +95,7 @@ function totaluri(facturi: FacturaPrimita[], grupare: Grupare): TotalGrup[] {
  * Facturile primite: filtre (proiect, furnizor / CUI / număr, material, perioadă, stare, sursă, monedă), tabel compact
  * cu totaluri pe monedă, totaluri pe furnizor / proiect / lună / cotă TVA, rapoarte PDF, tipărirea originalelor și export CSV.
  */
-export function ListaFacturiPrimite({ poateCrea, poateAnula, onImport }: { poateCrea: boolean; poateAnula: boolean; onImport: () => void }) {
+export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImport }: { poateCrea: boolean; poateAnula: boolean; poateEdita: boolean; onImport: () => void }) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const [filtre, setFiltre] = useState<FiltreFacturi>({ stare: 'Inregistrata' })
@@ -102,6 +103,7 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, onImport }: { poate
   const facturi = useFacturiPrimite(filtre)
   const anuleaza = useAnuleazaFactura()
   const [deAnulat, setDeAnulat] = useState<FacturaPrimita>()
+  const [deCorectat, setDeCorectat] = useState<FacturaPrimita>()
   const [formAnulare] = Form.useForm<{ motiv: string }>()
   const [selectate, setSelectate] = useState<string[]>([])
   const [grupare, setGrupare] = useState<Grupare>('Furnizor')
@@ -328,6 +330,7 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, onImport }: { poate
               render: (n: string, f) => (
                 <>
                   {n} {f.esteStorno && <Tag color="volcano">storno</Tag>}
+                  {f.corectii > 0 && <Tooltip title={`Corectată de ${f.corectii} ori (istoricul e în fereastra de corectare)`}><EditOutlined style={{ color: '#1677ff', marginInlineStart: 4 }} /></Tooltip>}
                   {!f.liniiConcordante && f.stare !== 'Anulata' && (
                     <Tooltip title="Suma liniilor nu dă totalul facturii: liniile au fost citite greșit la import. Totalurile facturii sunt cele folosite în rapoarte.">
                       <WarningOutlined style={{ color: '#d48806', marginInlineStart: 4 }} />
@@ -361,11 +364,16 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, onImport }: { poate
               render: (_, f) => f.stare === 'Anulata' ? <Tag color="red">Anulată</Tag> : f.sursa === 'EFactura' ? <Tag color="blue">e-Factura</Tag> : <Tag>PDF</Tag>,
             },
             {
-              title: '', width: 115, fixed: 'right',
+              title: '', width: 140, fixed: 'right',
               render: (_, f) => (
                 <Space size={2} onClick={(e) => e.stopPropagation()}>
                   {f.areXml && <Tooltip title="Descarcă XML-ul"><Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => void original(f, 'xml')}>XML</Button></Tooltip>}
                   {f.arePdf && <Tooltip title="Descarcă originalul PDF"><Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => void original(f, 'pdf')}>PDF</Button></Tooltip>}
+                  {f.stare === 'Inregistrata' && poateEdita && (
+                    <Tooltip title="Corectează datele facturii (ce s-a citit greșit)">
+                      <Button size="small" type="text" icon={<EditOutlined />} onClick={() => setDeCorectat(f)} />
+                    </Tooltip>
+                  )}
                   {f.stare === 'Inregistrata' && poateAnula && (
                     <Tooltip title="Anulează înregistrarea (ex. proiect greșit)">
                       <Button size="small" type="text" danger icon={<StopOutlined />} onClick={() => setDeAnulat(f)} />
@@ -409,6 +417,8 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, onImport }: { poate
           ]}
         />
       </Card>
+
+      <CorectieFactura factura={deCorectat} onInchide={() => setDeCorectat(undefined)} />
 
       <Modal
         title={`Anulează factura ${deAnulat?.numar ?? ''}`}

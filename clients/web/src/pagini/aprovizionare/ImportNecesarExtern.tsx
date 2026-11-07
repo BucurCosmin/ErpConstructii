@@ -11,7 +11,6 @@ import {
   Flex,
   Form,
   Input,
-  InputNumber,
   Result,
   Row,
   Select,
@@ -28,6 +27,7 @@ import { useImportaNecesar, useInterpreteazaNecesar } from '../../api/aprovizion
 import type { CampCitit, Certitudine, InterpretareNecesar, NecesarMateriale } from '../../api/aprovizionare'
 import { useProiecte } from '../../api/interogari'
 import { eticheteCertitudine, stareCamp, UNITATI } from './campuriCitite'
+import { NumarRo } from '../../componente/NumarRo'
 
 interface LinieFormular {
   denumire?: string
@@ -362,7 +362,7 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
                               rules={[{ required: true, message: 'Cantitatea?' }, { type: 'number', min: 0.0001, message: '> 0' }]}
                               {...stareCamp(citit?.cantitate, linie?.cantitate)}
                             >
-                              <InputNumber min={0} step={1} decimalSeparator="," style={{ width: '100%' }} />
+                              <NumarRo min={0} step={1} style={{ width: '100%' }} />
                             </Form.Item>
                           </Col>
                           <Col flex="160px">

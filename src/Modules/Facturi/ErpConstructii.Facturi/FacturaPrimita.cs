@@ -144,6 +144,116 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
         });
     }
 
+    /// <summary>Datele curente ale facturii (pentru corectură și istoric).</summary>
+    public DateFacturaPrimita Date() => new(
+        Numar, DataEmitere, DataScadenta, Moneda, FurnizorId, FurnizorDenumire, FurnizorCui, ProiectId, ProiectCod, Linii,
+        TotalFaraTva, TotalTva, TotalDePlata, Referinta, Observatii);
+
+    /// <summary>
+    /// Corectează datele facturii (citite / introduse greșit) și întoarce corectura, care se salvează împreună cu factura.
+    /// Dacă liniile au intrat deja în stoc (<paramref name="liniiReceptionate"/>, din NIR-uri active), acele linii (material,
+    /// UM, cantitate, preț, valoare, „intră în stoc”) și proiectul nu se mai schimbă: întâi se stornează NIR-ul.
+    /// </summary>
+    public Rezultat<CorectieFacturaPrimita> Corecteaza(
+        DateFacturaPrimita date, string motiv, IReadOnlySet<int> liniiReceptionate, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (string.IsNullOrWhiteSpace(motiv) || motiv.Length > 1000)
+            return Rezultat.Esuat<CorectieFacturaPrimita>(Eroare.Validare("Motivul corecturii este obligatoriu (maxim 1000 de caractere)."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat<CorectieFacturaPrimita>(Eroare.Validare("Utilizatorul care corectează este obligatoriu."));
+        if (ProblemeObligatorii(date) is { Count: > 0 } probleme)
+            return Rezultat.Esuat<CorectieFacturaPrimita>(Eroare.Validare(string.Join(" ", probleme)));
+
+        var nou = Normalizeaza(date);
+        var vechi = Date();
+        if (liniiReceptionate.Count > 0)
+        {
+            if (nou.ProiectId != vechi.ProiectId)
+                return Rezultat.Esuat<CorectieFacturaPrimita>(new Eroare("conflict", "Factura a intrat în stoc (NIR): proiectul nu se mai schimbă. Stornează întâi NIR-ul."));
+            foreach (var i in liniiReceptionate.Order())
+            {
+                if (i >= nou.Linii.Count || !AceeasiLinieDeStoc(vechi.Linii[i], nou.Linii[i]))
+                    return Rezultat.Esuat<CorectieFacturaPrimita>(new Eroare("conflict", 
+                        $"Linia {i + 1} („{vechi.Linii[i].Denumire}”) a intrat în stoc (NIR): materialul, cantitatea și prețul ei nu se mai schimbă. Stornează întâi NIR-ul."));
+            }
+        }
+
+        // Comparația pe valori (175 = 175,00), nu pe text: rezumatul gol = nimic schimbat.
+        var rezumat = RezumatCorectura(vechi, nou);
+        if (rezumat.Length == 0)
+            return Rezultat.Esuat<CorectieFacturaPrimita>(Eroare.Validare("Nu ai modificat nimic."));
+        var jsonVechi = JsonSerializer.Serialize(vechi);
+        var jsonNou = JsonSerializer.Serialize(nou);
+        (Numar, DataEmitere, DataScadenta, Moneda, FurnizorId, FurnizorDenumire, FurnizorCui, ProiectId, ProiectCod) =
+            (nou.Numar, nou.DataEmitere, nou.DataScadenta, nou.Moneda, nou.FurnizorId, nou.FurnizorDenumire, nou.FurnizorCui, nou.ProiectId, nou.ProiectCod);
+        LiniiJson = JsonSerializer.Serialize(nou.Linii);
+        _linii = null;
+        (TotalFaraTva, TotalTva, TotalDePlata, Referinta, Observatii) = (nou.TotalFaraTva, nou.TotalTva, nou.TotalDePlata, nou.Referinta, nou.Observatii);
+        return Rezultat.Ok(CorectieFacturaPrimita.Creeaza(Id, motiv, jsonVechi, jsonNou, rezumat, utilizatorId, utilizatorNume, moment));
+    }
+
+    private static DateFacturaPrimita Normalizeaza(DateFacturaPrimita d) => d with
+    {
+        Numar = d.Numar.Trim(),
+        Moneda = d.Moneda.Trim().ToUpperInvariant(),
+        FurnizorDenumire = d.FurnizorDenumire.Trim(),
+        FurnizorCui = string.IsNullOrWhiteSpace(d.FurnizorCui) ? null : ValidareFiscala.NormalizeazaCui(d.FurnizorCui),
+        ProiectCod = d.ProiectCod.Trim(),
+        Linii = d.Linii.Select(l => l with { Denumire = l.Denumire.Trim(), UnitateMasura = l.UnitateMasura.Trim() }).ToList(),
+        Referinta = string.IsNullOrWhiteSpace(d.Referinta) ? null : d.Referinta.Trim(),
+        Observatii = string.IsNullOrWhiteSpace(d.Observatii) ? null : d.Observatii.Trim(),
+    };
+
+    private static bool AceeasiLinieDeStoc(LinieFactura a, LinieFactura b) =>
+        a.Denumire.Trim() == b.Denumire.Trim() && a.UnitateMasura.Trim() == b.UnitateMasura.Trim() && a.Cantitate == b.Cantitate
+        && a.PretUnitar == b.PretUnitar && a.ValoareFaraTva == b.ValoareFaraTva && a.IntraInStoc == b.IntraInStoc;
+
+    /// <summary>Ce s-a schimbat, în cuvinte (pentru istoric).</summary>
+    public static string RezumatCorectura(DateFacturaPrimita vechi, DateFacturaPrimita nou)
+    {
+        var ro = System.Globalization.CultureInfo.GetCultureInfo("ro-RO");
+        string Bani(decimal v) => v.ToString("N2", ro);
+        string Cant(decimal v) => v.ToString("#,##0.####", ro);
+        string Procent(decimal v) => (v * 100).ToString("0.##", ro) + "%";
+        var p = new List<string>();
+        void Camp(string nume, string? a, string? b)
+        {
+            if (a != b) p.Add($"{nume}: {a ?? "—"} → {b ?? "—"}");
+        }
+
+        Camp("Număr", vechi.Numar, nou.Numar);
+        Camp("Data", vechi.DataEmitere.ToString("dd.MM.yyyy", ro), nou.DataEmitere.ToString("dd.MM.yyyy", ro));
+        Camp("Scadența", vechi.DataScadenta?.ToString("dd.MM.yyyy", ro), nou.DataScadenta?.ToString("dd.MM.yyyy", ro));
+        Camp("Moneda", vechi.Moneda, nou.Moneda);
+        Camp("Furnizor", vechi.FurnizorDenumire, nou.FurnizorDenumire);
+        Camp("CUI", vechi.FurnizorCui, nou.FurnizorCui);
+        if (vechi.ProiectId != nou.ProiectId) p.Add($"Proiect: {vechi.ProiectCod} → {nou.ProiectCod}");
+        Camp("Total fără TVA", Bani(vechi.TotalFaraTva), Bani(nou.TotalFaraTva));
+        Camp("Total TVA", Bani(vechi.TotalTva), Bani(nou.TotalTva));
+        Camp("Total de plată", Bani(vechi.TotalDePlata), Bani(nou.TotalDePlata));
+        Camp("Referința", vechi.Referinta, nou.Referinta);
+        Camp("Observații", vechi.Observatii, nou.Observatii);
+        for (var i = 0; i < Math.Max(vechi.Linii.Count, nou.Linii.Count); i++)
+        {
+            if (i >= nou.Linii.Count) { p.Add($"linia {i + 1} ștearsă („{vechi.Linii[i].Denumire}”)"); continue; }
+            if (i >= vechi.Linii.Count) { p.Add($"linia {i + 1} adăugată („{nou.Linii[i].Denumire}”)"); continue; }
+            var (a, b) = (vechi.Linii[i], nou.Linii[i]);
+            var d = new List<string>();
+            if (a.Denumire != b.Denumire) d.Add($"denumire „{a.Denumire}” → „{b.Denumire}”");
+            if (a.UnitateMasura != b.UnitateMasura) d.Add($"UM {a.UnitateMasura} → {b.UnitateMasura}");
+            if (a.Cantitate != b.Cantitate) d.Add($"cantitate {Cant(a.Cantitate)} → {Cant(b.Cantitate)}");
+            if (a.PretUnitar != b.PretUnitar) d.Add($"preț {Cant(a.PretUnitar)} → {Cant(b.PretUnitar)}");
+            if (a.ValoareFaraTva != b.ValoareFaraTva) d.Add($"valoare {Bani(a.ValoareFaraTva)} → {Bani(b.ValoareFaraTva)}");
+            if (a.CotaTva != b.CotaTva) d.Add($"cotă TVA {Procent(a.CotaTva)} → {Procent(b.CotaTva)}");
+            if (a.ValoareTva != b.ValoareTva) d.Add($"TVA {Bani(a.ValoareTva)} → {Bani(b.ValoareTva)}");
+            if (a.IntraInStoc != b.IntraInStoc) d.Add(b.IntraInStoc ? "intră în stoc" : "nu mai intră în stoc");
+            if (d.Count > 0) p.Add($"linia {i + 1}: {string.Join(", ", d)}");
+        }
+
+        var text = string.Join("; ", p);
+        return text.Length <= 4000 ? text : text[..3997] + "...";
+    }
+
     private static List<string> ProblemeObligatorii(DateFacturaPrimita d)
     {
         var p = new List<string>();
@@ -167,6 +277,39 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
             p.Add("Fiecare linie trebuie să aibă denumire, cantitate nenulă și cotă TVA între 0 și 100%.");
         return p;
     }
+}
+
+/// <summary>
+/// Corectura unei facturi primite (date citite / introduse greșit): istoric append-only cu datele dinainte și de după,
+/// motivul și cine a corectat. Factura se modifică doar împreună cu corectura ei (<see cref="ICorectieDocument"/>).
+/// </summary>
+public sealed class CorectieFacturaPrimita : EntitateFirma, ICorectieDocument
+{
+    private CorectieFacturaPrimita() { }
+
+    public Guid FacturaId { get; private set; }
+    public string Motiv { get; private set; } = string.Empty;
+    public string DateVechiJson { get; private set; } = "{}";
+    public string DateNoiJson { get; private set; } = "{}";
+    /// <summary>Ce s-a schimbat, pe scurt (ex. „Total TVA: 62,86 → 72,34; linia 2: cotă TVA 0% → 21%”).</summary>
+    public string Rezumat { get; private set; } = string.Empty;
+    public Guid CorectatDeId { get; private set; }
+    public string CorectatDeNume { get; private set; } = string.Empty;
+    public DateTimeOffset CorectatLa { get; private set; }
+
+    Guid ICorectieDocument.DocumentCorectatId => FacturaId;
+
+    internal static CorectieFacturaPrimita Creeaza(Guid facturaId, string motiv, string vechi, string nou, string rezumat, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment) => new()
+    {
+        FacturaId = facturaId,
+        Motiv = motiv.Trim(),
+        DateVechiJson = vechi,
+        DateNoiJson = nou,
+        Rezumat = rezumat,
+        CorectatDeId = utilizatorId,
+        CorectatDeNume = utilizatorNume.Trim(),
+        CorectatLa = moment,
+    };
 }
 
 /// <summary>

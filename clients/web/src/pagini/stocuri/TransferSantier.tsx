@@ -1,5 +1,5 @@
 import { DeleteOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, DatePicker, Form, Input, InputNumber, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, DatePicker, Form, Input, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
@@ -7,6 +7,7 @@ import { useGestiuni, useReturneaza, useSoldStoc, useTransfera, useTransferuri }
 import type { TransferStoc } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
+import { NumarRo } from '../../componente/NumarRo'
 
 interface Valori {
   gestiuneSursaId?: string
@@ -116,7 +117,7 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
                       <Col flex="200px">
                         <Form.Item name={[name, 'cantitate']}
                           rules={[{ required: true, message: 'Cantitatea?' }, { type: 'number', min: 0.0001, max: s?.cantitate, message: s ? `Max. ${formatCantitate(s.cantitate)}` : '> 0' }]}>
-                          <InputNumber min={0} decimalSeparator="," style={{ width: '100%' }} addonAfter={s?.unitateMasura} />
+                          <NumarRo min={0} style={{ width: '100%' }} addonAfter={s?.unitateMasura} />
                         </Form.Item>
                       </Col>
                       <Col flex="32px">

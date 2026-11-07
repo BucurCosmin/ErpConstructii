@@ -1,5 +1,5 @@
 import { DeleteOutlined, FileDoneOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Checkbox, Col, DatePicker, Form, Input, InputNumber, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Checkbox, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
@@ -7,6 +7,7 @@ import { useBonuriConsum, useConsuma, useConsumPeArticole, useDevizReferinta, us
 import type { BonConsum, ConsumPeArticole, FacturaPentruConsum } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
+import { NumarRo } from '../../componente/NumarRo'
 
 const GENERALE = '__generale__'
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
@@ -180,7 +181,7 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
                       <Col flex="180px">
                         <Form.Item name={[name, 'cantitate']}
                           rules={[{ required: true, message: 'Cantitatea?' }, { type: 'number', min: 0.0001, message: '> 0' }]}>
-                          <InputNumber min={0} decimalSeparator="," style={{ width: '100%' }} addonAfter={s?.unitateMasura} />
+                          <NumarRo min={0} style={{ width: '100%' }} addonAfter={s?.unitateMasura} />
                         </Form.Item>
                       </Col>
                       <Col flex="1 1 380px">

@@ -62,3 +62,13 @@ public interface IDocumentCuStare
 {
     bool EsteBlocat { get; }
 }
+
+/// <summary>
+/// Corectura unui document blocat (ex. o factură primită înregistrată cu date greșite): entitate separată, append-only,
+/// cu valorile vechi și noi, motivul și autorul. Documentul blocat se poate modifica DOAR în aceeași salvare în care se
+/// adaugă corectura lui (verificat de interceptorul de audit); altfel rămâne needitabil.
+/// </summary>
+public interface ICorectieDocument
+{
+    Guid DocumentCorectatId { get; }
+}
