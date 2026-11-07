@@ -41,6 +41,8 @@ export interface FacturaPrimita {
   linii: LinieFactura[]
   /** Materialele din factură care au potrivit căutarea. */
   materialeGasite?: string[] | null
+  /** Suma liniilor dă totalurile facturii; altfel liniile au fost citite greșit (de verificat). */
+  liniiConcordante: boolean
 }
 
 export interface FiltreFacturi {

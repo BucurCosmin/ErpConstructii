@@ -107,7 +107,8 @@ public sealed record FacturaPrimitaDto(
     DateTimeOffset InregistrataLa,
     string? MotivAnulare,
     IReadOnlyList<LinieFactura> Linii,
-    IReadOnlyList<string>? MaterialeGasite = null);
+    IReadOnlyList<string>? MaterialeGasite = null,
+    bool LiniiConcordante = true);
 
 public sealed record AnuleazaFacturaCerere(string Motiv);
 
@@ -142,6 +143,8 @@ public sealed class ModulFacturi : IModul
         g.MapGet("/primite/{id:guid}/original/{tip}", Original)
             .CereOricarePermisiune(vizualizare, Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare));
         g.MapPost("/primite/{id:guid}/anulare", Anuleaza).CerePermisiune(anulare);
+        // Rapoartele (registru, totaluri) și tipărirea originalelor.
+        EndpointuriRapoarteFacturi.Mapeaza(g);
 
         g.MapPost("/primite/import/interpretare", Interpreteaza)
             .DisableAntiforgery()
@@ -199,7 +202,7 @@ public sealed class ModulFacturi : IModul
         if (string.Equals(stare, "Anulata", StringComparison.OrdinalIgnoreCase)) q = q.Where(f => db.Anulari.Any(a => a.FacturaId == f.Id));
         if (string.Equals(stare, "Inregistrata", StringComparison.OrdinalIgnoreCase)) q = q.Where(f => !db.Anulari.Any(a => a.FacturaId == f.Id));
 
-        var facturi = await q.OrderByDescending(f => f.DataEmitere).ThenByDescending(f => f.CreatLa).Take(500).ToListAsync(ct);
+        var facturi = await q.OrderByDescending(f => f.DataEmitere).ThenByDescending(f => f.CreatLa).Take(2000).ToListAsync(ct);
         var id = facturi.Select(f => f.Id).ToList();
         var anulari = await db.Anulari.AsNoTracking().Where(a => id.Contains(a.FacturaId)).ToDictionaryAsync(a => a.FacturaId, ct);
         return Results.Ok(facturi.Select(f => CaDto(f, anulari.GetValueOrDefault(f.Id)) with
@@ -612,5 +615,6 @@ public sealed class ModulFacturi : IModul
         f.TotalFaraTva, f.TotalTva, f.TotalDePlata, f.Referinta, f.Observatii, f.Sursa.ToString(),
         anulare is null ? "Inregistrata" : "Anulata", f.EsteStorno,
         f.DocumentXmlId is not null, f.DocumentPdfId is not null, f.InregistrataDeNume, f.CreatLa,
-        anulare is null ? null : $"{anulare.Motiv} ({anulare.AnulataDeNume}, {anulare.AnulataLa:dd.MM.yyyy})", f.Linii);
+        anulare is null ? null : $"{anulare.Motiv} ({anulare.AnulataDeNume}, {anulare.AnulataLa:dd.MM.yyyy})", f.Linii,
+        LiniiConcordante: RaportFacturi.LiniiConcordante(f));
 }

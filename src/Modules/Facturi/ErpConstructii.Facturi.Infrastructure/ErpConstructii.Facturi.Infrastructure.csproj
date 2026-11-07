@@ -5,9 +5,10 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
     <ProjectReference Include="..\ErpConstructii.Facturi\ErpConstructii.Facturi.csproj" />
-    <!-- Contracte publice ale altor module (regula 1): permisiuni + firma activă, proiecte, parteneri. -->
+    <!-- Contracte publice ale altor module (regula 1): permisiuni + firma activă, proiecte, parteneri, formulare (PDF). -->
     <ProjectReference Include="..\..\Identitate\ErpConstructii.Identitate\ErpConstructii.Identitate.csproj" />
     <ProjectReference Include="..\..\Proiecte\ErpConstructii.Proiecte\ErpConstructii.Proiecte.csproj" />
     <ProjectReference Include="..\..\Parteneri\ErpConstructii.Parteneri\ErpConstructii.Parteneri.csproj" />
+    <ProjectReference Include="..\..\Formulare\ErpConstructii.Formulare\ErpConstructii.Formulare.csproj" />
   </ItemGroup>
 </Project>
