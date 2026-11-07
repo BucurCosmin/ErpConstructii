@@ -196,7 +196,7 @@ export const useStareCorectie = (id?: string) =>
 export const useCorecteazaFactura = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, date }: { id: string; date: CorectieFacturaCerere }) => api.put<{ mesaj: string; rezumat: string }>(`/api/facturi/primite/${id}`, date),
+    mutationFn: ({ id, date }: { id: string; date: CorectieFacturaCerere }) => api.put<{ mesaj: string; rezumat: string; avertismente: string[] }>(`/api/facturi/primite/${id}`, date),
     onSuccess: () => qc.invalidateQueries({ queryKey: cheiFacturi.primite }),
   })
 }

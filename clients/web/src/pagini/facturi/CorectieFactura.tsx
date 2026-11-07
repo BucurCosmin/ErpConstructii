@@ -1,4 +1,4 @@
-import { DeleteOutlined, LockOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons'
+import { DeleteOutlined, InboxOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Checkbox, Col, DatePicker, Flex, Form, Input, Modal, Row, Select, Space, Switch, Table, Timeline, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
@@ -43,7 +43,7 @@ const tvaLinie = (l?: Partial<LinieValori>) => bani((l?.valoareFaraTva ?? 0) * (
 /**
  * Corectura unei facturi primite înregistrate cu date greșite (citire OCR, tastare): toate câmpurile, liniile și
  * totalurile, cu verificarea din mers (cantitate × preț, suma liniilor = totalul) și originalul alături. Liniile intrate
- * în stoc (NIR activ) au materialul, cantitatea și prețul blocate. Motivul e obligatoriu; istoricul rămâne.
+ * în stoc (NIR activ) se corectează și ele, dar nu se șterg (NIR-ul rămâne cu valorile lui). Motivul e obligatoriu; istoricul rămâne.
  */
 export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimita; onInchide: () => void }) {
   const { message } = App.useApp()
@@ -115,7 +115,19 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
         },
       })
       message.success(`Factura ${v.numar} a fost corectată.`)
-      Modal.info({ title: 'Ce s-a schimbat', content: r.rezumat, width: 640 })
+      const avertismente = r.avertismente ?? []
+      ;(avertismente.length ? Modal.warning : Modal.info)({
+        title: 'Ce s-a schimbat',
+        width: 680,
+        content: (
+          <>
+            <p>{r.rezumat}</p>
+            {avertismente.length > 0 && (
+              <Alert type="warning" showIcon title="De verificat în stoc" description={<ul style={{ paddingLeft: 18, margin: 0 }}>{avertismente.map((a) => <li key={a}>{a}</li>)}</ul>} />
+            )}
+          </>
+        ),
+      })
       onInchide()
     } catch (e) {
       message.error((e as Error).message)
@@ -143,7 +155,7 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
             style={{ marginBottom: 12 }}
             title="Numerele se scriu cu VIRGULĂ la zecimale și punct la mii: 1.234,56 (punctul tastat e ignorat)."
             description={blocate.size > 0
-              ? 'Liniile marcate cu lacăt au intrat în stoc (NIR): materialul, cantitatea și prețul lor nu se mai schimbă (doar cota TVA); pentru ele stornează întâi NIR-ul. Proiectul rămâne același.'
+              ? 'Liniile marcate cu cutie au intrat deja în stoc (NIR). Le poți corecta; cât factura are recepții, liniile existente nu se șterg (se pot adăuga linii noi). NIR-ul și stocul rămân cu cantitatea și prețul recepționate: dacă și acolo e greșit, stornează NIR-ul și recepționează din nou.'
               : 'Corectura păstrează istoricul: ce era înainte, ce ai schimbat, cine și de ce.'}
           />
           <Form<Valori> form={form} layout="vertical" onFinish={salveaza} requiredMark="optional" size="small">
@@ -154,7 +166,7 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
               <Col span={3}><Form.Item name="moneda" label="Moneda" rules={[{ required: true, len: 3 }]}><Input maxLength={3} /></Form.Item></Col>
               <Col span={8}>
                 <Form.Item name="proiectId" label="Proiect" rules={[{ required: true }]}>
-                  <Select showSearch={{ optionFilterProp: 'label' }} disabled={blocate.size > 0}
+                  <Select showSearch={{ optionFilterProp: 'label' }}
                     options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
                 </Form.Item>
               </Col>
@@ -174,19 +186,19 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
                     dataSource={campuri}
                     tableLayout="fixed"
                     columns={[
-                      { title: '#', width: 34, render: (_, c) => (blocate.has(c.name) ? <Tooltip title="Intrată în stoc (NIR)"><LockOutlined /></Tooltip> : c.name + 1) },
+                      { title: '#', width: 34, render: (_, c) => (blocate.has(c.name) ? <Tooltip title="Intrată în stoc (NIR): se poate corecta, nu se poate șterge"><InboxOutlined style={{ color: '#1677ff' }} /></Tooltip> : c.name + 1) },
                       {
                         title: 'Denumire',
-                        render: (_, c) => <Form.Item name={[c.name, 'denumire']} noStyle rules={[{ required: true, whitespace: true }]}><Input disabled={blocate.has(c.name)} /></Form.Item>,
+                        render: (_, c) => <Form.Item name={[c.name, 'denumire']} noStyle rules={[{ required: true, whitespace: true }]}><Input /></Form.Item>,
                       },
-                      { title: 'UM', width: 70, render: (_, c) => <Form.Item name={[c.name, 'unitateMasura']} noStyle><Input disabled={blocate.has(c.name)} /></Form.Item> },
+                      { title: 'UM', width: 70, render: (_, c) => <Form.Item name={[c.name, 'unitateMasura']} noStyle><Input /></Form.Item> },
                       {
                         title: 'Cantitate', width: 105,
-                        render: (_, c) => <Form.Item name={[c.name, 'cantitate']} noStyle rules={[{ required: true }]}><NumarRo style={{ width: '100%' }} disabled={blocate.has(c.name)} /></Form.Item>,
+                        render: (_, c) => <Form.Item name={[c.name, 'cantitate']} noStyle rules={[{ required: true }]}><NumarRo style={{ width: '100%' }} /></Form.Item>,
                       },
                       {
                         title: 'Preț unitar', width: 115,
-                        render: (_, c) => <Form.Item name={[c.name, 'pretUnitar']} noStyle><NumarRo style={{ width: '100%' }} disabled={blocate.has(c.name)} /></Form.Item>,
+                        render: (_, c) => <Form.Item name={[c.name, 'pretUnitar']} noStyle><NumarRo style={{ width: '100%' }} /></Form.Item>,
                       },
                       {
                         title: 'Valoare', width: 150,
@@ -197,9 +209,9 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
                           return (
                             <Space.Compact style={{ width: '100%' }}>
                               <Form.Item name={[c.name, 'valoareFaraTva']} noStyle rules={[{ required: true }]}>
-                                <NumarRo style={{ width: '100%' }} precision={2} disabled={blocate.has(c.name)} />
+                                <NumarRo style={{ width: '100%' }} precision={2} />
                               </Form.Item>
-                              {dif && !blocate.has(c.name) && (
+                              {dif && (
                                 <Tooltip title={`Cantitate × preț = ${formatLei(calculat)}. Clic pentru a pune această valoare.`}>
                                   <Button icon={<WarningOutlined style={{ color: '#d48806' }} />}
                                     onClick={() => form.setFieldValue(['linii', c.name, 'valoareFaraTva'], calculat)} />
@@ -221,7 +233,9 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
                       {
                         title: '', width: 36,
                         render: (_, c) => !blocate.has(c.name) && campuri.length > 1 && (
-                          <Button size="small" type="text" danger icon={<DeleteOutlined />} disabled={[...blocate].some((b) => b > c.name)} onClick={() => remove(c.name)} />
+                          <Tooltip title={blocate.size > 0 && c.name < (factura?.linii.length ?? 0) ? 'Factura are linii intrate în stoc: liniile existente nu se șterg (NIR-ul le găsește după poziție), doar se corectează.' : undefined}>
+                            <Button size="small" type="text" danger icon={<DeleteOutlined />} disabled={blocate.size > 0 && c.name < (factura?.linii.length ?? 0)} onClick={() => remove(c.name)} />
+                          </Tooltip>
                         ),
                       },
                     ]}

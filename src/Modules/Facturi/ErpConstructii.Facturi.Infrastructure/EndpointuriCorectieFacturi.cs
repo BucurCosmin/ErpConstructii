@@ -30,13 +30,13 @@ public sealed record CorecteazaFacturaCerere(
 
 public sealed record CorectieFacturaDto(Guid Id, DateTimeOffset CorectatLa, string CorectatDe, string Motiv, string Rezumat);
 
-/// <param name="LiniiReceptionate">Pozițiile liniilor intrate în stoc (NIR activ): materialul, cantitatea și prețul lor sunt blocate.</param>
+/// <param name="LiniiReceptionate">Pozițiile liniilor intrate în stoc (NIR activ): se pot corecta, dar nu se pot șterge (NIR-ul rămâne cu valorile lui).</param>
 public sealed record StareCorectieFacturaDto(IReadOnlyList<int> LiniiReceptionate, IReadOnlyList<CorectieFacturaDto> Corectii);
 
 /// <summary>
 /// Corectura facturilor primite înregistrate cu date greșite (citire OCR, tastare): factura se modifică împreună cu o
-/// corectură append-only (<see cref="CorectieFacturaPrimita"/>: înainte / după, motiv, autor). Liniile intrate în stoc și
-/// proiectul nu se mai schimbă cât NIR-ul e activ. Drept: <c>financiar.editare</c>.
+/// corectură append-only (<see cref="CorectieFacturaPrimita"/>: înainte / după, motiv, autor). Orice câmp se poate corecta;
+/// la liniile intrate în stoc răspunsul spune ce rămâne de verificat în NIR. Drept: <c>financiar.editare</c>.
 /// </summary>
 internal static class EndpointuriCorectieFacturi
 {
@@ -100,12 +100,18 @@ internal static class EndpointuriCorectieFacturi
                 l.ValoareFaraTva, l.CotaTva, VerificareTotaluriFactura.TvaLinie(l.ValoareFaraTva, l.CotaTva), l.IntraInStoc)).ToList(),
             cerere.TotalFaraTva, cerere.TotalTva, cerere.TotalDePlata, cerere.Referinta, cerere.Observatii);
 
-        var r = f.Corecteaza(date, cerere.Motiv ?? string.Empty, await ReceptionateAsync(id, receptii, ct), uid, utilizator.Nume, ceas.Acum);
+        var receptionate = await ReceptionateAsync(id, receptii, ct);
+        var r = f.Corecteaza(date, cerere.Motiv ?? string.Empty, receptionate, uid, utilizator.Nume, ceas.Acum);
         if (!r.Succes)
             return r.Eroare.Cod == "conflict" ? Results.Conflict(new { mesaj = r.Eroare.Mesaj }) : Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
 
         db.Corectii.Add(r.Valoare);
         await db.SaveChangesAsync(ct);
-        return Results.Ok(new { mesaj = "Factura a fost corectată.", rezumat = r.Valoare.Rezumat });
+        return Results.Ok(new
+        {
+            mesaj = "Factura a fost corectată.",
+            rezumat = r.Valoare.Rezumat,
+            avertismente = FacturaPrimita.AvertismenteStoc(vechi, f.Date(), receptionate),
+        });
     }
 }

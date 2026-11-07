@@ -151,8 +151,8 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
 
     /// <summary>
     /// Corectează datele facturii (citite / introduse greșit) și întoarce corectura, care se salvează împreună cu factura.
-    /// Dacă liniile au intrat deja în stoc (<paramref name="liniiReceptionate"/>, din NIR-uri active), acele linii (material,
-    /// UM, cantitate, preț, valoare, „intră în stoc”) și proiectul nu se mai schimbă: întâi se stornează NIR-ul.
+    /// Orice câmp se poate corecta. Liniile intrate deja în stoc (<paramref name="liniiReceptionate"/>, din NIR-uri active) nu se
+    /// pot șterge și rămân „intră în stoc”; ce rămâne de verificat în NIR spune <see cref="AvertismenteStoc"/>.
     /// </summary>
     public Rezultat<CorectieFacturaPrimita> Corecteaza(
         DateFacturaPrimita date, string motiv, IReadOnlySet<int> liniiReceptionate, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
@@ -166,16 +166,17 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
 
         var nou = Normalizeaza(date);
         var vechi = Date();
-        if (liniiReceptionate.Count > 0)
+        // Orice câmp se poate corecta, și pe liniile intrate în stoc: NIR-ul își păstrează cantitatea și prețul lui (copiate la
+        // recepție), iar starea recepției se recalculează din factura corectată. NIR-ul se leagă de linie prin poziție, deci
+        // liniile existente nu se șterg, iar cele recepționate rămân „intră în stoc”.
+        if (liniiReceptionate.Count > 0 && nou.Linii.Count < vechi.Linii.Count)
+            return Rezultat.Esuat<CorectieFacturaPrimita>(new Eroare("conflict",
+                "Factura are linii intrate în stoc (NIR), legate de poziția lor: liniile existente nu se pot șterge, doar corecta (se pot adăuga linii noi). Stornează întâi NIR-ul."));
+        foreach (var i in liniiReceptionate.Order())
         {
-            if (nou.ProiectId != vechi.ProiectId)
-                return Rezultat.Esuat<CorectieFacturaPrimita>(new Eroare("conflict", "Factura a intrat în stoc (NIR): proiectul nu se mai schimbă. Stornează întâi NIR-ul."));
-            foreach (var i in liniiReceptionate.Order())
-            {
-                if (i >= nou.Linii.Count || !AceeasiLinieDeStoc(vechi.Linii[i], nou.Linii[i]))
-                    return Rezultat.Esuat<CorectieFacturaPrimita>(new Eroare("conflict", 
-                        $"Linia {i + 1} („{vechi.Linii[i].Denumire}”) a intrat în stoc (NIR): materialul, cantitatea și prețul ei nu se mai schimbă. Stornează întâi NIR-ul."));
-            }
+            if (!nou.Linii[i].IntraInStoc)
+                return Rezultat.Esuat<CorectieFacturaPrimita>(new Eroare("conflict",
+                    $"Linia {i + 1} („{vechi.Linii[i].Denumire}”) a intrat în stoc (NIR): rămâne „intră în stoc”. Stornează întâi NIR-ul."));
         }
 
         // Comparația pe valori (175 = 175,00), nu pe text: rezumatul gol = nimic schimbat.
@@ -207,6 +208,25 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
     private static bool AceeasiLinieDeStoc(LinieFactura a, LinieFactura b) =>
         a.Denumire.Trim() == b.Denumire.Trim() && a.UnitateMasura.Trim() == b.UnitateMasura.Trim() && a.Cantitate == b.Cantitate
         && a.PretUnitar == b.PretUnitar && a.ValoareFaraTva == b.ValoareFaraTva && a.IntraInStoc == b.IntraInStoc;
+
+    /// <summary>
+    /// Ce rămâne de verificat în stoc după corectură: liniile recepționate al căror material, cantitate sau preț s-a schimbat
+    /// (NIR-ul rămâne cu valorile lui) și proiectul schimbat după recepție.
+    /// </summary>
+    public static IReadOnlyList<string> AvertismenteStoc(DateFacturaPrimita vechi, DateFacturaPrimita nou, IReadOnlySet<int> liniiReceptionate)
+    {
+        var avertismente = new List<string>();
+        foreach (var i in liniiReceptionate.Order().Where(i => i < vechi.Linii.Count && i < nou.Linii.Count))
+        {
+            if (!AceeasiLinieDeStoc(vechi.Linii[i], nou.Linii[i]))
+                avertismente.Add($"Linia {i + 1} („{nou.Linii[i].Denumire.Trim()}”) e recepționată: NIR-ul și stocul rămân cu cantitatea și prețul din NIR. " +
+                    "Dacă trebuie corectat și stocul, stornează NIR-ul și recepționează din nou.");
+        }
+
+        if (liniiReceptionate.Count > 0 && nou.ProiectId != vechi.ProiectId)
+            avertismente.Add("Proiectul s-a schimbat după recepție: NIR-urile existente rămân pe proiectul vechi.");
+        return avertismente;
+    }
 
     /// <summary>Ce s-a schimbat, în cuvinte (pentru istoric).</summary>
     public static string RezumatCorectura(DateFacturaPrimita vechi, DateFacturaPrimita nou)

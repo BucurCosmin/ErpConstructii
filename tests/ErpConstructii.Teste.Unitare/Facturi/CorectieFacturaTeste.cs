@@ -48,27 +48,55 @@ public class CorectieFacturaTeste
     }
 
     [Fact]
-    public void Linia_intrata_in_stoc_nu_isi_schimba_cantitatea_dar_TVA_ul_da()
+    public void Linia_intrata_in_stoc_se_corecteaza_si_spune_ca_NIR_ul_ramane_cu_valorile_lui()
     {
         var f = Factura();
         var receptionate = new HashSet<int> { 0 };
+        var vechi = f.Date();
 
-        var cantitate = f.Corecteaza(Date(cota: 0.21m, cantitate: 31), "cantitate", receptionate, Utilizator, "Ana", Acum);
-        Assert.Equal("conflict", cantitate.Eroare.Cod);
-        Assert.Equal(30m, f.Linii[0].Cantitate);
+        var r = f.Corecteaza(Date(cota: 0.21m, cantitate: 31), "cantitate citită greșit", receptionate, Utilizator, "Ana", Acum);
 
-        // Cota TVA nu schimbă stocul (evaluat fără TVA): se poate corecta și după NIR.
-        Assert.True(f.Corecteaza(Date(cota: 0.21m), "cota TVA", receptionate, Utilizator, "Ana", Acum).Succes);
+        Assert.True(r.Succes);
+        Assert.Equal(31m, f.Linii[0].Cantitate);
+        var avertisment = Assert.Single(FacturaPrimita.AvertismenteStoc(vechi, f.Date(), receptionate));
+        Assert.Contains("Linia 1", avertisment);
     }
 
     [Fact]
-    public void Proiectul_nu_se_schimba_dupa_ce_factura_a_intrat_in_stoc()
+    public void Doar_cota_TVA_schimbata_pe_linia_din_stoc_nu_da_avertisment()
     {
         var f = Factura();
+        var receptionate = new HashSet<int> { 0 };
+        var vechi = f.Date();
 
-        var r = f.Corecteaza(Date(proiect: Guid.NewGuid()), "alt proiect", new HashSet<int> { 0 }, Utilizator, "Ana", Acum);
+        Assert.True(f.Corecteaza(Date(cota: 0.21m), "cota TVA", receptionate, Utilizator, "Ana", Acum).Succes);
+        Assert.Empty(FacturaPrimita.AvertismenteStoc(vechi, f.Date(), receptionate)); // stocul e evaluat fără TVA
+    }
 
-        Assert.Equal("conflict", r.Eroare.Cod);
-        Assert.True(f.Corecteaza(Date(proiect: Guid.NewGuid()), "alt proiect", Nimic, Utilizator, "Ana", Acum).Succes);
+    [Fact]
+    public void Proiectul_se_schimba_si_dupa_NIR_cu_avertisment()
+    {
+        var f = Factura();
+        var receptionate = new HashSet<int> { 0 };
+        var vechi = f.Date();
+
+        Assert.True(f.Corecteaza(Date(proiect: Guid.NewGuid()), "alt proiect", receptionate, Utilizator, "Ana", Acum).Succes);
+        Assert.Contains(FacturaPrimita.AvertismenteStoc(vechi, f.Date(), receptionate), a => a.Contains("Proiectul"));
+    }
+
+    [Fact]
+    public void Cu_linii_in_stoc_nu_se_sterg_linii_dar_se_pot_adauga()
+    {
+        var f = Factura();
+        var receptionate = new HashSet<int> { 0 }; // țevile recepționate (NIR-ul le găsește după poziție)
+        // ștergerea transportului ar muta pozițiile: refuzată cât factura are recepții
+        var stearsa = Date() with { Linii = [Date().Linii[0]] };
+        var scoasaDinStoc = Date() with { Linii = [Date().Linii[0] with { IntraInStoc = false }, Date().Linii[1]] };
+        var adaugata = Date() with { Linii = [.. Date().Linii, new LinieFactura("Paleți", "buc", 2, 10m, 20m, 0.21m, 4.2m, false)] };
+
+        Assert.Equal("conflict", f.Corecteaza(stearsa, "șterg linia", receptionate, Utilizator, "Ana", Acum).Eroare.Cod);
+        Assert.Equal("conflict", f.Corecteaza(scoasaDinStoc, "nu mai e stoc", receptionate, Utilizator, "Ana", Acum).Eroare.Cod);
+        Assert.Equal(2, f.Linii.Count);
+        Assert.True(f.Corecteaza(adaugata, "linie omisă la import", receptionate, Utilizator, "Ana", Acum).Succes);
     }
 }
