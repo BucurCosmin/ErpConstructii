@@ -147,7 +147,7 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
       <Segmented<StareNotaComanda> value={stare} onChange={(v) => { setStare(v); setSelectate([]) }}
         options={[
           { value: 'Emisa', label: 'Emise către furnizori' },
-          { value: 'DeAcceptat', label: <Badge count={deAcceptat.data?.length ?? 0} size="small" offset={[10, -2]}>De acceptat</Badge> },
+          { value: 'DeAcceptat', label: <Space size={6}>De acceptat<Badge count={deAcceptat.data?.length ?? 0} color="#d4380d" /></Space> },
           { value: 'Acceptata', label: 'Acceptate (la achiziții)' },
           { value: 'Respinsa', label: 'Respinse' },
         ]} />
@@ -302,7 +302,7 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
             },
             { title: 'Poz.', key: 'linii', width: 55, className: 'numeric', render: (_, n) => n.linii.length },
             {
-              title: 'Sursă', dataIndex: 'sursa', width: 85,
+              title: 'Sursă', dataIndex: 'sursa', width: 105,
               render: (s: NotaComanda['sursa'], n) => {
                 if (n.stare === 'DeAcceptat') return <Tag color="gold">de acceptat</Tag>
                 if (n.stare === 'Acceptata') return <Tag color="blue">acceptată</Tag>
@@ -311,14 +311,16 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
               },
             },
             {
-              title: '', key: 'actiuni', width: stare === 'DeAcceptat' ? 210 : 118, fixed: 'right',
+              title: '', key: 'actiuni', width: stare === 'DeAcceptat' ? 150 : 100, fixed: 'right',
               render: (_, n) => (
                 <Space size={2}>
                   {n.stare === 'DeAcceptat' && poateAproba && (
                     <>
                       <Popconfirm title={`Accepți ${n.numar}?`} description="Se aprobă și necesarul; nota ajunge la achiziții." okText="Acceptă" cancelText="Nu"
                         onConfirm={() => acceptaNota(n)}>
-                        <Button size="small" type="primary" icon={<CheckOutlined />} loading={accepta.isPending}>Acceptă</Button>
+                        <Tooltip title="Acceptă (aprobă necesarul; nota ajunge la achiziții)">
+                          <Button size="small" type="primary" icon={<CheckOutlined />} loading={accepta.isPending} />
+                        </Tooltip>
                       </Popconfirm>
                       <Tooltip title="Respinge (cu motiv)">
                         <Button size="small" danger icon={<CloseOutlined />} onClick={() => setDeRespins(n)} />
