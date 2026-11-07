@@ -273,6 +273,8 @@ internal static class EndpointuriNoteComanda
         var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
         if (proiect is null)
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
+        if (proiect.Arhivat)
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
 
         if (cerere.NecesarId is { } necesarId
             && !await db.NecesareMateriale.AnyAsync(n => n.Id == necesarId && n.ProiectId == proiectId && n.Stare == StareNecesarMateriale.Aprobata, ct))
@@ -484,6 +486,11 @@ internal static class EndpointuriNoteComanda
         if (proiect is null)
         {
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
+        }
+
+        if (proiect.Arhivat)
+        {
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
         }
 
         var cui = string.IsNullOrWhiteSpace(cerere.FurnizorCui) ? null : cerere.FurnizorCui.Trim();

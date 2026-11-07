@@ -69,3 +69,23 @@ export const useSalveazaCompartiment = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: cheiCompartimente }),
   })
 }
+
+/** Proiectele arhivate (D-39); lista obișnuită (`useProiecte`) le ascunde. */
+export const useProiecteArhivate = (activ = true) =>
+  useQuery({ queryKey: [...chei.proiecte, 'arhivate'], queryFn: () => api.get<Proiect[]>('/api/proiecte?arhivate=true'), enabled: activ })
+
+export const useArhiveazaProiect = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<Proiect>(`/api/proiecte/${id}/arhivare`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chei.proiecte }),
+  })
+}
+
+export const useReactiveazaProiect = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<Proiect>(`/api/proiecte/${id}/reactivare`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: chei.proiecte }),
+  })
+}

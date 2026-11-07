@@ -1,5 +1,5 @@
-import { EditOutlined, EnvironmentOutlined, UploadOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Col, Descriptions, Empty, Progress, Result, Row, Skeleton, Table, Tabs, Tag, Typography } from 'antd'
+import { EditOutlined, EnvironmentOutlined, InboxOutlined, RollbackOutlined, UploadOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Col, Descriptions, Empty, Popconfirm, Progress, Result, Row, Skeleton, Table, Tabs, Tag, Typography } from 'antd'
 import { useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { EroareApi } from '../../api/client'
@@ -8,6 +8,7 @@ import type { VersiuneDeviz } from '../../api/tipuri'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatData, stariProiect, stariVersiune, timpScurs, tipuriVersiune } from '../../util/format'
 import { ImportDeviz } from '../devize/ImportDeviz'
+import { useArhiveazaProiect, useReactiveazaProiect } from '../../api/proiecte'
 import { EditareProiect } from './EditareProiect'
 import { SantiereProiect } from './SantiereProiect'
 
@@ -20,6 +21,17 @@ export function DetaliiProiect() {
   const navigheaza = useNavigate()
   const [importDeschis, setImportDeschis] = useState(false)
   const [editareDeschisa, setEditareDeschisa] = useState(false)
+  const { message } = App.useApp()
+  const arhiveaza = useArhiveazaProiect()
+  const reactiveaza = useReactiveazaProiect()
+  const schimbaArhivarea = async (arhivare: boolean) => {
+    try {
+      await (arhivare ? arhiveaza : reactiveaza).mutateAsync(proiectId)
+      message.success(arhivare ? 'Proiectul a fost arhivat: nu mai apare în liste. Îl găsești în Proiecte → Arhivate.' : 'Proiectul a fost reactivat.')
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
   const tab = parametri.get('tab') ?? 'general'
 
   if (proiect.error instanceof EroareApi && proiect.error.status === 404) {
@@ -54,7 +66,15 @@ export function DetaliiProiect() {
               title={poateEdita ? undefined : 'Doar administratorul (drept de editare pe proiecte) editează proiectul'}>
               Editează
             </Button>
-            <Button type="primary" icon={<UploadOutlined />} disabled={!poateImporta} onClick={() => setImportDeschis(true)}>
+            {p && poateEdita && (p.arhivat
+              ? <Button icon={<RollbackOutlined />} loading={reactiveaza.isPending} onClick={() => void schimbaArhivarea(false)}>Reactivează</Button>
+              : (
+                <Popconfirm title={`Arhivezi proiectul ${p.cod}?`} okText="Arhivează" cancelText="Nu" onConfirm={() => schimbaArhivarea(true)}
+                  description="Dispare din liste și din alegeri și nu mai primește documente noi (doar returul materialelor rămase în șantier). Documentele și rapoartele rămân; îl reactivezi oricând.">
+                  <Button icon={<InboxOutlined />} loading={arhiveaza.isPending}>Arhivează</Button>
+                </Popconfirm>
+              ))}
+            <Button type="primary" icon={<UploadOutlined />} disabled={!poateImporta || p?.arhivat} onClick={() => setImportDeschis(true)}>
               Importă deviz
             </Button>
           </>
@@ -63,6 +83,13 @@ export function DetaliiProiect() {
 
       {proiect.error && !(proiect.error instanceof EroareApi && proiect.error.status === 404) && (
         <Alert type="error" showIcon title={(proiect.error as Error).message} style={{ marginBottom: 16 }} />
+      )}
+
+      {p?.arhivat && (
+        <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+          title={`Proiect arhivat${p.arhivatLa ? ` la ${formatData(p.arhivatLa)}` : ''}${p.arhivatDe ? ` de ${p.arhivatDe}` : ''}`}
+          description="Nu apare în liste și nu primește documente noi (doar returul materialelor rămase în șantier). Documentele lui rămân."
+          action={poateEdita ? <Button size="small" icon={<RollbackOutlined />} loading={reactiveaza.isPending} onClick={() => void schimbaArhivarea(false)}>Reactivează</Button> : undefined} />
       )}
 
       <Card styles={{ body: { paddingTop: 0 } }}>

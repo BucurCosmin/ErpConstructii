@@ -93,7 +93,7 @@ db/                                  roluri PostgreSQL, șablon RLS, script baz�
 docs/                                cerințe, decizii
 ```
 
-Proiectul se editează complet doar cu `proiecte.editare` pe toată firma (D-38); are mai multe șantiere (tab-ul „Șantiere” din fișa proiectului), iar compartimentele firmei se administrează în Administrare → Compartimente.
+Proiectul se editează complet și se arhivează / reactivează doar cu `proiecte.editare` pe toată firma (D-38, D-39: arhivat = ascuns din liste și alegeri, fără documente noi în afară de retur; endpointurile care creează documente verifică `DateProiectPentruDocument.Arhivat`); are mai multe șantiere (tab-ul „Șantiere” din fișa proiectului), iar compartimentele firmei se administrează în Administrare → Compartimente.
 
 Module existente: Audit (jurnalul de modificări, D-36: scris de `InterceptorAudit`, citit în `/jurnal`), Identitate (+ server de autentificare), Proiecte, Parteneri (furnizori, clienți și subantreprenori), Devize (+ Import.WinDoc), Aprovizionare (necesare de materiale cu aprobare, note de comandă către furnizori, import din scanări / Word), Contracte (doar calcul), Grafic (+ Import.Primavera, Import.Excel), Facturi (facturi primite: import e-Factura XML / ZIP SPV și PDF, înregistrare pe proiect), Stocuri (NIR, transfer / retur, consum pe articole de deviz, CMP), Formulare (+ Infrastructure Word/PDF).
 

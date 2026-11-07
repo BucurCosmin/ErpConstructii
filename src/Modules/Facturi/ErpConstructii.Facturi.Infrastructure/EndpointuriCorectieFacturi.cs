@@ -85,6 +85,8 @@ internal static class EndpointuriCorectieFacturi
         var proiect = await proiecte.CautaPentruDocumentAsync(cerere.ProiectId, ct);
         if (proiect is null)
             return Results.BadRequest(new { mesaj = "Proiectul ales nu există." });
+        if (proiect.Arhivat && proiect.Id != f.ProiectId)
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
 
         // Furnizorul: dacă s-a schimbat denumirea sau CUI-ul, se caută din nou în nomenclator.
         var vechi = f.Date();

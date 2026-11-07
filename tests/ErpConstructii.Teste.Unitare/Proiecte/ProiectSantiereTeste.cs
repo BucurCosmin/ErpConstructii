@@ -37,6 +37,29 @@ public class ProiectSantiereTeste
     }
 
     [Fact]
+    public void Proiectul_arhivat_se_reactiveaza_si_nu_se_arhiveaza_de_doua_ori()
+    {
+        var p = Proiect();
+        var moment = new DateTimeOffset(2026, 11, 7, 20, 0, 0, TimeSpan.FromHours(2));
+
+        Assert.True(p.Arhiveaza("Ana Admin", moment).Succes);
+        Assert.Equal((true, "Ana Admin", (DateTimeOffset?)moment), (p.Arhivat, p.ArhivatDeNume, p.ArhivatLa));
+        Assert.True(p.Arhiveaza("Ana Admin", moment).Esec);
+
+        Assert.True(p.Reactiveaza().Succes);
+        Assert.Equal((false, (string?)null, (DateTimeOffset?)null), (p.Arhivat, p.ArhivatDeNume, p.ArhivatLa));
+        Assert.True(p.Reactiveaza().Esec);
+    }
+
+    [Fact]
+    public void Proiectul_arhivat_e_semnalat_documentelor_noi()
+    {
+        var d = new DateProiectPentruDocument(Guid.NewGuid(), "P-01", "Școala", "", Arhivat: true);
+
+        Assert.Equal("Proiectul P-01 este arhivat: reactivează-l (Proiecte → Arhivate) ca să adaugi documente pe el.", d.MesajArhivat);
+    }
+
+    [Fact]
     public void Santierul_si_compartimentul_cer_denumire_si_se_dezactiveaza_in_loc_sa_se_stearga()
     {
         Assert.True(Santier.Creeaza(Guid.NewGuid(), " ", null).Esec);

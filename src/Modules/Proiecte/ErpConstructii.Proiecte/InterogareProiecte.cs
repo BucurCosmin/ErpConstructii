@@ -1,7 +1,11 @@
 namespace ErpConstructii.Proiecte;
 
 /// <summary>Informațiile de proiect necesare documentelor din alte module.</summary>
-public sealed record DateProiectPentruDocument(Guid Id, string Cod, string Denumire, string AdresaSantier);
+/// <param name="Arhivat">Proiectul arhivat (D-39) nu mai primește documente noi: verifică <see cref="MesajArhivat"/>.</param>
+public sealed record DateProiectPentruDocument(Guid Id, string Cod, string Denumire, string AdresaSantier, bool Arhivat = false)
+{
+    public string MesajArhivat => $"Proiectul {Cod} este arhivat: reactivează-l (Proiecte → Arhivate) ca să adaugi documente pe el.";
+}
 
 /// <summary>Cine cere materialele (D-38): un șantier al proiectului sau un compartiment al firmei.</summary>
 public sealed record LocSolicitant(Guid Id, bool EsteSantier, string Denumire, bool Activ);

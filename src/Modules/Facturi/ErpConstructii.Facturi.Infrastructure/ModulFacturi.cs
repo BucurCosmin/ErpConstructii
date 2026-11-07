@@ -383,6 +383,11 @@ public sealed class ModulFacturi : IModul
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
         }
 
+        if (proiect.Arhivat)
+        {
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
+        }
+
         var firma = await firme.FirmaActivaAsync(ct);
         var esteXml = EsteXmlSauZip(sursa!);
         DateFacturaPrimita dateFactura;

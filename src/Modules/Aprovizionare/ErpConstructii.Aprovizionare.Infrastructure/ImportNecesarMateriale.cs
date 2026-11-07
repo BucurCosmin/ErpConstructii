@@ -211,6 +211,11 @@ internal static class ImportNecesarMateriale
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
         }
 
+        if (proiect.Arhivat)
+        {
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
+        }
+
         // Opțional: cu șablon activ, necesarul importat poate fi și regenerat în formatul firmei.
         var sablon = await sabloane.SablonActivAsync(CodTipNecesar, ct);
 

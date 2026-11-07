@@ -51,5 +51,6 @@ internal sealed class ConfigurareProiect : IEntityTypeConfiguration<Proiect>
         b.Property(x => x.CuiBeneficiar).HasMaxLength(20);
         b.Property(x => x.AdresaSantier).HasMaxLength(500);
         b.Property(x => x.Stare).HasConversion<string>().HasMaxLength(40);
+        b.Property(x => x.ArhivatDeNume).HasMaxLength(200);
     }
 }

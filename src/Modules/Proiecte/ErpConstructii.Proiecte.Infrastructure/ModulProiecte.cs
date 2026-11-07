@@ -21,7 +21,10 @@ public sealed record ProiectDto(
     string Stare,
     DateOnly? DataInceput,
     DateOnly? TermenContractual,
-    DateTimeOffset CreatLa);
+    DateTimeOffset CreatLa,
+    bool Arhivat = false,
+    DateTimeOffset? ArhivatLa = null,
+    string? ArhivatDe = null);
 
 public sealed record CreeazaProiectCerere(string Cod, string Denumire, string Beneficiar, string? CuiBeneficiar, string AdresaSantier);
 
@@ -57,7 +60,9 @@ public sealed class ModulProiecte : IModul
         var administrare = Permisiuni.Pentru(ModulErp.Administrare, Actiune.Editare);
 
         // Lista: doar proiectele pe care utilizatorul are drept (firma vine deja filtrată prin RLS).
+        // arhivate = true: doar proiectele arhivate (D-39); altfel doar cele active.
         grup.MapGet("/", async (
+            bool? arhivate,
             ProiecteDbContext db,
             IServiciuPermisiuni permisiuni,
             IUtilizatorCurent utilizator,
@@ -67,7 +72,8 @@ public sealed class ModulProiecte : IModul
             var evaluator = await permisiuni.PentruUtilizatorAsync(utilizator.UtilizatorId!.Value, ct);
             var accesibile = evaluator.ProiecteAccesibile(vizualizare, firma.FirmaId!.Value);
 
-            var interogare = db.Proiecte.AsNoTracking();
+            var doarArhivate = arhivate == true;
+            var interogare = db.Proiecte.AsNoTracking().Where(p => p.Arhivat == doarArhivate);
             if (accesibile is not null)
             {
                 // Listă concretă: EF traduce List.Contains în „id = ANY(@lista)”.
@@ -77,7 +83,7 @@ public sealed class ModulProiecte : IModul
 
             return await interogare
                 .OrderBy(p => p.Cod)
-                .Select(p => new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa))
+                .Select(p => new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume))
                 .ToListAsync(ct);
         }).CerePermisiune(vizualizare);
 
@@ -86,7 +92,7 @@ public sealed class ModulProiecte : IModul
             var p = await db.Proiecte.AsNoTracking().FirstOrDefaultAsync(x => x.Id == proiectId, ct);
             return p is null
                 ? Results.NotFound()
-                : Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa));
+                : Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
         }).CerePermisiune(vizualizare);
 
         grup.MapPost("/", async (CreeazaProiectCerere cerere, ProiecteDbContext db, CancellationToken ct) =>
@@ -105,6 +111,31 @@ public sealed class ModulProiecte : IModul
             return Results.Created($"/api/proiecte/{proiect.Id}", new { proiect.Id });
         }).CerePermisiune(creare);
 
+        // Arhivarea / reactivarea (D-39): ca editarea, doar administratorul.
+        grup.MapPost("/{proiectId:guid}/arhivare", async (Guid proiectId, ProiecteDbContext db, IUtilizatorCurent utilizator, ICeas ceas, CancellationToken ct) =>
+        {
+            var p = await db.Proiecte.FirstOrDefaultAsync(x => x.Id == proiectId, ct);
+            if (p is null)
+                return Results.NotFound();
+            var r = p.Arhiveaza(utilizator.Nume ?? string.Empty, ceas.Acum);
+            if (r.Esec)
+                return Results.Conflict(new { mesaj = r.Eroare.Mesaj });
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
+        }).WithName("ArhiveazaProiect").CerePermisiunePeFirma(editare);
+
+        grup.MapPost("/{proiectId:guid}/reactivare", async (Guid proiectId, ProiecteDbContext db, CancellationToken ct) =>
+        {
+            var p = await db.Proiecte.FirstOrDefaultAsync(x => x.Id == proiectId, ct);
+            if (p is null)
+                return Results.NotFound();
+            var r = p.Reactiveaza();
+            if (r.Esec)
+                return Results.Conflict(new { mesaj = r.Eroare.Mesaj });
+            await db.SaveChangesAsync(ct);
+            return Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
+        }).WithName("ReactiveazaProiect").CerePermisiunePeFirma(editare);
+
         // Editarea completă: doar cine are dreptul de editare pe proiecte pe toată firma (administratorul).
         grup.MapPut("/{proiectId:guid}", async (Guid proiectId, ModificaProiectCerere cerere, ProiecteDbContext db, CancellationToken ct) =>
         {
@@ -121,7 +152,7 @@ public sealed class ModulProiecte : IModul
             if (r.Esec)
                 return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa));
+            return Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
         }).WithName("ModificaProiect").CerePermisiunePeFirma(editare);
 
         // Șantierele proiectului (D-38). Lista o folosesc și necesarele de materiale (aprovizionare).

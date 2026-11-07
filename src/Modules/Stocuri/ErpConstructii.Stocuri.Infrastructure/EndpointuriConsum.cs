@@ -95,6 +95,8 @@ internal static class EndpointuriConsum
         var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
         if (proiect is null)
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
+        if (proiect.Arhivat)
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
         var articoleDeviz = (await devize.DevizDeReferintaAsync(proiectId, ct))?.Articole.ToDictionary(a => a.CheieStabila) ?? [];
 
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);

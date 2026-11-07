@@ -21,6 +21,10 @@ export interface Proiect {
   dataInceput: string | null
   termenContractual: string | null
   creatLa: string
+  /** D-39: arhivat = invizibil în liste și alegeri, fără documente noi; se reactivează oricând. */
+  arhivat: boolean
+  arhivatLa: string | null
+  arhivatDe: string | null
 }
 
 export interface CreeazaProiect {

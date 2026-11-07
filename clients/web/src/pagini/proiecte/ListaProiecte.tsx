@@ -1,17 +1,19 @@
-import { DownloadOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Flex, Input, Segmented, Table, Tag, Typography } from 'antd'
+import { DownloadOutlined, PlusOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Flex, Input, Segmented, Table, Tag, Typography } from 'antd'
 import { useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
 import { usePermisiuni, useProiecte } from '../../api/interogari'
+import { useProiecteArhivate, useReactiveazaProiect } from '../../api/proiecte'
 import type { Proiect, StareProiect } from '../../api/tipuri'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatData, stariProiect } from '../../util/format'
 import { ProiectNou } from './ProiectNou'
 
-type Filtru = 'toate' | 'active' | StareProiect
+type Filtru = 'toate' | 'active' | 'arhivate' | StareProiect
 
 export function ListaProiecte() {
-  const { data, isLoading, error } = useProiecte()
+  const { message } = App.useApp()
+  const active = useProiecte()
   const permisiuni = usePermisiuni()
   const navigheaza = useNavigate()
   const [parametri, setParametri] = useSearchParams()
@@ -20,12 +22,26 @@ export function ListaProiecte() {
   const cauta = parametri.get('cauta') ?? ''
 
   const poateCrea = permisiuni.data?.includes('proiecte.creare') ?? false
+  const poateEdita = permisiuni.data?.includes('proiecte.editare') ?? false
+  // D-39: arhivatele vin dintr-o listă separată (cea obișnuită le ascunde peste tot în aplicație).
+  const arhivate = useProiecteArhivate(filtru === 'arhivate')
+  const reactiveaza = useReactiveazaProiect()
+  const { data, isLoading, error } = filtru === 'arhivate' ? arhivate : active
+
+  const reactiveazaProiect = async (p: Proiect) => {
+    try {
+      await reactiveaza.mutateAsync(p.id)
+      message.success(`Proiectul ${p.cod} a fost reactivat: apare din nou în liste.`)
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
 
   const filtrate = useMemo(() => {
     const t = cauta.trim().toLowerCase()
     return (data ?? []).filter((p) => {
       if (filtru === 'active' && ['Inchis', 'Pierdut'].includes(p.stare)) return false
-      if (filtru !== 'toate' && filtru !== 'active' && p.stare !== filtru) return false
+      if (filtru !== 'toate' && filtru !== 'active' && filtru !== 'arhivate' && p.stare !== filtru) return false
       if (!t) return true
       return [p.cod, p.denumire, p.beneficiar, p.adresaSantier, p.cuiBeneficiar ?? ''].some((c) => c.toLowerCase().includes(t))
     })
@@ -62,6 +78,7 @@ export function ListaProiecte() {
               { value: 'Contractat', label: 'Contractate' },
               { value: 'InExecutie', label: 'În execuție' },
               { value: 'toate', label: 'Toate' },
+              { value: 'arhivate', label: 'Arhivate' },
             ]}
           />
           <Input
@@ -107,6 +124,23 @@ export function ListaProiecte() {
               render: formatData,
               sorter: (a, b) => (a.termenContractual ?? '').localeCompare(b.termenContractual ?? ''),
             },
+            ...(filtru === 'arhivate'
+              ? [
+                  {
+                    title: 'Arhivat', key: 'arhivat', width: 190,
+                    render: (_: unknown, p: Proiect) => <Typography.Text type="secondary">{formatData(p.arhivatLa)}{p.arhivatDe ? ` · ${p.arhivatDe}` : ''}</Typography.Text>,
+                  },
+                  {
+                    title: '', key: 'reactivare', width: 140, fixed: 'right' as const,
+                    render: (_: unknown, p: Proiect) => (
+                      <Button size="small" icon={<RollbackOutlined />} disabled={!poateEdita} loading={reactiveaza.isPending}
+                        onClick={(e) => { e.stopPropagation(); void reactiveazaProiect(p) }}>
+                        Reactivează
+                      </Button>
+                    ),
+                  },
+                ]
+              : []),
           ]}
         />
       </Card>

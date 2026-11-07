@@ -48,6 +48,37 @@ public sealed class Proiect : EntitateFirma
     public DateOnly? DataInceput { get; private set; }
     public DateOnly? TermenContractual { get; private set; }
 
+    /// <summary>
+    /// Arhivat (D-39): proiectul dispare din liste și din alegeri și nu mai primește documente noi (în afară de returul
+    /// materialelor rămase în șantier). Documentele și rapoartele lui rămân. Se reactivează oricând.
+    /// </summary>
+    public bool Arhivat { get; private set; }
+
+    public DateTimeOffset? ArhivatLa { get; private set; }
+    public string? ArhivatDeNume { get; private set; }
+
+    public Rezultat Arhiveaza(string utilizatorNume, DateTimeOffset moment)
+    {
+        if (Arhivat)
+            return Rezultat.Esuat(Eroare.Validare("Proiectul este deja arhivat."));
+        if (string.IsNullOrWhiteSpace(utilizatorNume) || utilizatorNume.Length > 200)
+            return Rezultat.Esuat(Eroare.Validare("Numele utilizatorului este obligatoriu."));
+        Arhivat = true;
+        ArhivatLa = moment;
+        ArhivatDeNume = utilizatorNume.Trim();
+        return Rezultat.Ok();
+    }
+
+    public Rezultat Reactiveaza()
+    {
+        if (!Arhivat)
+            return Rezultat.Esuat(Eroare.Validare("Proiectul nu este arhivat."));
+        Arhivat = false;
+        ArhivatLa = null;
+        ArhivatDeNume = null;
+        return Rezultat.Ok();
+    }
+
     public void AlocaManager(Guid utilizatorId) => ManagerProiectId = utilizatorId;
 
     public Rezultat Contracteaza(DateOnly dataInceput, DateOnly termen)

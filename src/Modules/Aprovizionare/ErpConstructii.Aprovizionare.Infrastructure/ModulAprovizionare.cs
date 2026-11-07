@@ -252,6 +252,8 @@ public sealed partial class ModulAprovizionare : IModul
         var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
         if (proiect is null)
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
+        if (proiect.Arhivat)
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
 
         var (loc, eroareLoc) = await RezolvaSolicitantAsync(proiecte, proiect.Id, cerere.SantierId, cerere.CompartimentId, cerere.CompartimentSantier, ct);
         if (eroareLoc is not null)

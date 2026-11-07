@@ -83,6 +83,19 @@ namespace ErpConstructii.Proiecte.Infrastructure.Migrari
                         .HasColumnType("character varying(500)")
                         .HasColumnName("adresa_santier");
 
+                    b.Property<bool>("Arhivat")
+                        .HasColumnType("boolean")
+                        .HasColumnName("arhivat");
+
+                    b.Property<string>("ArhivatDeNume")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("arhivat_de_nume");
+
+                    b.Property<DateTimeOffset?>("ArhivatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("arhivat_la");
+
                     b.Property<string>("Beneficiar")
                         .IsRequired()
                         .HasMaxLength(300)

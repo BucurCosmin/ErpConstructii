@@ -450,6 +450,8 @@ public sealed class ModulStocuri : IModul
         var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
         if (proiect is null)
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
+        if (proiect.Arhivat)
+            return Results.Conflict(new { mesaj = proiect.MesajArhivat });
 
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await BlocheazaStoculAsync(db, tranzactie, fid, ct);
