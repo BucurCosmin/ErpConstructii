@@ -86,6 +86,7 @@ public sealed partial class ModulAprovizionare : IModul
 
         // Note de comandă către furnizori (GC 007) emise pe hârtie: import cu originalul arhivat.
         EndpointuriNoteComanda.Mapeaza(grup);
+        DocumenteNoteComanda.Mapeaza(grup);
 
         grup.MapGet("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/document.docx", DescarcaNecesar)
             .WithName("DescarcaNecesarMateriale")

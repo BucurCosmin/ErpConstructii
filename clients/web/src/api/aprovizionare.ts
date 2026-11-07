@@ -181,6 +181,20 @@ export interface NotaComanda {
   areOriginal: boolean
   inregistrataDe: string
   inregistrataLa: string
+  furnizorAdresa: string | null
+  furnizorTelefon: string | null
+  furnizorEmail: string | null
+  conditii: ConditiiComanda
+  necesarId: string | null
+  areSablon: boolean
+}
+
+/** Condițiile bifate pe formularul GC 007; null = nebifat. */
+export interface ConditiiComanda {
+  receptie: 'LaFurnizor' | 'LaPrimire' | null
+  clasaCalitate: 'Clasa4' | 'BestComercial' | null
+  transport: 'Auto' | 'Cfr' | null
+  plata: 'Op' | 'FilaCec' | 'Alte' | null
 }
 
 export interface FiltreNoteComanda {
@@ -189,6 +203,33 @@ export interface FiltreNoteComanda {
   material?: string
   dataDe?: string
   dataPanaLa?: string
+  cauta?: string
+  lucrare?: string
+  sursa?: 'Sistem' | 'Import'
+}
+
+export interface EmiteNotaComanda {
+  data: string | null
+  lucrare: string | null
+  furnizorDenumire: string
+  furnizorCui: string | null
+  furnizorAdresa: string | null
+  furnizorTelefon: string | null
+  furnizorEmail: string | null
+  conditii: ConditiiComanda
+  linii: LinieNotaComanda[]
+  observatii: string | null
+  necesarId: string | null
+}
+
+/** Emite o notă de comandă în aplicație (număr NC/AAAA/NNNN); furnizorul lipsă se adaugă în nomenclator. */
+export const useEmiteNotaComanda = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, date }: { proiectId: string; date: EmiteNotaComanda }) =>
+      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda`, date),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['aprovizionare', 'note-comanda'] }),
+  })
 }
 
 export const useNoteComanda = (filtre: FiltreNoteComanda) =>

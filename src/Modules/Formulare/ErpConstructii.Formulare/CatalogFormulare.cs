@@ -40,6 +40,56 @@ public static class CatalogFormulare
         ],
         SePoateImporta: true);
 
+    /// <summary>
+    /// Nota de comandă către furnizor (formularul GC 007): antet Beneficiar | COMANDA nr. / dată, lucrare | Furnizor,
+    /// condițiile bifate (☐ / ☒ în controalele „bifa_*”), tabelul de materiale cu termen și semnăturile.
+    /// </summary>
+    public static readonly TipFormular NotaComanda = new(
+        Cod: "nota-comanda",
+        Denumire: "Notă de comandă către furnizor (GC 007)",
+        ModulErp: "Aprovizionare",
+        Campuri:
+        [
+            .. CampuriComune,
+            new("firma_denumire", "Beneficiar (firma)"),
+            new("firma_adresa", "Adresa firmei"),
+            new("firma_cui", "CUI firmă"),
+            new("firma_nr_reg_com", "Nr. Reg. Com. firmă"),
+            new("firma_cont", "Contul bancar al firmei"),
+            new("firma_telefon", "Telefon firmă"),
+            new("firma_fax", "Fax firmă"),
+            new("firma_email", "E-mail firmă"),
+            new("proiect_cod", "Cod proiect"),
+            new("lucrare", "Obiect / lucrare"),
+            new("furnizor_denumire", "Furnizor", Obligatoriu: true),
+            new("furnizor_cui", "CUI furnizor"),
+            new("furnizor_adresa", "Adresa furnizorului"),
+            new("furnizor_telefon", "Telefon furnizor"),
+            new("furnizor_email", "E-mail furnizor"),
+            new("bifa_receptie_furnizor", "Recepție la furnizor (☐ / ☒)"),
+            new("bifa_receptie_primire", "Recepție la primire (☐ / ☒)"),
+            new("bifa_clasa_4", "Clasa de calitate 4 (☐ / ☒)"),
+            new("bifa_clasa_best", "Clasa de calitate best comercial (☐ / ☒)"),
+            new("bifa_transport_auto", "Transport auto (☐ / ☒)"),
+            new("bifa_transport_cfr", "Transport CFR (☐ / ☒)"),
+            new("bifa_plata_op", "Plata cu OP (☐ / ☒)"),
+            new("bifa_plata_cec", "Plata cu fila CEC (☐ / ☒)"),
+            new("bifa_plata_alte", "Plata altfel (☐ / ☒)"),
+            new("observatii", "Observații"),
+        ],
+        Tabele:
+        [
+            new TabelFormular("linii",
+            [
+                new("numar_crt", "Nr. crt."),
+                new("denumire", "Material / produs", Obligatoriu: true),
+                new("um", "UM", Obligatoriu: true),
+                new("cantitate", "Cantitate", TipCamp.Numar, Obligatoriu: true),
+                new("termen", "Termen"),
+            ], CelPutinOLinie: true),
+        ],
+        SePoateImporta: false);
+
     public static readonly TipFormular FacturaPrimita = new(
         Cod: "factura-primita",
         Denumire: "Factură primită de la furnizor",
@@ -169,6 +219,7 @@ public static class CatalogFormulare
     public static readonly IReadOnlyList<TipFormular> Toate =
     [
         NecesarMateriale,
+        NotaComanda,
         FacturaPrimita,
         Declarat("referat-necesitate", "Referat de necesitate / cerere materiale", "Aprovizionare", true),
         Declarat("cerere-oferta", "Cerere de ofertă către furnizori", "Aprovizionare", false),

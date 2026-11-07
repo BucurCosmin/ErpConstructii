@@ -1,22 +1,96 @@
-import { DownloadOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Form, Input, Row, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { DownloadOutlined, FilePdfOutlined, FileWordOutlined, PaperClipOutlined, PlusOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, DatePicker, Dropdown, Form, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
 import { useState } from 'react'
 import { api } from '../../api/client'
 import { useNoteComanda } from '../../api/aprovizionare'
-import type { FiltreNoteComanda, NotaComanda } from '../../api/aprovizionare'
+import type { FiltreNoteComanda, LinieNotaComanda, NotaComanda } from '../../api/aprovizionare'
 import { useProiecte } from '../../api/interogari'
+import { formatData } from '../../util/format'
+import { deschidePdf } from '../../util/pdf'
 
-const data = (d: string) => new Date(`${d}T00:00:00`).toLocaleDateString('ro-RO')
+interface ValoriFiltre {
+  perioada?: [Dayjs | null, Dayjs | null]
+  proiectId?: string
+  cauta?: string
+  furnizor?: string
+  material?: string
+  lucrare?: string
+  sursa?: NotaComanda['sursa']
+}
 
-/** Notele de comandă către furnizori (formularul GC 007), din proiectele accesibile utilizatorului. */
-export function ListaNoteComanda() {
+function descarca(blob: Blob, nume: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nume
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** CSV pentru Excel (separator „;”, BOM pentru diacritice, virgulă zecimală). */
+function csv(cap: string[], randuri: (string | number | null)[][], nume: string) {
+  const camp = (v: string | number | null) => {
+    if (v === null) return ''
+    const s = typeof v === 'number' ? v.toString().replace('.', ',') : v
+    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  descarca(new Blob(['﻿' + [cap.join(';'), ...randuri.map((r) => r.map(camp).join(';'))].join('\r\n')], { type: 'text/csv;charset=utf-8' }), nume)
+}
+
+const numeFisier = (n: NotaComanda) => `${n.numar}_${n.furnizorDenumire}`.replace(/[^a-zA-Z0-9_-]+/g, '_')
+const cantitate = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigits: 4 })
+
+/**
+ * Notele de comandă către furnizori (formularul GC 007): filtre (perioadă, lucrare / proiect, număr, furnizor, material, sursă),
+ * documentul Word din șablonul firmei, PDF, originalul scanat, rapoarte PDF pe lucrare și export CSV.
+ */
+export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () => void; poateCrea?: boolean }) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
-  const [form] = Form.useForm<FiltreNoteComanda>()
   const [filtre, setFiltre] = useState<FiltreNoteComanda>({})
   const note = useNoteComanda(filtre)
+  const [selectate, setSelectate] = useState<string[]>([])
+  const [seGenereaza, setSeGenereaza] = useState(false)
 
-  const descarcaOriginal = async (n: NotaComanda) => {
+  const lista = note.data ?? []
+  const alese = selectate.length ? lista.filter((n) => selectate.includes(n.id)) : lista
+  const nr = alese.length
+
+  const descriereFiltre = () => {
+    const p: string[] = []
+    if (filtre.dataDe || filtre.dataPanaLa) p.push(`perioada ${filtre.dataDe ? formatData(filtre.dataDe) : '…'} – ${filtre.dataPanaLa ? formatData(filtre.dataPanaLa) : '…'}`)
+    const pr = proiecte.data?.find((x) => x.id === filtre.proiectId)
+    if (pr) p.push(`proiectul ${pr.cod}`)
+    if (filtre.lucrare) p.push(`lucrarea „${filtre.lucrare}”`)
+    if (filtre.cauta) p.push(`numărul „${filtre.cauta}”`)
+    if (filtre.furnizor) p.push(`furnizorul „${filtre.furnizor}”`)
+    if (filtre.material) p.push(`materialul „${filtre.material}”`)
+    if (filtre.sursa) p.push(filtre.sursa === 'Sistem' ? 'emise în aplicație' : 'importate de pe hârtie')
+    if (selectate.length) p.push(`${selectate.length} note bifate`)
+    return p.join(', ')
+  }
+
+  const pdf = async (url: string, corp?: unknown) => {
+    setSeGenereaza(true)
+    try {
+      await deschidePdf(url, corp)
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSeGenereaza(false)
+    }
+  }
+
+  const word = async (n: NotaComanda) => {
+    try {
+      descarca(await api.getBinar(`/api/aprovizionare/proiecte/${n.proiectId}/note-comanda/${n.id}/document.docx`), `${numeFisier(n)}.docx`)
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
+  const original = async (n: NotaComanda) => {
     try {
       const blob = await api.getBinar(`/api/aprovizionare/proiecte/${n.proiectId}/note-comanda/${n.id}/original`)
       const url = URL.createObjectURL(blob)
@@ -27,102 +101,187 @@ export function ListaNoteComanda() {
     }
   }
 
+  const raport = (tip: string) => void pdf('/api/aprovizionare/note-comanda/raport/pdf', { id: alese.map((n) => n.id), tip, filtre: descriereFiltre() })
+
+  const exportNote = () => csv(
+    ['Număr', 'Nr. hârtie', 'Data', 'Proiect', 'Obiect / lucrare', 'Furnizor', 'CUI', 'Poziții', 'Sursă', 'Întocmit de'],
+    alese.map((n) => [n.numar, n.numarExtern, formatData(n.data), n.proiectCod, n.lucrare, n.furnizorDenumire, n.furnizorCui, n.linii.length,
+      n.sursa === 'Sistem' ? 'emisă' : 'importată', n.inregistrataDe]),
+    `note-comanda-${dayjs().format('YYYY-MM-DD')}.csv`)
+  const exportLinii = () => csv(
+    ['Număr', 'Data', 'Proiect', 'Obiect / lucrare', 'Furnizor', 'Material / produs', 'UM', 'Cantitate', 'Termen'],
+    alese.flatMap((n) => n.linii.map((l) => [n.numar, formatData(n.data), n.proiectCod, n.lucrare, n.furnizorDenumire, l.denumire, l.unitateMasura, l.cantitate, l.termen])),
+    `materiale-note-comanda-${dayjs().format('YYYY-MM-DD')}.csv`)
+
   return (
-    <Card title="Note de comandă către furnizori">
-      {note.error && <Alert type="error" showIcon title="Notele de comandă nu au putut fi încărcate." description={note.error.message} style={{ marginBottom: 16 }} />}
-      <Form form={form} layout="vertical" name="filtreNoteComanda" onFinish={(v) => setFiltre(Object.fromEntries(Object.entries(v).filter(([, x]) => x)))}>
-        <Row gutter={12}>
-          <Col xs={24} md={8}>
-            <Form.Item name="proiectId" label="Proiect">
-              <Select allowClear showSearch={{ optionFilterProp: 'label' }} placeholder="Toate proiectele"
-                options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={5}>
-            <Form.Item name="furnizor" label="Furnizor">
-              <Input maxLength={300} allowClear />
-            </Form.Item>
-          </Col>
-          <Col xs={24} md={5}>
-            <Form.Item name="material" label="Material">
-              <Input maxLength={300} allowClear />
-            </Form.Item>
-          </Col>
-          <Col xs={12} md={3}>
-            <Form.Item name="dataDe" label="De la">
-              <Input type="date" />
-            </Form.Item>
-          </Col>
-          <Col xs={12} md={3}>
-            <Form.Item name="dataPanaLa" label="Până la">
-              <Input type="date" />
-            </Form.Item>
-          </Col>
-        </Row>
-        <Space style={{ marginBottom: 16 }}>
-          <Button type="primary" htmlType="submit">Filtrează</Button>
-          <Button onClick={() => { form.resetFields(); setFiltre({}) }}>Resetează</Button>
-        </Space>
+    <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+      <Form<ValoriFiltre>
+        layout="inline"
+        style={{ rowGap: 8 }}
+        name="filtreNoteComanda"
+        onFinish={(v) => {
+          setSelectate([])
+          setFiltre({
+            proiectId: v.proiectId, cauta: v.cauta?.trim() || undefined, furnizor: v.furnizor?.trim() || undefined,
+            material: v.material?.trim() || undefined, lucrare: v.lucrare?.trim() || undefined, sursa: v.sursa,
+            dataDe: v.perioada?.[0]?.format('YYYY-MM-DD'), dataPanaLa: v.perioada?.[1]?.format('YYYY-MM-DD'),
+          })
+        }}
+      >
+        <Form.Item name="perioada">
+          <DatePicker.RangePicker format="DD.MM.YYYY" allowEmpty={[true, true]}
+            presets={[
+              { label: 'Luna curentă', value: [dayjs().startOf('month'), dayjs()] },
+              { label: 'Luna trecută', value: [dayjs().subtract(1, 'month').startOf('month'), dayjs().subtract(1, 'month').endOf('month')] },
+              { label: 'Anul curent', value: [dayjs().startOf('year'), dayjs()] },
+              { label: 'Anul trecut', value: [dayjs().subtract(1, 'year').startOf('year'), dayjs().subtract(1, 'year').endOf('year')] },
+            ]} />
+        </Form.Item>
+        <Form.Item name="proiectId">
+          <Select allowClear placeholder="Toate proiectele" style={{ width: 220 }} showSearch={{ optionFilterProp: 'label' }}
+            options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+        </Form.Item>
+        <Form.Item name="lucrare">
+          <Input allowClear placeholder="Obiect / lucrare" style={{ width: 160 }} maxLength={300} />
+        </Form.Item>
+        <Form.Item name="cauta">
+          <Input allowClear placeholder="Număr (NC/… sau de pe hârtie)" style={{ width: 200 }} maxLength={50} />
+        </Form.Item>
+        <Form.Item name="furnizor">
+          <Input allowClear placeholder="Furnizor" style={{ width: 160 }} maxLength={300} />
+        </Form.Item>
+        <Form.Item name="material">
+          <Input allowClear prefix={<SearchOutlined />} placeholder="Material comandat" style={{ width: 180 }} maxLength={300} />
+        </Form.Item>
+        <Form.Item name="sursa">
+          <Select allowClear placeholder="Orice sursă" style={{ width: 150 }}
+            options={[{ value: 'Sistem', label: 'Emise în aplicație' }, { value: 'Import', label: 'De pe hârtie' }]} />
+        </Form.Item>
+        <Button type="primary" htmlType="submit">Filtrează</Button>
+        {onNotaNoua && (
+          <Button style={{ marginInlineStart: 'auto' }} icon={<PlusOutlined />} onClick={onNotaNoua} disabled={!poateCrea}>Notă de comandă nouă</Button>
+        )}
       </Form>
 
-      <Table<NotaComanda>
-        rowKey="id"
-        loading={note.isLoading}
-        dataSource={note.data}
-        pagination={{ pageSize: 15, hideOnSinglePage: true }}
-        expandable={{
-          expandedRowRender: (n) => (
-            <>
-              <Space wrap size="large" style={{ marginBottom: 8 }}>
-                <Typography.Text><strong>Lucrare:</strong> {n.lucrare ?? '—'}</Typography.Text>
-                <Typography.Text><strong>Înregistrată de:</strong> {n.inregistrataDe}, {new Date(n.inregistrataLa).toLocaleString('ro-RO')}</Typography.Text>
-              </Space>
-              <Table
-                rowKey={(_, i) => String(i)}
-                size="small"
-                pagination={false}
-                dataSource={n.linii}
-                columns={[
-                  { title: 'Nr.', width: 50, render: (_, __, i) => i + 1 },
-                  { title: 'Material / produs', dataIndex: 'denumire' },
-                  { title: 'UM', dataIndex: 'unitateMasura', width: 80 },
-                  { title: 'Cantitate', dataIndex: 'cantitate', width: 110, align: 'right' },
-                  { title: 'Termen', dataIndex: 'termen', width: 140 },
-                ]}
-              />
-            </>
-          ),
-        }}
-        columns={[
-          {
-            title: 'Număr',
-            dataIndex: 'numar',
-            width: 170,
-            render: (numar: string, n) => (
-              <Space orientation="vertical" size={0}>
-                <span>{numar}</span>
-                {n.sursa === 'Import' && (
-                  <Tooltip title="Emisă pe hârtie; numărul de pe documentul original">
-                    <Tag color="purple" style={{ marginInlineEnd: 0 }}>importată{n.numarExtern ? ` · nr. ${n.numarExtern}` : ''}</Tag>
+      {note.error && <Alert type="error" showIcon title="Notele de comandă nu au putut fi încărcate." description={(note.error as Error).message} />}
+
+      <Card
+        size="small"
+        title={
+          <Space wrap size="large">
+            <span>{lista.length} note de comandă</span>
+            <Typography.Text type="secondary" style={{ fontWeight: 'normal' }}>
+              {new Set(lista.map((n) => n.proiectId)).size} lucrări · {new Set(lista.map((n) => n.furnizorDenumire.toUpperCase())).size} furnizori ·{' '}
+              {lista.reduce((s, n) => s + n.linii.length, 0)} poziții
+            </Typography.Text>
+          </Space>
+        }
+        extra={
+          <Space wrap>
+            {selectate.length > 0 && <Tag color="blue" closable onClose={() => setSelectate([])}>{selectate.length} bifate</Tag>}
+            <Dropdown
+              disabled={nr === 0}
+              menu={{
+                items: [
+                  { key: 'registru', label: 'Registrul notelor, pe lucrări' },
+                  { key: 'detaliat', label: 'Notele cu materialele lor, pe lucrări' },
+                  { key: 'materiale', label: 'Materiale comandate pe lucrare (cantități adunate)' },
+                ],
+                onClick: ({ key }) => raport(key),
+              }}
+            >
+              <Button icon={<FilePdfOutlined />} loading={seGenereaza}>Rapoarte PDF{selectate.length ? ' (bifate)' : ''}</Button>
+            </Dropdown>
+            <Tooltip title="Notele alese, fiecare pe pagina ei, într-un singur PDF">
+              <Button icon={<PrinterOutlined />} disabled={nr === 0} loading={seGenereaza}
+                onClick={() => (nr > 200 ? message.warning('Se pot tipări cel mult 200 de note deodată: bifează mai puține.') : void pdf('/api/aprovizionare/note-comanda/pdf', { id: alese.map((n) => n.id) }))}>
+                Tipărește ({nr})
+              </Button>
+            </Tooltip>
+            <Dropdown disabled={nr === 0}
+              menu={{ items: [{ key: 'n', label: 'Note (o linie pe notă)' }, { key: 'l', label: 'Materiale (o linie pe poziție)' }], onClick: ({ key }) => (key === 'n' ? exportNote() : exportLinii()) }}>
+              <Button icon={<DownloadOutlined />}>Excel (CSV)</Button>
+            </Dropdown>
+          </Space>
+        }
+      >
+        <Table<NotaComanda>
+          rowKey="id"
+          size="small"
+          className="tabel-compact"
+          tableLayout="fixed"
+          scroll={{ x: 1100 }}
+          loading={note.isLoading}
+          dataSource={lista}
+          rowSelection={{ selectedRowKeys: selectate, onChange: (k) => setSelectate(k as string[]) }}
+          pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [25, 50, 100, 200], hideOnSinglePage: true, size: 'small' }}
+          expandable={{
+            expandedRowRender: (n) => (
+              <div>
+                <Table<LinieNotaComanda>
+                  rowKey={(_, i) => String(i)}
+                  size="small"
+                  className="tabel-compact"
+                  tableLayout="fixed"
+                  pagination={false}
+                  dataSource={n.linii}
+                  columns={[
+                    { title: 'Nr.', width: 45, render: (_, __, i) => i + 1 },
+                    { title: 'Material / produs', dataIndex: 'denumire', ellipsis: { showTitle: true } },
+                    { title: 'UM', dataIndex: 'unitateMasura', width: 70 },
+                    { title: 'Cantitate', dataIndex: 'cantitate', width: 100, className: 'numeric', render: cantitate },
+                    { title: 'Termen', dataIndex: 'termen', width: 130 },
+                  ]}
+                />
+                <Space wrap size={16} style={{ marginTop: 6 }}>
+                  {(n.furnizorAdresa || n.furnizorTelefon || n.furnizorEmail) && (
+                    <Typography.Text type="secondary">Furnizor: {[n.furnizorAdresa, n.furnizorTelefon, n.furnizorEmail].filter(Boolean).join(' · ')}</Typography.Text>
+                  )}
+                  <Typography.Text type="secondary">Întocmită de {n.inregistrataDe}, {formatData(n.inregistrataLa)}</Typography.Text>
+                  {n.observatii && <Typography.Text type="secondary">Observații: {n.observatii}</Typography.Text>}
+                </Space>
+              </div>
+            ),
+          }}
+          columns={[
+            {
+              title: 'Număr', dataIndex: 'numar', width: 150, sorter: (a, b) => a.numar.localeCompare(b.numar),
+              render: (numar: string, n) => (
+                <Tooltip title={n.sursa === 'Import' ? `Importată de pe hârtie${n.numarExtern ? `; nr. ${n.numarExtern} pe document` : ''}` : 'Emisă în aplicație'}>
+                  <span>{numar}</span>{n.numarExtern && <Typography.Text type="secondary"> · {n.numarExtern}</Typography.Text>}
+                </Tooltip>
+              ),
+            },
+            { title: 'Data', dataIndex: 'data', width: 92, render: formatData, sorter: (a, b) => a.data.localeCompare(b.data), defaultSortOrder: 'descend' },
+            { title: 'Proiect', dataIndex: 'proiectCod', width: 110, ellipsis: { showTitle: true }, sorter: (a, b) => a.proiectCod.localeCompare(b.proiectCod) },
+            { title: 'Obiect / lucrare', dataIndex: 'lucrare', ellipsis: { showTitle: true } },
+            { title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: { showTitle: true }, sorter: (a, b) => a.furnizorDenumire.localeCompare(b.furnizorDenumire) },
+            { title: 'Poz.', key: 'linii', width: 55, className: 'numeric', render: (_, n) => n.linii.length },
+            {
+              title: 'Sursă', dataIndex: 'sursa', width: 85,
+              render: (s: NotaComanda['sursa']) => (s === 'Sistem' ? <Tag color="green">emisă</Tag> : <Tag color="purple">hârtie</Tag>),
+            },
+            {
+              title: '', key: 'actiuni', width: 118, fixed: 'right',
+              render: (_, n) => (
+                <Space size={2}>
+                  <Tooltip title="Word (șablonul firmei GC 007)">
+                    <Button size="small" type="text" icon={<FileWordOutlined />} onClick={() => void word(n)} />
                   </Tooltip>
-                )}
-              </Space>
-            ),
-          },
-          { title: 'Data', dataIndex: 'data', width: 110, render: data },
-          { title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: true },
-          { title: 'Proiect', dataIndex: 'proiectCod', width: 130 },
-          { title: 'Materiale', key: 'linii', width: 100, align: 'right', render: (_, n) => n.linii.length },
-          {
-            title: '',
-            key: 'original',
-            width: 120,
-            render: (_, n) => n.areOriginal && (
-              <Button size="small" icon={<DownloadOutlined />} onClick={() => void descarcaOriginal(n)}>Original</Button>
-            ),
-          },
-        ]}
-      />
-    </Card>
+                  <Tooltip title="PDF">
+                    <Button size="small" type="text" icon={<FilePdfOutlined />} onClick={() => void pdf(`/api/aprovizionare/proiecte/${n.proiectId}/note-comanda/${n.id}/pdf`)} />
+                  </Tooltip>
+                  {n.areOriginal && (
+                    <Tooltip title="Documentul original (scanat)">
+                      <Button size="small" type="text" icon={<PaperClipOutlined />} onClick={() => void original(n)} />
+                    </Tooltip>
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
+      </Card>
+    </Space>
   )
 }

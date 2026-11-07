@@ -21,6 +21,7 @@ import { AntetPagina } from '../../layout/AntetPagina'
 import { ImportNecesarExtern } from './ImportNecesarExtern'
 import { ImportNotaComanda } from './ImportNotaComanda'
 import { ListaNoteComanda } from './ListaNoteComanda'
+import { NotaComandaNoua } from './NotaComandaNoua'
 
 interface LinieNecesarValues {
   denumire: string
@@ -133,6 +134,7 @@ export function Aprovizionare() {
   const proiect = proiecte.data?.find((p: Proiect) => p.id === proiectId)
   const sablonActiv = sabloane.data?.some((sablon) => sablon.codTip === 'necesar-materiale' && sablon.activ) ?? false
   const poateCrea = permisiuni.data?.includes('aprovizionare.creare') ?? false
+  const [tab, setTab] = useState('necesare')
   const poateAproba = permisiuni.data?.includes('aprovizionare.aprobare') ?? false
 
   const aplicaFiltreNote = (valori: FiltreNecesarValues) => {
@@ -238,6 +240,8 @@ export function Aprovizionare() {
       />
 
       <Tabs
+        activeKey={tab}
+        onChange={setTab}
         items={[
           {
             key: 'necesare',
@@ -482,7 +486,12 @@ export function Aprovizionare() {
           {
             key: 'note-comanda',
             label: 'Note de comandă',
-            children: <ListaNoteComanda />,
+            children: <ListaNoteComanda poateCrea={poateCrea} onNotaNoua={() => setTab('nota-noua')} />,
+          },
+          {
+            key: 'nota-noua',
+            label: 'Notă de comandă nouă',
+            children: <NotaComandaNoua poateCrea={poateCrea} />,
           },
           {
             key: 'import',

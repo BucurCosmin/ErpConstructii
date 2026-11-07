@@ -239,6 +239,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("integer")
                         .HasColumnName("an");
 
+                    b.Property<string>("ConditiiJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("conditii_json");
+
                     b.Property<Guid?>("CreatDe")
                         .HasColumnType("uuid")
                         .HasColumnName("creat_de");
@@ -259,6 +263,11 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("firma_id");
 
+                    b.Property<string>("FurnizorAdresa")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("furnizor_adresa");
+
                     b.Property<string>("FurnizorCui")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -270,9 +279,19 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("character varying(300)")
                         .HasColumnName("furnizor_denumire");
 
+                    b.Property<string>("FurnizorEmail")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("furnizor_email");
+
                     b.Property<Guid?>("FurnizorId")
                         .HasColumnType("uuid")
                         .HasColumnName("furnizor_id");
+
+                    b.Property<string>("FurnizorTelefon")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("furnizor_telefon");
 
                     b.Property<Guid>("InregistrataDeId")
                         .HasColumnType("uuid")
@@ -302,6 +321,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
+                    b.Property<Guid?>("NecesarId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("necesar_id");
+
                     b.Property<int>("Numar")
                         .HasColumnType("integer")
                         .HasColumnName("numar");
@@ -326,17 +349,28 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("proiect_id");
 
+                    b.Property<Guid?>("SablonId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sablon_id");
+
                     b.Property<string>("Sursa")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("sursa");
 
+                    b.Property<int?>("VersiuneSablon")
+                        .HasColumnType("integer")
+                        .HasColumnName("versiune_sablon");
+
                     b.HasKey("Id")
                         .HasName("pk_note_comanda");
 
                     b.HasIndex("FirmaId", "FurnizorId")
                         .HasDatabaseName("ix_note_comanda_firma_id_furnizor_id");
+
+                    b.HasIndex("FirmaId", "NecesarId")
+                        .HasDatabaseName("ix_note_comanda_firma_id_necesar_id");
 
                     b.HasIndex("FirmaId", "An", "Numar")
                         .IsUnique()

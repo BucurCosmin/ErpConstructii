@@ -1,0 +1,310 @@
+import { DeleteOutlined, FilePdfOutlined, FileWordOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, App, AutoComplete, Button, Card, Col, DatePicker, Form, Input, Radio, Result, Row, Select, Space, Typography } from 'antd'
+import dayjs, { type Dayjs } from 'dayjs'
+import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
+import { api } from '../../api/client'
+import { useEmiteNotaComanda, useNecesareMateriale } from '../../api/aprovizionare'
+import type { ConditiiComanda, NotaComanda } from '../../api/aprovizionare'
+import { useSabloaneFormular } from '../../api/formulare'
+import { useProiecte } from '../../api/interogari'
+import { useFurnizori } from '../../api/parteneri'
+import type { Adresa } from '../../api/tipuri'
+import { NumarRo } from '../../componente/NumarRo'
+import { deschidePdf } from '../../util/pdf'
+
+interface LinieValori {
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  termen?: string
+}
+
+interface Valori {
+  proiectId: string
+  data: Dayjs
+  lucrare?: string
+  necesarId?: string
+  furnizorDenumire: string
+  furnizorCui?: string
+  furnizorAdresa?: string
+  furnizorTelefon?: string
+  furnizorEmail?: string
+  receptie: string
+  clasaCalitate: string
+  transport: string
+  plata: string
+  linii: LinieValori[]
+  observatii?: string
+}
+
+const adresa = (a: Adresa) => [a.strada, a.codPostal, a.localitate, a.judet].filter((x) => x && x.trim()).join(', ')
+const gol = (s?: string | null) => (s && s.trim() ? s.trim() : null)
+
+/** Butoane radio cu varianta „nebifat”, ca pe formularul de hârtie (căsuțe goale). */
+function Bife({ nume, eticheta, optiuni }: { nume: keyof Valori; eticheta: string; optiuni: { value: string; label: string }[] }) {
+  return (
+    <Form.Item name={nume} label={eticheta} style={{ marginBottom: 8 }}>
+      <Radio.Group optionType="button" size="small" options={[...optiuni, { value: '', label: '—' }]} />
+    </Form.Item>
+  )
+}
+
+/**
+ * Notă de comandă nouă către furnizor (formularul GC 007): proiect / lucrare, furnizor (din nomenclator sau nou),
+ * condițiile bifate, materialele (preluate opțional dintr-un necesar aprobat) cu termen. După emitere: Word din șablonul firmei și PDF.
+ */
+export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; onEmisa?: () => void }) {
+  const { message } = App.useApp()
+  const navigheaza = useNavigate()
+  const [form] = Form.useForm<Valori>()
+  const proiecte = useProiecte()
+  const furnizori = useFurnizori(false)
+  const sabloane = useSabloaneFormular()
+  const emite = useEmiteNotaComanda()
+  const proiectId = Form.useWatch('proiectId', form)
+  const necesare = useNecesareMateriale({ proiectId, stare: 'Aprobata' })
+  const [emisa, setEmisa] = useState<NotaComanda>()
+  const areSablon = sabloane.data?.some((s) => s.codTip === 'nota-comanda' && s.activ) ?? false
+
+  const optiuniFurnizori = useMemo(
+    () => (furnizori.data ?? []).map((f) => ({ value: f.denumire, label: f.cui ? `${f.denumire} (${f.cui})` : f.denumire, furnizor: f })),
+    [furnizori.data],
+  )
+
+  const alegeProiect = (id: string) => {
+    const p = proiecte.data?.find((x) => x.id === id)
+    form.setFieldsValue({ lucrare: p?.denumire, necesarId: undefined })
+  }
+
+  const alegeFurnizor = (denumire: string) => {
+    const f = furnizori.data?.find((x) => x.denumire === denumire)
+    if (!f) return
+    form.setFieldsValue({ furnizorCui: f.cui ?? undefined, furnizorAdresa: adresa(f.adresa) || undefined, furnizorTelefon: f.telefon ?? undefined, furnizorEmail: f.email ?? undefined })
+  }
+
+  const alegeNecesar = (id?: string) => {
+    const n = necesare.data?.find((x) => x.id === id)
+    if (!n) return
+    form.setFieldsValue({ linii: n.linii.map((l) => ({ denumire: l.denumire, unitateMasura: l.unitateMasura, cantitate: l.cantitate })) })
+    message.info(`Am preluat ${n.linii.length} materiale din necesarul ${n.numar}. Șterge ce nu comanzi la acest furnizor.`)
+  }
+
+  const trimite = async (v: Valori) => {
+    try {
+      const nota = await emite.mutateAsync({
+        proiectId: v.proiectId,
+        date: {
+          data: v.data.format('YYYY-MM-DD'),
+          lucrare: gol(v.lucrare),
+          furnizorDenumire: v.furnizorDenumire.trim(),
+          furnizorCui: gol(v.furnizorCui),
+          furnizorAdresa: gol(v.furnizorAdresa),
+          furnizorTelefon: gol(v.furnizorTelefon),
+          furnizorEmail: gol(v.furnizorEmail),
+          conditii: {
+            receptie: (v.receptie || null) as ConditiiComanda['receptie'],
+            clasaCalitate: (v.clasaCalitate || null) as ConditiiComanda['clasaCalitate'],
+            transport: (v.transport || null) as ConditiiComanda['transport'],
+            plata: (v.plata || null) as ConditiiComanda['plata'],
+          },
+          linii: v.linii.map((l) => ({ denumire: l.denumire.trim(), unitateMasura: l.unitateMasura.trim(), cantitate: l.cantitate, termen: gol(l.termen) })),
+          observatii: gol(v.observatii),
+          necesarId: v.necesarId ?? null,
+        },
+      })
+      setEmisa(nota)
+      onEmisa?.()
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
+  const word = async (n: NotaComanda) => {
+    try {
+      const blob = await api.getBinar(`/api/aprovizionare/proiecte/${n.proiectId}/note-comanda/${n.id}/document.docx`)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${n.numar}_${n.furnizorDenumire}`.replace(/[^a-zA-Z0-9_-]+/g, '_') + '.docx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
+  if (emisa) {
+    return (
+      <Card>
+        <Result
+          status="success"
+          title={`Nota de comandă ${emisa.numar} a fost emisă`}
+          subTitle={`${emisa.furnizorDenumire} · ${emisa.proiectCod} · ${emisa.linii.length} materiale`}
+          extra={[
+            <Button key="w" type="primary" icon={<FileWordOutlined />} onClick={() => void word(emisa)} disabled={!areSablon}>Descarcă Word</Button>,
+            <Button key="p" icon={<FilePdfOutlined />}
+              onClick={() => void deschidePdf(`/api/aprovizionare/proiecte/${emisa.proiectId}/note-comanda/${emisa.id}/pdf`).catch((e: Error) => message.error(e.message))}>
+              PDF
+            </Button>,
+            <Button key="n" icon={<PlusOutlined />} onClick={() => { setEmisa(undefined); form.resetFields() }}>Altă notă de comandă</Button>,
+          ]}
+        />
+      </Card>
+    )
+  }
+
+  return (
+    <Card title="Notă de comandă nouă către furnizor (GC 007)">
+      {sabloane.isSuccess && !areSablon && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title="Nu există șablonul Word „Notă de comandă către furnizor (GC 007)”."
+          description="Nota se poate emite și tipări în PDF (format standard); pentru documentul Word în forma firmei, încarcă șablonul în Formulare și documente."
+          action={<Button size="small" onClick={() => navigheaza('/formulare')}>Formulare și documente</Button>}
+        />
+      )}
+      <Form<Valori>
+        form={form}
+        layout="vertical"
+        name="notaComandaNoua"
+        initialValues={{ data: dayjs(), receptie: 'LaPrimire', clasaCalitate: 'BestComercial', transport: '', plata: '', linii: [{}] }}
+        onFinish={trimite}
+      >
+        <Row gutter={12}>
+          <Col xs={24} md={9}>
+            <Form.Item name="proiectId" label="Proiect" rules={[{ required: true, message: 'Alege proiectul.' }]}>
+              <Select showSearch={{ optionFilterProp: 'label' }} placeholder="Proiectul (sau proiectul de stoc)" loading={proiecte.isLoading} onChange={alegeProiect}
+                options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+            </Form.Item>
+          </Col>
+          <Col xs={24} md={9}>
+            <Form.Item name="lucrare" label="Obiect / lucrare (cum apare pe comandă)">
+              <Input maxLength={500} placeholder="ex. CTRF-HSJV-002, Ctr. 1891" />
+            </Form.Item>
+          </Col>
+          <Col xs={12} md={6}>
+            <Form.Item name="data" label="Data" rules={[{ required: true }]}>
+              <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} allowClear={false} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Row gutter={12}>
+          <Col xs={24} md={9}>
+            <Form.Item name="furnizorDenumire" label="Furnizor" rules={[{ required: true, whitespace: true, message: 'Alege sau scrie furnizorul.' }]}
+              extra="Din nomenclator sau unul nou (se adaugă la emitere).">
+              <AutoComplete options={optiuniFurnizori} onSelect={alegeFurnizor} maxLength={300} placeholder="Caută furnizorul"
+                filterOption={(text, o) => (o?.label ?? '').toString().toUpperCase().includes(text.toUpperCase())} />
+            </Form.Item>
+          </Col>
+          <Col xs={12} md={4}>
+            <Form.Item name="furnizorCui" label="CUI">
+              <Input maxLength={20} />
+            </Form.Item>
+          </Col>
+          <Col xs={12} md={11}>
+            <Form.Item name="furnizorAdresa" label="Adresa furnizorului">
+              <Input maxLength={500} />
+            </Form.Item>
+          </Col>
+          <Col xs={12} md={5}>
+            <Form.Item name="furnizorTelefon" label="Telefon">
+              <Input maxLength={100} />
+            </Form.Item>
+          </Col>
+          <Col xs={12} md={7}>
+            <Form.Item name="furnizorEmail" label="E-mail">
+              <Input maxLength={200} />
+            </Form.Item>
+          </Col>
+        </Row>
+
+        <Card size="small" title="Condiții (bifele de pe formular)" style={{ marginBottom: 16 }}>
+          <Row gutter={24}>
+            <Col xs={24} md={12}>
+              <Bife nume="receptie" eticheta="Recepție" optiuni={[{ value: 'LaFurnizor', label: 'la furnizor' }, { value: 'LaPrimire', label: 'la primire' }]} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Bife nume="clasaCalitate" eticheta="Clasa de calitate" optiuni={[{ value: 'Clasa4', label: 'clasa 4' }, { value: 'BestComercial', label: 'best comercial' }]} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Bife nume="transport" eticheta="Transport" optiuni={[{ value: 'Auto', label: 'auto' }, { value: 'Cfr', label: 'CFR' }]} />
+            </Col>
+            <Col xs={24} md={12}>
+              <Bife nume="plata" eticheta="Plata" optiuni={[{ value: 'Op', label: 'OP' }, { value: 'FilaCec', label: 'fila CEC' }, { value: 'Alte', label: 'alte' }]} />
+            </Col>
+          </Row>
+        </Card>
+
+        <Card
+          size="small"
+          title="Materiale / produse"
+          extra={
+            <Form.Item name="necesarId" noStyle>
+              <Select allowClear style={{ width: 300 }} placeholder={proiectId ? 'Preia dintr-un necesar aprobat…' : 'Alege întâi proiectul'} disabled={!proiectId}
+                loading={necesare.isLoading} onChange={alegeNecesar}
+                options={necesare.data?.map((n) => ({ value: n.id, label: `${n.numar} · ${dayjs(n.data).format('DD.MM.YYYY')} · ${n.linii.length} mat.` }))} />
+            </Form.Item>
+          }
+          style={{ marginBottom: 16 }}
+        >
+          <Form.List name="linii" rules={[{ validator: async (_, l) => { if (!l?.length) throw new Error('Adaugă cel puțin un material.') } }]}>
+            {(campuri, { add, remove }, { errors }) => (
+              <>
+                <Row gutter={8} style={{ fontWeight: 600, marginBottom: 4 }}>
+                  <Col span={1}>Nr.</Col>
+                  <Col span={11}>Material / produs</Col>
+                  <Col span={3}>U.M.</Col>
+                  <Col span={4}>Cantitate</Col>
+                  <Col span={4}>Termen</Col>
+                </Row>
+                {campuri.map(({ key, name }, i) => (
+                  <Row gutter={8} key={key} align="top">
+                    <Col span={1} style={{ paddingTop: 5 }}>{i + 1}.</Col>
+                    <Col span={11}>
+                      <Form.Item name={[name, 'denumire']} rules={[{ required: true, whitespace: true, message: 'Denumirea' }]} style={{ marginBottom: 6 }}>
+                        <Input maxLength={300} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={3}>
+                      <Form.Item name={[name, 'unitateMasura']} rules={[{ required: true, whitespace: true, message: 'UM' }]} style={{ marginBottom: 6 }}>
+                        <Input maxLength={30} placeholder="BUC" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={4}>
+                      <Form.Item name={[name, 'cantitate']} rules={[{ required: true, message: 'Cantitatea' }, { type: 'number', min: 0.0001, message: 'Pozitivă' }]} style={{ marginBottom: 6 }}>
+                        <NumarRo min={0} precision={undefined} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={4}>
+                      <Form.Item name={[name, 'termen']} style={{ marginBottom: 6 }}>
+                        <Input maxLength={100} placeholder="ex. imediat" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={1}>
+                      <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)} disabled={campuri.length === 1} />
+                    </Col>
+                  </Row>
+                ))}
+                <Form.ErrorList errors={errors} />
+                <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} style={{ marginTop: 4 }}>Adaugă material</Button>
+              </>
+            )}
+          </Form.List>
+        </Card>
+
+        <Form.Item name="observatii" label="Observații (apar pe comandă)">
+          <Input.TextArea rows={2} maxLength={1000} />
+        </Form.Item>
+
+        <Space>
+          <Button type="primary" htmlType="submit" loading={emite.isPending} disabled={!poateCrea}>Emite nota de comandă</Button>
+          <Typography.Text type="secondary">Numărul (NC/AAAA/NNNN) se dă la emitere; nota nu se mai modifică după aceea.</Typography.Text>
+        </Space>
+      </Form>
+    </Card>
+  )
+}

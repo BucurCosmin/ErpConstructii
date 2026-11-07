@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ErpConstructii.Aprovizionare.Import;
+using ErpConstructii.Formulare;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure.Autorizare;
 using ErpConstructii.Parteneri;
@@ -15,6 +16,9 @@ using Microsoft.EntityFrameworkCore;
 namespace ErpConstructii.Aprovizionare.Infrastructure;
 
 public sealed record LinieNotaComandaDto(string Denumire, string UnitateMasura, decimal Cantitate, string? Termen);
+
+/// <summary>Condițiile bifate pe formular: Receptie = LaFurnizor | LaPrimire; ClasaCalitate = Clasa4 | BestComercial; Transport = Auto | Cfr; Plata = Op | FilaCec | Alte.</summary>
+public sealed record ConditiiComandaDto(string? Receptie, string? ClasaCalitate, string? Transport, string? Plata);
 
 public sealed record NotaComandaDto(
     Guid Id,
@@ -32,7 +36,13 @@ public sealed record NotaComandaDto(
     string Sursa,
     bool AreOriginal,
     string InregistrataDe,
-    DateTimeOffset InregistrataLa);
+    DateTimeOffset InregistrataLa,
+    string? FurnizorAdresa,
+    string? FurnizorTelefon,
+    string? FurnizorEmail,
+    ConditiiComandaDto Conditii,
+    Guid? NecesarId,
+    bool AreSablon);
 
 public sealed record LinieNotaComandaCititaDto(int Rand, CampTextDto Denumire, CampTextDto UnitateMasura, CampNumarDto Cantitate, string? Termen);
 
@@ -67,7 +77,26 @@ public sealed record ConfirmaNotaComandaCerere(
     IReadOnlyList<LinieNotaComandaDto> Linii,
     string? Observatii);
 
-public sealed record FiltreNoteComanda(Guid? ProiectId, string? Furnizor, string? Material, DateOnly? DataDe, DateOnly? DataPanaLa);
+/// <summary>Datele unei note de comandă emise în sistem; numărul se generează la emitere.</summary>
+/// <param name="NecesarId">Necesarul aprobat din care s-au preluat materialele (opțional).</param>
+public sealed record EmiteNotaComandaCerere(
+    DateOnly? Data,
+    string? Lucrare,
+    string FurnizorDenumire,
+    string? FurnizorCui,
+    string? FurnizorAdresa,
+    string? FurnizorTelefon,
+    string? FurnizorEmail,
+    ConditiiComandaDto? Conditii,
+    IReadOnlyList<LinieNotaComandaDto> Linii,
+    string? Observatii,
+    Guid? NecesarId);
+
+/// <param name="Cauta">Numărul de sistem (NC/…) sau cel de pe hârtie.</param>
+/// <param name="Sursa">Sistem (emise în aplicație) sau Import (de pe hârtie).</param>
+public sealed record FiltreNoteComanda(
+    Guid? ProiectId, string? Furnizor, string? Material, DateOnly? DataDe, DateOnly? DataPanaLa,
+    string? Cauta = null, string? Lucrare = null, string? Sursa = null);
 
 /// <summary>
 /// Notele de comandă către furnizori (formularul GC 007). Cele emise pe hârtie se importă (PDF / scanare / Word):
@@ -90,6 +119,14 @@ internal static class EndpointuriNoteComanda
             .Produces<IReadOnlyList<NotaComandaDto>>()
             .Produces(StatusCodes.Status400BadRequest)
             .CerePermisiune(vizualizare);
+
+        grup.MapPost("/proiecte/{proiectId:guid}/note-comanda", Emite)
+            .WithName("EmiteNotaComanda")
+            .WithSummary("Emite o notă de comandă către furnizor (număr NC/AAAA/NNNN; Word din șablonul firmei)")
+            .Produces<NotaComandaDto>(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status404NotFound)
+            .CerePermisiune(creare);
 
         grup.MapGet("/proiecte/{proiectId:guid}/note-comanda/{id:guid}", Detalii)
             .WithName("DetaliiNotaComanda")
@@ -139,7 +176,7 @@ internal static class EndpointuriNoteComanda
             return Results.Unauthorized();
         }
 
-        if (filtre.Furnizor?.Length > 300 || filtre.Material?.Length > 300)
+        if (filtre.Furnizor?.Length > 300 || filtre.Material?.Length > 300 || filtre.Cauta?.Length > 50 || filtre.Lucrare?.Length > 300)
         {
             return Results.BadRequest(new { mesaj = "Unul dintre filtre depășește lungimea maximă permisă." });
         }
@@ -161,15 +198,128 @@ internal static class EndpointuriNoteComanda
             q = q.Where(c => c.Data >= de);
         if (filtre.DataPanaLa is { } panaLa)
             q = q.Where(c => c.Data <= panaLa);
+        if (!string.IsNullOrWhiteSpace(filtre.Lucrare))
+            q = q.Where(c => c.Lucrare != null && EF.Functions.ILike(c.Lucrare, $"%{filtre.Lucrare.Trim()}%"));
+        if (Enum.TryParse<SursaDocument>(filtre.Sursa, true, out var sursa))
+            q = q.Where(c => c.Sursa == sursa);
+        if (!string.IsNullOrWhiteSpace(filtre.Cauta))
+        {
+            // „NC/2026/0005”, „2026/5”, „5” sau numărul de pe hârtie
+            var text = filtre.Cauta.Trim();
+            var cifre = System.Text.RegularExpressions.Regex.Matches(text, @"\d+").Select(m => int.TryParse(m.Value, out var v) ? v : -1).ToList();
+            var numar = cifre.Count > 0 && cifre[^1] < 1_000_000 ? cifre[^1] : -1;
+            var an = cifre.Count > 1 && cifre[^2] is >= 2000 and < 3000 ? cifre[^2] : (int?)null;
+            q = q.Where(c => (c.NumarExtern != null && EF.Functions.ILike(c.NumarExtern, $"%{text}%")) || (c.Numar == numar && (an == null || c.An == an)));
+        }
 
-        var comenzi = await q.OrderByDescending(c => c.Data).ThenByDescending(c => c.An).ThenByDescending(c => c.Numar).Take(1000).ToListAsync(ct);
+        var comenzi = await q.OrderByDescending(c => c.Data).ThenByDescending(c => c.An).ThenByDescending(c => c.Numar).Take(2000).ToListAsync(ct);
         if (!string.IsNullOrWhiteSpace(filtre.Material))
         {
-            var m = filtre.Material.Trim();
-            comenzi = comenzi.Where(c => c.Linii.Any(l => l.Denumire.Contains(m, StringComparison.OrdinalIgnoreCase))).ToList();
+            // fără diacritice și majuscule: „manusi” găsește „MĂNUȘI”
+            var m = RaportNoteComanda.CheieMaterial(filtre.Material);
+            comenzi = comenzi.Where(c => c.Linii.Any(l => RaportNoteComanda.CheieMaterial(l.Denumire).Contains(m, StringComparison.Ordinal))).ToList();
         }
 
         return Results.Ok(comenzi.Select(CaDto).ToList());
+    }
+
+    private static async Task<IResult> Emite(
+        Guid proiectId,
+        EmiteNotaComandaCerere cerere,
+        AprovizionareDbContext db,
+        IInterogareProiecte proiecte,
+        IServiciuParteneri parteneri,
+        IInterogareSabloaneFormulare sabloane,
+        IFirmaCurenta firma,
+        IUtilizatorCurent utilizator,
+        ICeas ceas,
+        CancellationToken ct)
+    {
+        if (firma.FirmaId is not { } firmaId || utilizator.UtilizatorId is not { } utilizatorId)
+            return Results.Unauthorized();
+        if (string.IsNullOrWhiteSpace(utilizator.Nume) || utilizator.Nume.Length > 200)
+            return Results.BadRequest(new { mesaj = "Numele utilizatorului nu este disponibil în sesiune." });
+
+        var azi = ceas.Azi;
+        var data = cerere.Data ?? azi;
+        if (data.Year < 2000 || data > azi.AddDays(30))
+            return Results.BadRequest(new { mesaj = "Data notei de comandă nu este validă (cel mult 30 de zile în viitor)." });
+        if (string.IsNullOrWhiteSpace(cerere.FurnizorDenumire))
+            return Results.BadRequest(new { mesaj = "Alege sau scrie furnizorul." });
+        if (cerere.Linii is null || cerere.Linii.Count == 0)
+            return Results.BadRequest(new { mesaj = "Adaugă cel puțin un material." });
+        if (!Conditii(cerere.Conditii, out var conditii))
+            return Results.BadRequest(new { mesaj = "Condițiile de livrare nu sunt valide." });
+
+        var cui = string.IsNullOrWhiteSpace(cerere.FurnizorCui) ? null : cerere.FurnizorCui.Trim();
+        if (cui is not null && !ValidareFiscala.EsteCuiValid(cui))
+            return Results.BadRequest(new { mesaj = $"CUI-ul furnizorului „{cui}” nu este valid." });
+
+        var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
+        if (proiect is null)
+            return Results.NotFound(new { mesaj = "Proiectul nu există." });
+
+        if (cerere.NecesarId is { } necesarId
+            && !await db.NecesareMateriale.AnyAsync(n => n.Id == necesarId && n.ProiectId == proiectId && n.Stare == StareNecesarMateriale.Aprobata, ct))
+            return Results.BadRequest(new { mesaj = "Necesarul ales nu e aprobat sau nu e pe acest proiect." });
+
+        // Furnizorul din nomenclator (după CUI sau denumire); dacă lipsește, se adaugă cu datele de pe comandă.
+        var furnizor = await parteneri.CautaFurnizorAsync(cui, cerere.FurnizorDenumire, ct);
+        if (furnizor is null)
+        {
+            var adaugat = await parteneri.AsiguraFurnizorAsync(cerere.FurnizorDenumire.Trim(), cui,
+                platitorTva: cui?.StartsWith("RO", StringComparison.OrdinalIgnoreCase) == true, cerere.FurnizorAdresa, cerere.FurnizorTelefon, ct);
+            if (adaugat.Esec)
+                return Results.BadRequest(new { mesaj = adaugat.Eroare.Mesaj });
+            furnizor = adaugat.Valoare;
+        }
+
+        var sablon = await sabloane.SablonActivAsync(CatalogFormulare.NotaComanda.Cod, ct);
+
+        await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
+        await ModulAprovizionare.BlocheazaSecventaAsync(db, tranzactie, firmaId, data.Year, ct, SecventaComenzi);
+        var numar = (await db.NoteComanda.Where(c => c.An == data.Year).MaxAsync(c => (int?)c.Numar, ct) ?? 0) + 1;
+
+        var rezultat = NotaComanda.Emite(
+            data.Year, numar,
+            new DateNotaComanda(
+                null, data, proiect.Id, proiect.Cod, string.IsNullOrWhiteSpace(cerere.Lucrare) ? proiect.Denumire : cerere.Lucrare,
+                furnizor.Id, furnizor.Denumire, furnizor.Cui ?? cui,
+                cerere.Linii.Select(l => new LinieNotaComanda(l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.Termen, null)).ToList(),
+                cerere.Observatii, cerere.FurnizorAdresa, cerere.FurnizorTelefon, cerere.FurnizorEmail, conditii, cerere.NecesarId),
+            sablon?.Id, sablon?.Versiune, utilizatorId, utilizator.Nume);
+        if (rezultat.Esec)
+            return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
+
+        db.NoteComanda.Add(rezultat.Valoare);
+        await db.SaveChangesAsync(ct);
+        await tranzactie.CommitAsync(ct);
+
+        var dto = CaDto(rezultat.Valoare);
+        return Results.Created($"/api/aprovizionare/proiecte/{proiectId}/note-comanda/{dto.Id}", dto);
+    }
+
+    private static bool Conditii(ConditiiComandaDto? dto, out ConditiiComanda conditii)
+    {
+        conditii = ConditiiComanda.Niciuna;
+        if (dto is null)
+            return true;
+        static bool Citeste<T>(string? text, out T? valoare) where T : struct, Enum
+        {
+            valoare = null;
+            if (string.IsNullOrWhiteSpace(text))
+                return true;
+            if (!Enum.TryParse<T>(text, true, out var v) || !Enum.IsDefined(v))
+                return false;
+            valoare = v;
+            return true;
+        }
+
+        if (!Citeste<ReceptieComanda>(dto.Receptie, out var receptie) || !Citeste<ClasaCalitateComanda>(dto.ClasaCalitate, out var clasa)
+            || !Citeste<TransportComanda>(dto.Transport, out var transport) || !Citeste<PlataComanda>(dto.Plata, out var plata))
+            return false;
+        conditii = new ConditiiComanda(receptie, clasa, transport, plata);
+        return true;
     }
 
     private static async Task<IResult> Detalii(Guid proiectId, Guid id, AprovizionareDbContext db, CancellationToken ct)
@@ -352,7 +502,7 @@ internal static class EndpointuriNoteComanda
                 cerere.NumarExtern, cerere.Data, proiect.Id, proiect.Cod, cerere.Lucrare,
                 furnizor.Id, furnizor.Denumire, furnizor.Cui ?? cui,
                 cerere.Linii.Select(l => new LinieNotaComanda(l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.Termen, null)).ToList(),
-                cerere.Observatii),
+                cerere.Observatii, cerere.FurnizorAdresa, cerere.FurnizorTelefon),
             original.Id, utilizatorId, utilizator.Nume);
         if (rezultat.Esec)
         {
@@ -404,7 +554,12 @@ internal static class EndpointuriNoteComanda
         c.Id, c.NumarAfisat, c.NumarExtern, c.Data, c.ProiectId, c.ProiectCod, c.Lucrare,
         c.FurnizorId, c.FurnizorDenumire, c.FurnizorCui,
         c.Linii.Select(l => new LinieNotaComandaDto(l.Denumire, l.UnitateMasura, l.Cantitate, l.Termen)).ToList(),
-        c.Observatii, c.Sursa.ToString(), c.DocumentOriginalId is not null, c.InregistrataDeNume, c.CreatLa);
+        c.Observatii, c.Sursa.ToString(), c.DocumentOriginalId is not null, c.InregistrataDeNume, c.CreatLa,
+        c.FurnizorAdresa, c.FurnizorTelefon, c.FurnizorEmail,
+        new ConditiiComandaDto(c.Conditii.Receptie?.ToString(), c.Conditii.ClasaCalitate?.ToString(), c.Conditii.Transport?.ToString(), c.Conditii.Plata?.ToString()),
+        c.NecesarId, c.SablonId is not null);
+
+    internal static NotaComandaDto LaDto(NotaComanda c) => CaDto(c);
 
     private static CampTextDto Text(CampCitit<string> c) => new(c.Valoare, c.Certitudine.ToString(), c.TextSursa);
 }
