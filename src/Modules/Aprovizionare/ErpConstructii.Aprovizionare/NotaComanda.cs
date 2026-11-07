@@ -172,6 +172,18 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
         return Rezultat.Ok(nota);
     }
 
+    /// <summary>Necesarul neaprobat a fost modificat: nota încă neacceptată preia materialele lui.</summary>
+    public Rezultat ActualizeazaDinNecesar(NecesarMateriale necesar)
+    {
+        if (Stare != StareNotaComanda.DeAcceptat || NecesarId != necesar.Id)
+            return Rezultat.Esuat(Eroare.Validare("Doar nota de comandă încă neacceptată se actualizează din necesar."));
+        LiniiJson = JsonSerializer.Serialize(necesar.Linii.Select(l => new LinieNotaComanda(l.Denumire, l.UnitateMasura, l.Cantitate, null, null,
+            string.IsNullOrWhiteSpace(l.Observatii) ? null : l.Observatii.Trim())).ToList());
+        _linii = null;
+        Observatii = $"Din necesarul {necesar.NumarAfisat} ({necesar.CompartimentSantier})";
+        return Rezultat.Ok();
+    }
+
     public Rezultat Accepta(Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
     {
         if (Stare != StareNotaComanda.DeAcceptat)

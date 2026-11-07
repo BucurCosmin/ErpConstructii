@@ -181,6 +181,37 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
         return Rezultat.Ok(necesar);
     }
 
+    /// <summary>Necesarul încă neaprobat se poate corecta (compartimentul și materialele); după decizie, nu.</summary>
+    public Rezultat Modifica(string compartimentSantier, IReadOnlyCollection<LinieNecesarMateriale> linii)
+    {
+        if (Stare != StareNecesarMateriale.InAsteptareAprobare)
+            return Rezultat.Esuat(Eroare.Validare("Doar necesarele încă neaprobate se pot modifica."));
+        if (string.IsNullOrWhiteSpace(compartimentSantier) || compartimentSantier.Length > 300)
+            return Rezultat.Esuat(Eroare.Validare("Completează compartimentul / șantierul (maximum 300 de caractere)."));
+        if (linii is null || linii.Count == 0 || linii.Any(l =>
+                string.IsNullOrWhiteSpace(l.Denumire) ||
+                string.IsNullOrWhiteSpace(l.UnitateMasura) ||
+                l.Cantitate <= 0))
+            return Rezultat.Esuat(Eroare.Validare("Necesarul trebuie să conțină materiale cu unitate de măsură și cantitate pozitivă."));
+        if (linii.Any(l => l.Denumire.Length > 300 || l.UnitateMasura.Length > 30 || l.Observatii?.Length > 500))
+            return Rezultat.Esuat(Eroare.Validare("Denumirea (300), UM-ul (30) sau observațiile (500 de caractere) sunt prea lungi."));
+
+        CompartimentSantier = compartimentSantier.Trim();
+        LiniiJson = JsonSerializer.Serialize(linii.Select(l => l with
+        {
+            Denumire = l.Denumire.Trim(),
+            UnitateMasura = l.UnitateMasura.Trim(),
+            Observatii = l.Observatii?.Trim() ?? string.Empty,
+        }).ToList());
+        return Rezultat.Ok();
+    }
+
+    /// <summary>Se șterge doar cât încă nu s-a decis asupra lui (aprobat / respins rămâne în evidență).</summary>
+    public Rezultat VerificaStergerea() =>
+        Stare == StareNecesarMateriale.InAsteptareAprobare
+            ? Rezultat.Ok()
+            : Rezultat.Esuat(Eroare.Validare("Doar necesarele încă neaprobate se pot șterge."));
+
     public Rezultat Aproba(Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
     {
         if (Stare != StareNecesarMateriale.InAsteptareAprobare)

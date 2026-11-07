@@ -83,6 +83,26 @@ export const useEmiteNecesarMateriale = () => {
   })
 }
 
+/** Necesarul încă neaprobat: compartimentul și materialele (nota de comandă de acceptat se actualizează). */
+export const useModificaNecesarMateriale = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, compartimentSantier, linii }: { proiectId: string; id: string; compartimentSantier: string; linii: LinieNecesarMaterialeCerere[] }) =>
+      api.put<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}`, { compartimentSantier, linii }),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
+/** Șterge necesarul încă neaprobat, cu nota lui de comandă de acceptat. */
+export const useStergeNecesarMateriale = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id }: { proiectId: string; id: string }) =>
+      api.delete(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}`),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
 export const useAprobaNecesarMateriale = () => {
   const qc = useQueryClient()
   return useMutation({

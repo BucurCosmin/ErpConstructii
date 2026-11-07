@@ -63,6 +63,26 @@ public sealed partial class ModulAprovizionare : IModul
             .Produces(StatusCodes.Status409Conflict)
             .CerePermisiune(creare);
 
+        // Cât nu e aprobat: emitentul (sau cine are drept de editare) îl corectează ori îl șterge, împreună cu nota lui de acceptat.
+        grup.MapPut("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}", ModificaNecesar)
+            .WithName("ModificaNecesarMateriale")
+            .WithSummary("Modifică un necesar încă neaprobat (compartimentul și materialele); nota de comandă de acceptat se actualizează")
+            .Produces<NecesarMaterialeDto>()
+            .Produces(StatusCodes.Status400BadRequest)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict)
+            .CerePermisiune(creare);
+
+        grup.MapDelete("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}", StergeNecesar)
+            .WithName("StergeNecesarMateriale")
+            .WithSummary("Șterge un necesar încă neaprobat, cu nota lui de comandă de acceptat (și originalul, dacă a fost importat)")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status404NotFound)
+            .Produces(StatusCodes.Status409Conflict)
+            .CerePermisiune(creare);
+
         grup.MapPost("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/aprobare", AprobaNecesar)
             .WithName("AprobaNecesarMateriale")
             .WithSummary("Aprobă un necesar de materiale aflat în așteptare")
@@ -302,6 +322,87 @@ public sealed partial class ModulAprovizionare : IModul
         comanda.Parameters.Add(parametruAn);
 
         await comanda.ExecuteScalarAsync(ct);
+    }
+
+    /// <summary>Necesarul neaprobat îl schimbă cine l-a emis; altcineva doar cu drept de editare pe aprovizionare (pe proiect).</summary>
+    private static async Task<IResult?> PoateSchimbaAsync(
+        NecesarMateriale necesar, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
+    {
+        if (utilizator.UtilizatorId is not { } uid || firma.FirmaId is not { } fid)
+            return Results.Unauthorized();
+        if (necesar.EmitentId == uid)
+            return null;
+        var evaluator = await permisiuni.PentruUtilizatorAsync(uid, ct);
+        return evaluator.Are(Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Editare), new Domeniu(fid, necesar.ProiectId))
+            ? null
+            : Results.Problem(statusCode: StatusCodes.Status403Forbidden,
+                title: $"Necesarul l-a emis {necesar.EmitentNume}; îl poate schimba doar el sau cine are drept de editare pe aprovizionare.");
+    }
+
+    private static async Task<IResult> ModificaNecesar(
+        Guid proiectId,
+        Guid id,
+        EmiteNecesarMaterialeCerere cerere,
+        AprovizionareDbContext db,
+        IServiciuPermisiuni permisiuni,
+        IFirmaCurenta firma,
+        IUtilizatorCurent utilizator,
+        CancellationToken ct)
+    {
+        var necesar = await db.NecesareMateriale.FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
+        if (necesar is null)
+            return Results.NotFound();
+        if (await PoateSchimbaAsync(necesar, permisiuni, utilizator, firma, ct) is { } refuz)
+            return refuz;
+        if (necesar.Stare != StareNecesarMateriale.InAsteptareAprobare)
+            return Results.Conflict(new { mesaj = "Necesarul a fost deja aprobat sau respins: nu se mai modifică." });
+
+        var r = necesar.Modifica(cerere.CompartimentSantier ?? string.Empty,
+            (cerere.Linii ?? []).Select(l => new LinieNecesarMateriale(
+                l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.Observatii ?? string.Empty, l.ArticolDevizId)).ToList());
+        if (r.Esec)
+            return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
+
+        var nota = await db.NoteComanda.FirstOrDefaultAsync(c => c.NecesarId == necesar.Id && c.Stare == StareNotaComanda.DeAcceptat, ct);
+        if (nota is not null)
+        {
+            var actualizata = nota.ActualizeazaDinNecesar(necesar);
+            if (actualizata.Esec)
+                return Results.Conflict(new { mesaj = actualizata.Eroare.Mesaj });
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(MapareNecesarMateriale.LaDto(necesar));
+    }
+
+    private static async Task<IResult> StergeNecesar(
+        Guid proiectId,
+        Guid id,
+        AprovizionareDbContext db,
+        IServiciuPermisiuni permisiuni,
+        IFirmaCurenta firma,
+        IUtilizatorCurent utilizator,
+        CancellationToken ct)
+    {
+        var necesar = await db.NecesareMateriale.FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
+        if (necesar is null)
+            return Results.NotFound();
+        if (await PoateSchimbaAsync(necesar, permisiuni, utilizator, firma, ct) is { } refuz)
+            return refuz;
+        var r = necesar.VerificaStergerea();
+        if (r.Esec)
+            return Results.Conflict(new { mesaj = r.Eroare.Mesaj });
+
+        // Nota generată din el (încă neacceptată) dispare odată cu necesarul; originalul importat la fel, ca fișierul să se poată reimporta.
+        var note = await db.NoteComanda.Where(c => c.NecesarId == necesar.Id).ToListAsync(ct);
+        if (note.Any(c => c.Stare != StareNotaComanda.DeAcceptat))
+            return Results.Conflict(new { mesaj = "Nota de comandă a necesarului a fost deja acceptată: necesarul nu se mai șterge." });
+        db.NoteComanda.RemoveRange(note);
+        if (necesar.DocumentOriginalId is { } originalId && await db.DocumenteOriginale.FirstOrDefaultAsync(d => d.Id == originalId, ct) is { } original)
+            db.DocumenteOriginale.Remove(original);
+        db.NecesareMateriale.Remove(necesar);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> AprobaNecesar(

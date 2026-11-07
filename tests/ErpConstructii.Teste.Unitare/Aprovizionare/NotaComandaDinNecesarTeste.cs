@@ -43,6 +43,44 @@ public class NotaComandaDinNecesarTeste
     }
 
     [Fact]
+    public void Necesarul_neaprobat_modificat_isi_actualizeaza_nota_de_acceptat()
+    {
+        var necesar = Necesar();
+        var nota = NotaComanda.GenereazaDinNecesar(2026, 8, necesar, Emitent, "Ion Maistru").Valoare;
+
+        Assert.True(necesar.Modifica("Șantier nord", [new LinieNecesarMateriale(" Ciment CEM II 40kg ", "SAC", 120, "pentru luni", null)]).Succes);
+        Assert.True(nota.ActualizeazaDinNecesar(necesar).Succes);
+
+        Assert.Equal(("Șantier nord", "Ciment CEM II 40kg"), (necesar.CompartimentSantier, necesar.Linii.Single().Denumire));
+        Assert.Equal([("Ciment CEM II 40kg", 120m, "pentru luni")], nota.Linii.Select(l => (l.Denumire, l.Cantitate, l.Observatii)));
+        Assert.Equal("Din necesarul NM/2026/0003 (Șantier nord)", nota.Observatii);
+    }
+
+    [Fact]
+    public void Necesarul_aprobat_nu_se_mai_modifica_si_nu_se_sterge_iar_nota_acceptata_nu_se_actualizeaza()
+    {
+        var necesar = Necesar();
+        var nota = Acceptata(necesar);
+        Assert.True(necesar.Aproba(SefSantier, "Dan Șef", Acum).Succes);
+
+        Assert.True(necesar.Modifica("Altul", [new LinieNecesarMateriale("Var", "SAC", 1, string.Empty, null)]).Esec);
+        Assert.True(necesar.VerificaStergerea().Esec);
+        Assert.True(nota.ActualizeazaDinNecesar(necesar).Esec);
+        Assert.Equal(3, necesar.Linii.Count);
+    }
+
+    [Fact]
+    public void Modificarea_fara_materiale_sau_cu_cantitate_zero_e_refuzata()
+    {
+        var necesar = Necesar();
+
+        Assert.True(necesar.Modifica("Șantier", []).Esec);
+        Assert.True(necesar.Modifica("Șantier", [new LinieNecesarMateriale("Var", "SAC", 0, string.Empty, null)]).Esec);
+        Assert.True(necesar.VerificaStergerea().Succes);
+        Assert.Equal(3, necesar.Linii.Count);
+    }
+
+    [Fact]
     public void Acceptata_nu_e_blocata_dar_respinsa_da_si_nu_mai_poate_fi_acceptata()
     {
         var acceptata = Acceptata();

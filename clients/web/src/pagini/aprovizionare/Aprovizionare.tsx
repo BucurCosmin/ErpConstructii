@@ -1,13 +1,15 @@
-import { CheckOutlined, CloseOutlined, DownloadOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Form, Input, Modal, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { CheckOutlined, CloseOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Col, Form, Input, Modal, Popconfirm, Row, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import {
   useAprobaNecesarMateriale,
   useEmiteNecesarMateriale,
+  useModificaNecesarMateriale,
   useNecesareMateriale,
   useRespingeNecesarMateriale,
+  useStergeNecesarMateriale,
 } from '../../api/aprovizionare'
 import type { FiltreNecesareMateriale, NecesarMateriale } from '../../api/aprovizionare'
 import {
@@ -128,6 +130,11 @@ export function Aprovizionare() {
   const [proiectId, setProiectId] = useState('')
   const [filtreNote, setFiltreNote] = useState<FiltreNecesareMateriale>({})
   const [notaSelectata, setNotaSelectata] = useState<NecesarMateriale>()
+  // Necesarul neaprobat: îl corectează / șterge emitentul sau cine are drept de editare.
+  const [deModificat, setDeModificat] = useState<NecesarMateriale>()
+  const [formModificare] = Form.useForm<NecesarValues>()
+  const modificaNecesar = useModificaNecesarMateriale()
+  const stergeNecesar = useStergeNecesarMateriale()
   const [tipImport, setTipImport] = useState<'necesar-materiale' | 'nota-comanda' | 'factura-primita'>('necesar-materiale')
 
   const note = useNecesareMateriale(filtreNote)
@@ -137,6 +144,53 @@ export function Aprovizionare() {
   const poateCrea = permisiuni.data?.includes('aprovizionare.creare') ?? false
   const [tab, setTab] = useState('necesare')
   const poateAproba = permisiuni.data?.includes('aprovizionare.aprobare') ?? false
+  const poateEdita = permisiuni.data?.includes('aprovizionare.editare') ?? false
+  const poateSchimba = (n: NecesarMateriale) =>
+    n.stare === 'InAsteptareAprobare' && (poateEdita || (poateCrea && n.emitentId === profil.data?.id))
+
+  const deschideModificarea = (n: NecesarMateriale) => {
+    setDeModificat(n)
+    formModificare.setFieldsValue({
+      compartimentSantier: n.compartimentSantier,
+      linii: n.linii.map((l) => ({ denumire: l.denumire, unitateMasura: l.unitateMasura, cantitate: String(l.cantitate), observatii: l.observatii || undefined, articolDevizId: l.articolDevizId })),
+    })
+  }
+
+  const salveazaModificarea = async (valori: NecesarValues) => {
+    if (!deModificat) return
+    if (!valori.linii?.length) {
+      message.warning('Necesarul trebuie să aibă cel puțin un material.')
+      return
+    }
+    try {
+      await modificaNecesar.mutateAsync({
+        proiectId: deModificat.proiectId,
+        id: deModificat.id,
+        compartimentSantier: valori.compartimentSantier.trim(),
+        // articolul de deviz nu are câmp în formular: se citește din valorile păstrate ale fiecărei linii
+        linii: (formModificare.getFieldValue('linii') as (LinieNecesarValues & { articolDevizId?: string | null })[]).map((l) => ({
+          denumire: l.denumire.trim(),
+          unitateMasura: l.unitateMasura.trim(),
+          cantitate: Number(l.cantitate),
+          observatii: l.observatii?.trim() || null,
+          articolDevizId: l.articolDevizId ?? null,
+        })),
+      })
+      message.success(`Necesarul ${deModificat.numar} a fost modificat; nota lui de comandă de acceptat are acum aceleași materiale.`)
+      setDeModificat(undefined)
+    } catch (eroare) {
+      message.error(eroare instanceof Error ? eroare.message : 'Necesarul nu a putut fi modificat.')
+    }
+  }
+
+  const sterge = async (n: NecesarMateriale) => {
+    try {
+      await stergeNecesar.mutateAsync({ proiectId: n.proiectId, id: n.id })
+      message.success(`Necesarul ${n.numar} a fost șters, împreună cu nota lui de comandă de acceptat.`)
+    } catch (eroare) {
+      message.error(eroare instanceof Error ? eroare.message : 'Necesarul nu a putut fi șters.')
+    }
+  }
 
   const aplicaFiltreNote = (valori: FiltreNecesarValues) => {
     setFiltreNote({
@@ -402,6 +456,19 @@ export function Aprovizionare() {
                             {poateAproba && nota.stare === 'InAsteptareAprobare' && nota.emitentId === profil.data?.id && (
                               <Tag>Emitentul nu poate aproba</Tag>
                             )}
+                            {poateSchimba(nota) && (
+                              <>
+                                <Tooltip title="Modifică (doar cât nu e aprobat)">
+                                  <Button size="small" icon={<EditOutlined />} onClick={() => deschideModificarea(nota)} />
+                                </Tooltip>
+                                <Popconfirm title={`Ștergi necesarul ${nota.numar}?`} description="Se șterge și nota lui de comandă de acceptat." okText="Șterge"
+                                  okButtonProps={{ danger: true }} cancelText="Nu" onConfirm={() => sterge(nota)}>
+                                  <Tooltip title="Șterge (doar cât nu e aprobat)">
+                                    <Button size="small" danger icon={<DeleteOutlined />} loading={stergeNecesar.isPending} />
+                                  </Tooltip>
+                                </Popconfirm>
+                              </>
+                            )}
                             {nota.versiuneSablon > 0 && (
                               <Button size="small" icon={<DownloadOutlined />} onClick={() => void descarcaNota(nota)}>
                                 DOCX
@@ -567,6 +634,29 @@ export function Aprovizionare() {
           },
         ]}
       />
+
+      <Modal
+        title={`Modifică necesarul ${deModificat?.numar ?? ''}${deModificat ? ` — ${deModificat.proiectCod}` : ''}`}
+        open={Boolean(deModificat)}
+        width={900}
+        style={{ top: 24 }}
+        onCancel={() => setDeModificat(undefined)}
+        onOk={() => void formModificare.submit()}
+        confirmLoading={modificaNecesar.isPending}
+        okText="Salvează"
+        cancelText="Renunță"
+        forceRender
+      >
+        <Alert type="info" showIcon style={{ marginBottom: 12 }}
+          title="Necesarul nu e încă aprobat, deci se poate corecta. Nota de comandă de acceptat generată din el preia aceleași materiale." />
+        <Form form={formModificare} layout="vertical" onFinish={salveazaModificarea}>
+          <Form.Item name="compartimentSantier" label="Compartiment / Șantier"
+            rules={[{ required: true, whitespace: true, message: 'Completează compartimentul / șantierul.' }]}>
+            <Input maxLength={300} />
+          </Form.Item>
+          <LiniiNecesar />
+        </Form>
+      </Modal>
 
       <Modal
         title={`Respinge necesarul ${notaSelectata?.numar ?? ''}`}
