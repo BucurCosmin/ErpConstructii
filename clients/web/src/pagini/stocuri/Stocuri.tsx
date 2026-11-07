@@ -1,4 +1,4 @@
-import { EditOutlined, FilePdfOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { EditOutlined, EyeOutlined, FilePdfOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Drawer, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useState } from 'react'
@@ -12,6 +12,7 @@ import {
   useGestiuni,
   useModificaArticol,
   useNir,
+  usePropunereReceptie,
   useSoldStoc,
   useStorneazaNir,
 } from '../../api/stocuri'
@@ -19,6 +20,7 @@ import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, MiscareStoc, Ni
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
+import { PrevizualizareFactura } from './PrevizualizareFactura'
 import { ReceptieFactura } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
 import { InventarGestiune } from './InventarGestiune'
@@ -146,6 +148,27 @@ function MaterialeInSantier() {
   )
 }
 
+/** Liniile de stoc ale facturii, cu ce s-a primit deja și ce mai e de primit. */
+function LiniiFacturaDeReceptionat({ facturaId }: { facturaId: string }) {
+  const p = usePropunereReceptie(facturaId)
+  return (
+    <Table size="small" pagination={false} loading={p.isLoading} rowKey="indexFactura" dataSource={p.data?.linii}
+      columns={[
+        { title: 'Material pe factură', dataIndex: 'denumire' },
+        { title: 'Facturat', width: 120, align: 'right', render: (_, l) => `${formatCantitate(l.cantitate)} ${l.unitateMasura}` },
+        { title: 'Preț', dataIndex: 'pretUnitar', width: 110, align: 'right', render: bani },
+        { title: 'Recepționat', width: 120, align: 'right', render: (_, l) => (l.receptionat > 0 ? formatCantitate(l.receptionat) : '—') },
+        {
+          title: 'De primit', width: 150, align: 'right',
+          render: (_, l) => l.inchisa
+            ? <Tag color="green">recepționată</Tag>
+            : <Typography.Text strong>{formatCantitate(l.ramas)} {l.unitateMasura}</Typography.Text>,
+        },
+        { title: 'Material în stoc (propus)', width: 280, render: (_, l) => l.articol ? `${l.articol.cod} — ${l.articol.denumire}` : <Typography.Text type="secondary">nou</Typography.Text> },
+      ]} />
+  )
+}
+
 function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: boolean }) {
   const { message } = App.useApp()
   const [filtre, setFiltre] = useState<FiltreReceptii>({})
@@ -161,6 +184,7 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
   const storneaza = useStorneazaNir()
   const [facturaId, setFacturaId] = useState<string>()
   const [deStornat, setDeStornat] = useState<Nir>()
+  const [deVazut, setDeVazut] = useState<FacturaDeReceptionat>()
   const [formStorno] = Form.useForm<{ motiv: string }>()
   const deStornatAnulate = (nir.data ?? []).filter((n) => n.facturaAnulata && !n.storno)
   return (
@@ -183,6 +207,7 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
           loading={deFacut.isLoading}
           dataSource={deFacut.data}
           locale={{ emptyText: filtrat ? 'Nicio factură de recepționat nu corespunde filtrului.' : 'Toate facturile cu materiale au fost recepționate.' }}
+          expandable={{ expandedRowRender: (f) => <LiniiFacturaDeReceptionat facturaId={f.facturaId} />, expandRowByClick: true }}
           pagination={{ pageSize: 15, hideOnSinglePage: true }}
           columns={[
             { title: 'Factura', dataIndex: 'numar', width: 150 },
@@ -198,8 +223,13 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
             {
               title: '',
-              width: 140,
-              render: (_, f) => <Button type="primary" size="small" disabled={!poateCrea} onClick={() => setFacturaId(f.facturaId)}>Recepționează</Button>,
+              width: 230,
+              render: (_, f) => (
+                <Space size={4} onClick={(e) => e.stopPropagation()}>
+                  <Button size="small" icon={<EyeOutlined />} onClick={() => setDeVazut(f)}>Factura</Button>
+                  <Button type="primary" size="small" disabled={!poateCrea} onClick={() => setFacturaId(f.facturaId)}>Recepționează</Button>
+                </Space>
+              ),
             },
           ]}
         />
@@ -265,6 +295,18 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
         />
       </Card>
       <ReceptieFactura facturaId={facturaId} onInchide={() => setFacturaId(undefined)} />
+      <Drawer open={!!deVazut} onClose={() => setDeVazut(undefined)} size={1100} destroyOnHidden
+        title={deVazut && `Factura ${deVazut.numar} din ${dayjs(deVazut.data).format('DD.MM.YYYY')} — ${deVazut.furnizorDenumire}`}
+        extra={deVazut && (
+          <Button type="primary" disabled={!poateCrea} onClick={() => { setFacturaId(deVazut.facturaId); setDeVazut(undefined) }}>Recepționează</Button>
+        )}>
+        {deVazut && (
+          <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+            <LiniiFacturaDeReceptionat facturaId={deVazut.facturaId} />
+            <PrevizualizareFactura facturaId={deVazut.facturaId} inaltime="70vh" />
+          </Space>
+        )}
+      </Drawer>
       <Modal open={!!deStornat} title={deStornat && `Stornează ${deStornat.numar} (factura ${deStornat.facturaNumar})`} okText="Stornează" okButtonProps={{ danger: true }}
         cancelText="Renunță" onCancel={() => setDeStornat(undefined)} onOk={() => formStorno.submit()} confirmLoading={storneaza.isPending} destroyOnHidden>
         <Alert type="warning" showIcon style={{ marginBottom: 12 }}

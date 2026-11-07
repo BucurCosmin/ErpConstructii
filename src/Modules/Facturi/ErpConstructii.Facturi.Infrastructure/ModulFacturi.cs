@@ -138,7 +138,9 @@ public sealed class ModulFacturi : IModul
 
         g.MapGet("/primite", Lista).CerePermisiune(vizualizare);
         g.MapGet("/primite/{id:guid}", Detalii).CerePermisiune(vizualizare);
-        g.MapGet("/primite/{id:guid}/original/{tip}", Original).CerePermisiune(vizualizare);
+        // Și gestionarul (aprovizionare) vede originalul: recepția (NIR) se face cu factura în față.
+        g.MapGet("/primite/{id:guid}/original/{tip}", Original)
+            .CereOricarePermisiune(vizualizare, Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare));
         g.MapPost("/primite/{id:guid}/anulare", Anuleaza).CerePermisiune(anulare);
 
         g.MapPost("/primite/import/interpretare", Interpreteaza)
