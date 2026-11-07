@@ -28,6 +28,8 @@ import type { CampCitit, Certitudine, InterpretareNecesar, NecesarMateriale } fr
 import { useProiecte } from '../../api/interogari'
 import { eticheteCertitudine, stareCamp, UNITATI } from './campuriCitite'
 import { NumarRo } from '../../componente/NumarRo'
+import { useCompartimente, useSantiere } from '../../api/proiecte'
+import { potrivesteSolicitant, SelectSolicitant, solicitantDin } from '../../componente/SelectSolicitant'
 
 interface LinieFormular {
   denumire?: string
@@ -48,6 +50,8 @@ interface ValoriFormular {
   numarExtern?: string
   dataDocument?: Dayjs | null
   compartimentSantier?: string
+  /** D-38: șantierul proiectului / compartimentul firmei, propus după textul citit. */
+  solicitant?: string
   linii: LinieFormular[]
 }
 
@@ -69,6 +73,15 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
 
   const valori = Form.useWatch([], form) as ValoriFormular | undefined
   const linii = Form.useWatch('linii', form) as LinieFormular[] | undefined
+
+  // Șantierul / compartimentul propus după textul de pe document, odată ales proiectul (D-38).
+  const santiere = useSantiere(valori?.proiectId)
+  const compartimente = useCompartimente()
+  useEffect(() => {
+    if (!rezultat || form.getFieldValue('solicitant') || !santiere.data || !compartimente.data) return
+    const propus = potrivesteSolicitant(rezultat.compartimentSantier.valoare, santiere.data, compartimente.data)
+    if (propus) form.setFieldValue('solicitant', propus)
+  }, [rezultat, santiere.data, compartimente.data, form])
 
   // Previzualizarea originalului se eliberează la plecarea din pagină.
   useEffect(() => () => {
@@ -102,6 +115,7 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
         numarExtern: r.numarExtern.valoare ?? undefined,
         dataDocument: r.data.valoare ? dayjs(r.data.valoare) : null,
         compartimentSantier: r.compartimentSantier.valoare ?? undefined,
+        solicitant: undefined,
         linii: r.linii.length
           ? r.linii.map((l) => ({
               denumire: l.denumire.valoare ?? undefined,
@@ -137,7 +151,8 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
         date: {
           numarExtern: v.numarExtern?.trim() || null,
           dataDocument: v.dataDocument.format('YYYY-MM-DD'),
-          compartimentSantier: (v.compartimentSantier ?? '').trim(),
+          compartimentSantier: v.compartimentSantier?.trim() || null,
+          ...solicitantDin(v.solicitant),
           linii: v.linii.map((l) => ({
             denumire: (l.denumire ?? '').trim(),
             unitateMasura: (l.unitateMasura ?? '').trim(),
@@ -306,13 +321,15 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
                   </Form.Item>
                 </Col>
                 <Col xs={24} md={8}>
+                  <Form.Item name="compartimentSantier" hidden><Input /></Form.Item>
                   <Form.Item
-                    name="compartimentSantier"
-                    label="Compartiment / șantier"
-                    rules={[{ required: true, whitespace: true, message: 'Nu apare în document; completează-l.' }]}
-                    {...stareCamp(camp('compartimentSantier'), valori?.compartimentSantier)}
+                    name="solicitant"
+                    label="Șantier / compartiment"
+                    rules={[{ required: true, message: 'Alege șantierul sau compartimentul care cere materialele.' }]}
+                    help={rezultat.compartimentSantier.valoare ? `Pe document: „${rezultat.compartimentSantier.valoare}”` : 'Nu apare în document; alege-l.'}
+                    validateStatus={valori?.solicitant ? undefined : 'warning'}
                   >
-                    <Input maxLength={300} />
+                    <SelectSolicitant proiectId={valori?.proiectId} />
                   </Form.Item>
                 </Col>
               </Row>

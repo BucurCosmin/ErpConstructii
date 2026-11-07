@@ -99,6 +99,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("integer")
                         .HasColumnName("an");
 
+                    b.Property<Guid?>("CompartimentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("compartiment_id");
+
                     b.Property<string>("CompartimentSantier")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -197,6 +201,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("sablon_id");
 
+                    b.Property<Guid?>("SantierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("santier_id");
+
                     b.Property<string>("Stare")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -217,6 +225,12 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
 
                     b.HasKey("Id")
                         .HasName("pk_necesare_materiale");
+
+                    b.HasIndex("FirmaId", "CompartimentId")
+                        .HasDatabaseName("ix_necesare_materiale_firma_id_compartiment_id");
+
+                    b.HasIndex("FirmaId", "SantierId")
+                        .HasDatabaseName("ix_necesare_materiale_firma_id_santier_id");
 
                     b.HasIndex("FirmaId", "An", "Numar")
                         .IsUnique()

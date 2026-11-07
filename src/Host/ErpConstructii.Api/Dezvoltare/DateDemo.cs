@@ -179,6 +179,7 @@ public static class DateDemo
         {
             var lista = proiecteNoi();
             proiecte.Proiecte.AddRange(lista);
+            proiecte.Santiere.AddRange(lista.Select(p => Santier.Creeaza(p.Id, "Șantier principal", p.AdresaSantier).Valoare));
             await proiecte.SaveChangesAsync(ct);
 
             if (cuDeviz)

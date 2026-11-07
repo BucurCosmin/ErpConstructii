@@ -44,8 +44,10 @@ public sealed record InterpretareNecesarDto(
 public sealed record ConfirmaImportNecesarCerere(
     string? NumarExtern,
     DateOnly DataDocument,
-    string CompartimentSantier,
-    IReadOnlyList<LinieNecesarMaterialeCerere> Linii);
+    string? CompartimentSantier,
+    IReadOnlyList<LinieNecesarMaterialeCerere> Linii,
+    Guid? SantierId = null,
+    Guid? CompartimentId = null);
 
 /// <summary>
 /// Importul necesarelor de materiale emise în afara sistemului (scanări PDF, poze, Word):
@@ -212,6 +214,13 @@ internal static class ImportNecesarMateriale
         // Opțional: cu șablon activ, necesarul importat poate fi și regenerat în formatul firmei.
         var sablon = await sabloane.SablonActivAsync(CodTipNecesar, ct);
 
+        // D-38: șantierul / compartimentul ales; din aplicația Windows vine doar textul, potrivit cu cele existente.
+        var (loc, eroareLoc) = await ModulAprovizionare.RezolvaSolicitantAsync(proiecte, proiect.Id, cerere.SantierId, cerere.CompartimentId, cerere.CompartimentSantier, ct);
+        if (eroareLoc is not null)
+        {
+            return eroareLoc;
+        }
+
         var azi = ceas.Azi;
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await ModulAprovizionare.BlocheazaSecventaAsync(db, tranzactie, firmaId, azi.Year, ct);
@@ -220,7 +229,7 @@ internal static class ImportNecesarMateriale
         var original = new DocumentOriginal(sursa.NumeFisier, TipContinut(sursa.Extensie), sursa.Continut);
         var rezultat = NecesarMateriale.Importa(
             azi.Year, numar, cerere.NumarExtern, proiect.Id, proiect.Cod, proiect.Denumire,
-            (cerere.CompartimentSantier ?? string.Empty).Trim(), cerere.DataDocument, utilizatorId, utilizator.Nume,
+            loc!.Denumire, cerere.DataDocument, utilizatorId, utilizator.Nume,
             sablon?.Id ?? Guid.Empty, sablon?.Versiune ?? 0,
             cerere.Linii.Select(l => new LinieNecesarMateriale(
                 (l.Denumire ?? string.Empty).Trim(), (l.UnitateMasura ?? string.Empty).Trim(), l.Cantitate,
@@ -229,6 +238,12 @@ internal static class ImportNecesarMateriale
         if (rezultat.Esec)
         {
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
+        }
+
+        var solicitant = rezultat.Valoare.StabilesteSolicitantul(loc);
+        if (solicitant.Esec)
+        {
+            return Results.BadRequest(new { mesaj = solicitant.Eroare.Mesaj });
         }
 
         db.DocumenteOriginale.Add(original);

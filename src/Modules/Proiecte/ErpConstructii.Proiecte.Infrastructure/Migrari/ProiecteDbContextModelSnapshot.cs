@@ -23,6 +23,53 @@ namespace ErpConstructii.Proiecte.Infrastructure.Migrari
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ErpConstructii.Proiecte.Compartiment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activ")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activ");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("Denumire")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("denumire");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.HasKey("Id")
+                        .HasName("pk_compartimente");
+
+                    b.HasIndex("FirmaId", "Denumire")
+                        .IsUnique()
+                        .HasDatabaseName("ix_compartimente_firma_id_denumire");
+
+                    b.ToTable("compartimente", "proiecte");
+                });
+
             modelBuilder.Entity("ErpConstructii.Proiecte.Proiect", b =>
                 {
                     b.Property<Guid>("Id")
@@ -105,6 +152,61 @@ namespace ErpConstructii.Proiecte.Infrastructure.Migrari
                         .HasDatabaseName("ix_proiecte_firma_id_cod");
 
                     b.ToTable("proiecte", "proiecte");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Proiecte.Santier", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activ")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activ");
+
+                    b.Property<string>("Adresa")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("adresa");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("Denumire")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("denumire");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<Guid>("ProiectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proiect_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_santiere");
+
+                    b.HasIndex("FirmaId", "ProiectId")
+                        .HasDatabaseName("ix_santiere_firma_id_proiect_id");
+
+                    b.ToTable("santiere", "proiecte");
                 });
 #pragma warning restore 612, 618
         }

@@ -240,8 +240,6 @@ public sealed partial class ModulAprovizionare : IModul
     {
         if (cerere.Linii is null || cerere.Linii.Count == 0)
             return Results.BadRequest(new { mesaj = "Adaugă cel puțin un material." });
-        if (string.IsNullOrWhiteSpace(cerere.CompartimentSantier) || cerere.CompartimentSantier.Length > 300)
-            return Results.BadRequest(new { mesaj = "Completează compartimentul / șantierul (maximum 300 de caractere)." });
         if (cerere.Linii.Any(l => string.IsNullOrWhiteSpace(l.Denumire) ||
                                   string.IsNullOrWhiteSpace(l.UnitateMasura) ||
                                   l.Cantitate <= 0))
@@ -254,6 +252,10 @@ public sealed partial class ModulAprovizionare : IModul
         var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
         if (proiect is null)
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
+
+        var (loc, eroareLoc) = await RezolvaSolicitantAsync(proiecte, proiect.Id, cerere.SantierId, cerere.CompartimentId, cerere.CompartimentSantier, ct);
+        if (eroareLoc is not null)
+            return eroareLoc;
 
         var sablon = await sabloane.SablonActivAsync(CodTipNecesar, ct);
         if (sablon is null)
@@ -272,7 +274,7 @@ public sealed partial class ModulAprovizionare : IModul
             proiect.Id,
             proiect.Cod,
             proiect.Denumire,
-            cerere.CompartimentSantier.Trim(),
+            loc!.Denumire,
             azi,
             utilizatorId,
             utilizator.Nume,
@@ -286,6 +288,9 @@ public sealed partial class ModulAprovizionare : IModul
                 l.ArticolDevizId)).ToList());
         if (rezultat.Esec)
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
+        var solicitant = rezultat.Valoare.StabilesteSolicitantul(loc);
+        if (solicitant.Esec)
+            return Results.BadRequest(new { mesaj = solicitant.Eroare.Mesaj });
 
         db.NecesareMateriale.Add(rezultat.Valoare);
         // D-37: necesarul nou generează nota de comandă „de acceptat”; acceptarea ei aprobă necesarul.
@@ -297,6 +302,38 @@ public sealed partial class ModulAprovizionare : IModul
 
         var dto = MapareNecesarMateriale.LaDto(rezultat.Valoare);
         return Results.Created($"/api/aprovizionare/proiecte/{proiectId}/necesare-materiale/{dto.Id}", dto);
+    }
+
+    /// <summary>
+    /// D-38: cine cere materialele — șantierul proiectului sau compartimentul firmei, ales după Id; fără Id (clienți vechi,
+    /// aplicația Windows) textul se potrivește cu cele existente (<see cref="PotrivireSolicitant"/>).
+    /// </summary>
+    internal static async Task<(LocCandidat? Loc, IResult? Eroare)> RezolvaSolicitantAsync(
+        IInterogareProiecte proiecte, Guid proiectId, Guid? santierId, Guid? compartimentId, string? text, CancellationToken ct)
+    {
+        if (santierId is not null && compartimentId is not null)
+            return (null, Results.BadRequest(new { mesaj = "Alege fie șantierul, fie compartimentul, nu amândouă." }));
+        if (santierId is not null || compartimentId is not null)
+        {
+            var gasit = await proiecte.LocSolicitantAsync(proiectId, santierId, compartimentId, ct);
+            if (gasit is null)
+                return (null, Results.BadRequest(new { mesaj = santierId is not null ? "Șantierul ales nu e al acestui proiect." : "Compartimentul ales nu există." }));
+            if (!gasit.Activ)
+                return (null, Results.BadRequest(new { mesaj = $"„{gasit.Denumire}” este dezactivat." }));
+            return (new LocCandidat(gasit.Id, gasit.EsteSantier, gasit.Denumire), null);
+        }
+
+        var locuri = await proiecte.LocuriSolicitantAsync(proiectId, ct);
+        var potrivit = PotrivireSolicitant.Cauta(text, locuri.Select(l => new LocCandidat(l.Id, l.EsteSantier, l.Denumire)).ToList());
+        if (potrivit is not null)
+            return (potrivit, null);
+        var optiuni = string.Join(", ", locuri.Select(l => (l.EsteSantier ? "șantier " : "compartiment ") + l.Denumire));
+        return (null, Results.BadRequest(new
+        {
+            mesaj = locuri.Count == 0
+                ? "Proiectul nu are șantiere și firma nu are compartimente: adaugă-le întâi (fișa proiectului / Administrare → Compartimente)."
+                : $"Alege șantierul sau compartimentul care cere materialele{(string.IsNullOrWhiteSpace(text) ? "" : $" („{text.Trim()}” nu se potrivește)")}: {optiuni}.",
+        }));
     }
 
     internal static async Task BlocheazaSecventaAsync(
@@ -344,6 +381,7 @@ public sealed partial class ModulAprovizionare : IModul
         Guid id,
         EmiteNecesarMaterialeCerere cerere,
         AprovizionareDbContext db,
+        IInterogareProiecte proiecte,
         IServiciuPermisiuni permisiuni,
         IFirmaCurenta firma,
         IUtilizatorCurent utilizator,
@@ -357,11 +395,17 @@ public sealed partial class ModulAprovizionare : IModul
         if (necesar.Stare != StareNecesarMateriale.InAsteptareAprobare)
             return Results.Conflict(new { mesaj = "Necesarul a fost deja aprobat sau respins: nu se mai modifică." });
 
-        var r = necesar.Modifica(cerere.CompartimentSantier ?? string.Empty,
+        var (loc, eroareLoc) = await RezolvaSolicitantAsync(proiecte, proiectId, cerere.SantierId, cerere.CompartimentId, cerere.CompartimentSantier, ct);
+        if (eroareLoc is not null)
+            return eroareLoc;
+        var r = necesar.Modifica(loc!.Denumire,
             (cerere.Linii ?? []).Select(l => new LinieNecesarMateriale(
                 l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.Observatii ?? string.Empty, l.ArticolDevizId)).ToList());
         if (r.Esec)
             return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
+        var solicitant = necesar.StabilesteSolicitantul(loc);
+        if (solicitant.Esec)
+            return Results.BadRequest(new { mesaj = solicitant.Eroare.Mesaj });
 
         var nota = await db.NoteComanda.FirstOrDefaultAsync(c => c.NecesarId == necesar.Id && c.Stare == StareNotaComanda.DeAcceptat, ct);
         if (nota is not null)

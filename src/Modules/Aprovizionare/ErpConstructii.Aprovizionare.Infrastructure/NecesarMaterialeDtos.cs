@@ -11,7 +11,10 @@ public sealed record LinieNecesarMaterialeCerere(
     Guid? ArticolDevizId);
 
 /// <summary>Datele introduse pentru emiterea unei necesare; numărul, data și lucrarea sunt generate de sistem.</summary>
-public sealed record EmiteNecesarMaterialeCerere(string CompartimentSantier, IReadOnlyList<LinieNecesarMaterialeCerere> Linii);
+/// <param name="SantierId">Șantierul proiectului care cere materialele (D-38); exclusiv cu <paramref name="CompartimentId"/>.</param>
+/// <param name="CompartimentSantier">Text: doar dacă nu se dă niciun Id (clienți vechi); se potrivește cu un șantier / compartiment existent.</param>
+public sealed record EmiteNecesarMaterialeCerere(
+    string? CompartimentSantier, IReadOnlyList<LinieNecesarMaterialeCerere> Linii, Guid? SantierId = null, Guid? CompartimentId = null);
 
 /// <summary>Motivul obligatoriu al respingerii unui necesar de materiale.</summary>
 public sealed record RespingeNecesarMaterialeCerere(string Motiv);
@@ -75,7 +78,9 @@ public sealed record NecesarMaterialeDto(
     IReadOnlyList<LinieNecesarMaterialeDto> Linii,
     string Sursa,
     string? NumarExtern,
-    bool AreOriginal);
+    bool AreOriginal,
+    Guid? SantierId = null,
+    Guid? CompartimentId = null);
 
 internal static class MapareNecesarMateriale
 {
@@ -100,5 +105,7 @@ internal static class MapareNecesarMateriale
                 l.Denumire, l.UnitateMasura, l.Cantitate, l.Observatii, l.ArticolDevizId)).ToList(),
             necesar.Sursa.ToString(),
             necesar.NumarExtern,
-            necesar.DocumentOriginalId is not null);
+            necesar.DocumentOriginalId is not null,
+            necesar.SantierId,
+            necesar.CompartimentId);
 }

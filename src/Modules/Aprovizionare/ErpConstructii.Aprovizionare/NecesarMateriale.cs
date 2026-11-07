@@ -181,6 +181,28 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
         return Rezultat.Ok(necesar);
     }
 
+    /// <summary>Șantierul proiectului care cere materialele (D-38); exclusiv cu <see cref="CompartimentId"/>.</summary>
+    public Guid? SantierId { get; private set; }
+
+    /// <summary>Compartimentul firmei care cere materialele (D-38). Necesarele vechi nu au niciunul (doar textul).</summary>
+    public Guid? CompartimentId { get; private set; }
+
+    /// <summary>
+    /// Cine cere materialele: un șantier al proiectului sau un compartiment al firmei (exact unul). Denumirea lui se copiază în
+    /// <see cref="CompartimentSantier"/>, textul tipărit pe document.
+    /// </summary>
+    public Rezultat StabilesteSolicitantul(LocCandidat loc)
+    {
+        if (Stare != StareNecesarMateriale.InAsteptareAprobare)
+            return Rezultat.Esuat(Eroare.Validare("Doar necesarele încă neaprobate se pot modifica."));
+        if (loc.Id == Guid.Empty || string.IsNullOrWhiteSpace(loc.Denumire) || loc.Denumire.Trim().Length > 300)
+            return Rezultat.Esuat(Eroare.Validare("Alege șantierul sau compartimentul care cere materialele."));
+        SantierId = loc.EsteSantier ? loc.Id : null;
+        CompartimentId = loc.EsteSantier ? null : loc.Id;
+        CompartimentSantier = loc.Denumire.Trim();
+        return Rezultat.Ok();
+    }
+
     /// <summary>Necesarul încă neaprobat se poate corecta (compartimentul și materialele); după decizie, nu.</summary>
     public Rezultat Modifica(string compartimentSantier, IReadOnlyCollection<LinieNecesarMateriale> linii)
     {

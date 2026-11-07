@@ -69,4 +69,41 @@ public sealed class Proiect : EntitateFirma
     }
 
     public void IncepeExecutia() => Stare = StareProiect.InExecutie;
+
+    /// <summary>
+    /// Editarea completă (administratorul firmei): datele de identificare, starea și datele contractuale. Documentele emise
+    /// își păstrează codul / denumirea copiate la emitere.
+    /// </summary>
+    public Rezultat Modifica(
+        string cod, string denumire, string beneficiar, string? cuiBeneficiar, string adresaSantier,
+        StareProiect stare, DateOnly? dataInceput, DateOnly? termenContractual)
+    {
+        var probleme = new List<string>();
+        if (string.IsNullOrWhiteSpace(cod) || cod.Trim().Length > 40)
+            probleme.Add("Codul este obligatoriu (cel mult 40 de caractere).");
+        if (string.IsNullOrWhiteSpace(denumire) || denumire.Trim().Length > 300)
+            probleme.Add("Denumirea este obligatorie (cel mult 300 de caractere).");
+        if (string.IsNullOrWhiteSpace(beneficiar) || beneficiar.Trim().Length > 300)
+            probleme.Add("Beneficiarul este obligatoriu (cel mult 300 de caractere).");
+        if (cuiBeneficiar?.Trim().Length > 20)
+            probleme.Add("CUI-ul beneficiarului are cel mult 20 de caractere.");
+        if ((adresaSantier ?? string.Empty).Trim().Length > 500)
+            probleme.Add("Adresa are cel mult 500 de caractere.");
+        if (!Enum.IsDefined(stare))
+            probleme.Add("Starea proiectului nu este validă.");
+        if (dataInceput is { } d && termenContractual is { } t && t < d)
+            probleme.Add("Termenul contractual este înaintea datei de început.");
+        if (probleme.Count > 0)
+            return Rezultat.Esuat(Eroare.Validare(string.Join(" ", probleme)));
+
+        Cod = cod.Trim().ToUpperInvariant();
+        Denumire = denumire.Trim();
+        Beneficiar = beneficiar.Trim();
+        CuiBeneficiar = string.IsNullOrWhiteSpace(cuiBeneficiar) ? null : cuiBeneficiar.Trim();
+        AdresaSantier = (adresaSantier ?? string.Empty).Trim();
+        Stare = stare;
+        DataInceput = dataInceput;
+        TermenContractual = termenContractual;
+        return Rezultat.Ok();
+    }
 }

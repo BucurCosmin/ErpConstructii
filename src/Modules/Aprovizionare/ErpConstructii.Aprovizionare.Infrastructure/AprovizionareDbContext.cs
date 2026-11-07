@@ -90,6 +90,8 @@ internal sealed class ConfigurareNecesarMateriale : IEntityTypeConfiguration<Nec
         b.Property(x => x.NumarExtern).HasMaxLength(50);
         b.Ignore(x => x.NumarAfisat);
         b.Ignore(x => x.Linii);
+        b.HasIndex(x => new { x.FirmaId, x.SantierId });
+        b.HasIndex(x => new { x.FirmaId, x.CompartimentId });
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
         b.HasIndex(x => new { x.FirmaId, x.ProiectId, x.Data });
     }

@@ -19,6 +19,8 @@ import {
 import type { ImportFormularApi } from '../../api/formulare'
 import { usePermisiuni, useProfil, useProiecte } from '../../api/interogari'
 import type { Proiect } from '../../api/tipuri'
+import { useCompartimente, useSantiere } from '../../api/proiecte'
+import { potrivesteSolicitant, SelectSolicitant, solicitantDin, valoareSolicitant } from '../../componente/SelectSolicitant'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { ImportNecesarExtern } from './ImportNecesarExtern'
 import { ImportNotaComanda } from './ImportNotaComanda'
@@ -34,7 +36,8 @@ interface LinieNecesarValues {
 }
 
 interface NecesarValues {
-  compartimentSantier: string
+  /** D-38: „S:<id>” șantier al proiectului / „C:<id>” compartiment al firmei. */
+  solicitant?: string
   linii: LinieNecesarValues[]
 }
 
@@ -148,10 +151,19 @@ export function Aprovizionare() {
   const poateSchimba = (n: NecesarMateriale) =>
     n.stare === 'InAsteptareAprobare' && (poateEdita || (poateCrea && n.emitentId === profil.data?.id))
 
+  // Necesarele de dinainte de D-38 au doar textul: se propune șantierul / compartimentul cu aceeași denumire.
+  const santiereModificat = useSantiere(deModificat?.proiectId)
+  const compartimente = useCompartimente()
+  useEffect(() => {
+    if (!deModificat || formModificare.getFieldValue('solicitant') || !santiereModificat.data || !compartimente.data) return
+    const propus = potrivesteSolicitant(deModificat.compartimentSantier, santiereModificat.data, compartimente.data)
+    if (propus) formModificare.setFieldValue('solicitant', propus)
+  }, [deModificat, santiereModificat.data, compartimente.data, formModificare])
+
   const deschideModificarea = (n: NecesarMateriale) => {
     setDeModificat(n)
     formModificare.setFieldsValue({
-      compartimentSantier: n.compartimentSantier,
+      solicitant: valoareSolicitant(n.santierId, n.compartimentId),
       linii: n.linii.map((l) => ({ denumire: l.denumire, unitateMasura: l.unitateMasura, cantitate: String(l.cantitate), observatii: l.observatii || undefined, articolDevizId: l.articolDevizId })),
     })
   }
@@ -166,7 +178,7 @@ export function Aprovizionare() {
       await modificaNecesar.mutateAsync({
         proiectId: deModificat.proiectId,
         id: deModificat.id,
-        compartimentSantier: valori.compartimentSantier.trim(),
+        ...solicitantDin(valori.solicitant),
         // articolul de deviz nu are câmp în formular: se citește din valorile păstrate ale fiecărei linii
         linii: (formModificare.getFieldValue('linii') as (LinieNecesarValues & { articolDevizId?: string | null })[]).map((l) => ({
           denumire: l.denumire.trim(),
@@ -210,6 +222,10 @@ export function Aprovizionare() {
     if (!proiectId && proiecte.data?.length) setProiectId(proiecte.data[0].id)
   }, [proiectId, proiecte.data])
 
+  useEffect(() => {
+    if (formNota.getFieldValue('solicitant')?.startsWith('S:')) formNota.setFieldValue('solicitant', undefined)
+  }, [proiectId, formNota])
+
   const emite = async (valori: NecesarValues) => {
     if (!proiectId) {
       message.warning('Selectează proiectul / șantierul.')
@@ -219,7 +235,7 @@ export function Aprovizionare() {
     try {
       const nota = await emiteNota.mutateAsync({
         proiectId,
-        compartimentSantier: valori.compartimentSantier.trim(),
+        ...solicitantDin(valori.solicitant),
         linii: valori.linii.map((linie) => ({
           denumire: linie.denumire.trim(),
           unitateMasura: linie.unitateMasura.trim(),
@@ -529,16 +545,17 @@ export function Aprovizionare() {
                     type="info"
                     showIcon
                     message="Numărul și data se generează automat la emitere."
-                    description="Lucrarea este preluată din proiect, iar compartimentul / șantierul se completează manual. La emitere se generează automat nota de comandă (fără furnizor), care trebuie acceptată; acceptarea aprobă necesarul, iar nota ajunge la achiziții („Necesar de achiziție”), unde primește furnizorul."
+                    description="Lucrarea este preluată din proiect; alege șantierul proiectului sau compartimentul firmei care cere materialele. La emitere se generează automat nota de comandă (fără furnizor), care trebuie acceptată; acceptarea aprobă necesarul, iar nota ajunge la achiziții („Necesar de achiziție”), unde primește furnizorul."
                     style={{ marginBottom: 16 }}
                   />
                   <Form form={formNota} layout="vertical" initialValues={{ linii: [{}] }} onFinish={emite}>
                     <Form.Item
-                      name="compartimentSantier"
-                      label="Compartiment / Șantier"
-                      rules={[{ required: true, whitespace: true, message: 'Completează compartimentul / șantierul.' }]}
+                      name="solicitant"
+                      label="Șantier / Compartiment"
+                      rules={[{ required: true, message: 'Alege șantierul sau compartimentul care cere materialele.' }]}
+                      extra="Șantierele se adaugă în fișa proiectului (tab-ul Șantiere), compartimentele în Administrare → Compartimente."
                     >
-                      <Input maxLength={300} />
+                      <SelectSolicitant proiectId={proiectId || undefined} />
                     </Form.Item>
                     <LiniiNecesar />
                     <Form.Item style={{ marginTop: 16, marginBottom: 0 }}>
@@ -650,9 +667,10 @@ export function Aprovizionare() {
         <Alert type="info" showIcon style={{ marginBottom: 12 }}
           title="Necesarul nu e încă aprobat, deci se poate corecta. Nota de comandă de acceptat generată din el preia aceleași materiale." />
         <Form form={formModificare} layout="vertical" onFinish={salveazaModificarea}>
-          <Form.Item name="compartimentSantier" label="Compartiment / Șantier"
-            rules={[{ required: true, whitespace: true, message: 'Completează compartimentul / șantierul.' }]}>
-            <Input maxLength={300} />
+          <Form.Item name="solicitant" label="Șantier / Compartiment"
+            rules={[{ required: true, message: 'Alege șantierul sau compartimentul care cere materialele.' }]}
+            extra={deModificat && !deModificat.santierId && !deModificat.compartimentId ? `Pe necesar scrie: „${deModificat.compartimentSantier}”.` : undefined}>
+            <SelectSolicitant proiectId={deModificat?.proiectId} />
           </Form.Item>
           <LiniiNecesar />
         </Form>

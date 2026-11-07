@@ -29,6 +29,9 @@ export interface NecesarMateriale {
   sursa: 'Sistem' | 'Import'
   numarExtern: string | null
   areOriginal: boolean
+  /** D-38: cine cere materialele (exact unul la necesarele noi; amândouă null la cele vechi, doar textul). */
+  santierId: string | null
+  compartimentId: string | null
 }
 
 export interface LinieNecesarMaterialeCerere {
@@ -77,8 +80,8 @@ export const useNecesareMateriale = (filtre: FiltreNecesareMateriale) =>
 export const useEmiteNecesarMateriale = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ proiectId, compartimentSantier, linii }: { proiectId: string; compartimentSantier: string; linii: LinieNecesarMaterialeCerere[] }) =>
-      api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale`, { compartimentSantier, linii }),
+    mutationFn: ({ proiectId, ...corp }: { proiectId: string; santierId: string | null; compartimentId: string | null; linii: LinieNecesarMaterialeCerere[] }) =>
+      api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale`, corp),
     onSuccess: () => invalideazaFlux(qc),
   })
 }
@@ -87,8 +90,8 @@ export const useEmiteNecesarMateriale = () => {
 export const useModificaNecesarMateriale = () => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ proiectId, id, compartimentSantier, linii }: { proiectId: string; id: string; compartimentSantier: string; linii: LinieNecesarMaterialeCerere[] }) =>
-      api.put<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}`, { compartimentSantier, linii }),
+    mutationFn: ({ proiectId, id, ...corp }: { proiectId: string; id: string; santierId: string | null; compartimentId: string | null; linii: LinieNecesarMaterialeCerere[] }) =>
+      api.put<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}`, corp),
     onSuccess: () => invalideazaFlux(qc),
   })
 }
@@ -155,7 +158,9 @@ export interface InterpretareNecesar {
 export interface ConfirmaImportNecesar {
   numarExtern: string | null
   dataDocument: string
-  compartimentSantier: string
+  compartimentSantier: string | null
+  santierId: string | null
+  compartimentId: string | null
   linii: LinieNecesarMaterialeCerere[]
 }
 

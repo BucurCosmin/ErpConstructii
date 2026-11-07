@@ -1,8 +1,9 @@
-import { ApartmentOutlined, BankOutlined, SafetyCertificateOutlined, TeamOutlined } from '@ant-design/icons'
+import { ApartmentOutlined, BankOutlined, ClusterOutlined, SafetyCertificateOutlined, TeamOutlined } from '@ant-design/icons'
 import { Card, Tabs } from 'antd'
 import { useNavigate, useParams } from 'react-router'
 import { useProfil } from '../../api/interogari'
 import { AntetPagina } from '../../layout/AntetPagina'
+import { Compartimente } from './Compartimente'
 import { Firma } from './Firma'
 import { Firme } from './Firme'
 import { Roluri } from './Roluri'
@@ -20,6 +21,7 @@ export function Administrare() {
     { key: 'utilizatori', label: 'Utilizatori', icon: <TeamOutlined />, children: <Utilizatori /> },
     { key: 'roluri', label: 'Roluri și permisiuni', icon: <SafetyCertificateOutlined />, children: <Roluri /> },
     { key: 'firma', label: 'Datele firmei', icon: <BankOutlined />, children: <Firma /> },
+    { key: 'compartimente', label: 'Compartimente', icon: <ClusterOutlined />, children: <Compartimente /> },
     ...(esteAdminSistem ? [{ key: 'firme', label: 'Toate firmele', icon: <ApartmentOutlined />, children: <Firme /> }] : []),
   ]
 

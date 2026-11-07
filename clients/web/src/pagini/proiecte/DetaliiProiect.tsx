@@ -8,6 +8,8 @@ import type { VersiuneDeviz } from '../../api/tipuri'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatData, stariProiect, stariVersiune, timpScurs, tipuriVersiune } from '../../util/format'
 import { ImportDeviz } from '../devize/ImportDeviz'
+import { EditareProiect } from './EditareProiect'
+import { SantiereProiect } from './SantiereProiect'
 
 export function DetaliiProiect() {
   const { proiectId = '' } = useParams()
@@ -17,6 +19,7 @@ export function DetaliiProiect() {
   const permisiuni = usePermisiuni()
   const navigheaza = useNavigate()
   const [importDeschis, setImportDeschis] = useState(false)
+  const [editareDeschisa, setEditareDeschisa] = useState(false)
   const tab = parametri.get('tab') ?? 'general'
 
   if (proiect.error instanceof EroareApi && proiect.error.status === 404) {
@@ -26,6 +29,7 @@ export function DetaliiProiect() {
   const p = proiect.data
   const scurs = p ? timpScurs(p.dataInceput, p.termenContractual) : null
   const poateImporta = permisiuni.data?.includes('ofertare.creare') ?? false
+  const poateEdita = permisiuni.data?.includes('proiecte.editare') ?? false
 
   return (
     <>
@@ -46,7 +50,8 @@ export function DetaliiProiect() {
         subtitlu={p?.denumire}
         actiuni={
           <>
-            <Button icon={<EditOutlined />} disabled>
+            <Button icon={<EditOutlined />} disabled={!p || !poateEdita} onClick={() => setEditareDeschisa(true)}
+              title={poateEdita ? undefined : 'Doar administratorul (drept de editare pe proiecte) editează proiectul'}>
               Editează
             </Button>
             <Button type="primary" icon={<UploadOutlined />} disabled={!poateImporta} onClick={() => setImportDeschis(true)}>
@@ -116,6 +121,11 @@ export function DetaliiProiect() {
               ),
             },
             {
+              key: 'santiere',
+              label: 'Șantiere',
+              children: <SantiereProiect proiectId={proiectId} poateEdita={poateEdita} />,
+            },
+            {
               key: 'devize',
               label: `Devize${devize.data ? ` (${devize.data.length})` : ''}`,
               children: (
@@ -161,6 +171,7 @@ export function DetaliiProiect() {
       </Card>
 
       <ImportDeviz proiectId={proiectId} deschis={importDeschis} laInchidere={() => setImportDeschis(false)} />
+      <EditareProiect proiect={p} deschis={editareDeschisa} laInchidere={() => setEditareDeschisa(false)} />
     </>
   )
 }
