@@ -186,7 +186,8 @@ internal static class DocumenteNoteComanda
             return null;
         var accesibile = (await permisiuni.PentruUtilizatorAsync(uid, ct)).ProiecteAccesibile(Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare), fid);
         var alese = ids.Distinct().ToList();
-        var q = db.NoteComanda.AsNoTracking().Where(n => alese.Contains(n.Id));
+        // Rapoartele și tipărirea multiplă: doar comenzile emise către furnizori (D-37).
+        var q = db.NoteComanda.AsNoTracking().Where(n => alese.Contains(n.Id) && n.Stare == StareNotaComanda.Emisa);
         if (accesibile is not null)
         {
             var proiecte = accesibile.ToList();

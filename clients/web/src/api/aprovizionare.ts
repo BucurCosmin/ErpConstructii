@@ -79,7 +79,7 @@ export const useEmiteNecesarMateriale = () => {
   return useMutation({
     mutationFn: ({ proiectId, compartimentSantier, linii }: { proiectId: string; compartimentSantier: string; linii: LinieNecesarMaterialeCerere[] }) =>
       api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale`, { compartimentSantier, linii }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
+    onSuccess: () => invalideazaFlux(qc),
   })
 }
 
@@ -88,7 +88,7 @@ export const useAprobaNecesarMateriale = () => {
   return useMutation({
     mutationFn: ({ proiectId, id }: { proiectId: string; id: string }) =>
       api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}/aprobare`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
+    onSuccess: () => invalideazaFlux(qc),
   })
 }
 
@@ -97,7 +97,7 @@ export const useRespingeNecesarMateriale = () => {
   return useMutation({
     mutationFn: ({ proiectId, id, motiv }: { proiectId: string; id: string; motiv: string }) =>
       api.post<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/${id}/respingere`, { motiv }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
+    onSuccess: () => invalideazaFlux(qc),
   })
 }
 
@@ -151,7 +151,7 @@ export const useImportaNecesar = () => {
   return useMutation({
     mutationFn: ({ proiectId, fisier, date }: { proiectId: string; fisier: File; date: ConfirmaImportNecesar }) =>
       api.postFisier<NecesarMateriale>(`/api/aprovizionare/proiecte/${proiectId}/necesare-materiale/import`, fisier, { date: JSON.stringify(date) }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale }),
+    onSuccess: () => invalideazaFlux(qc),
   })
 }
 
@@ -162,7 +162,11 @@ export interface LinieNotaComanda {
   unitateMasura: string
   cantitate: number
   termen: string | null
+  observatii?: string | null
 }
+
+/** D-37: DeAcceptat (generată din necesar) → Acceptata (la achiziții) / Respinsa → Emisa (trimisă la furnizor). */
+export type StareNotaComanda = 'DeAcceptat' | 'Acceptata' | 'Respinsa' | 'Emisa'
 
 export interface NotaComanda {
   id: string
@@ -187,6 +191,12 @@ export interface NotaComanda {
   conditii: ConditiiComanda
   necesarId: string | null
   areSablon: boolean
+  stare: StareNotaComanda
+  acceptataDe: string | null
+  acceptataLa: string | null
+  motivRespingere: string | null
+  notaSursaId: string | null
+  necesarNumar: string | null
 }
 
 /** Condițiile bifate pe formularul GC 007; null = nebifat. */
@@ -206,6 +216,8 @@ export interface FiltreNoteComanda {
   cauta?: string
   lucrare?: string
   sursa?: 'Sistem' | 'Import'
+  /** Implicit doar cele emise; 'Toate' = orice stare. */
+  stare?: StareNotaComanda | 'Toate'
 }
 
 export interface EmiteNotaComanda {
@@ -285,5 +297,53 @@ export const useImportaNotaComanda = () => {
     mutationFn: ({ proiectId, fisier, date }: { proiectId: string; fisier: File; date: ConfirmaNotaComanda }) =>
       api.postFisier<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/import`, fisier, { date: JSON.stringify(date) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['aprovizionare', 'note-comanda'] }),
+  })
+}
+
+const invalideazaFlux = (qc: ReturnType<typeof useQueryClient>) => {
+  void qc.invalidateQueries({ queryKey: ['aprovizionare', 'note-comanda'] })
+  void qc.invalidateQueries({ queryKey: cheiAprovizionare.necesareMateriale })
+}
+
+/** Acceptă nota generată din necesar (aprobă și necesarul); ajunge la achiziții. */
+export const useAcceptaNotaComanda = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id }: { proiectId: string; id: string }) =>
+      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}/acceptare`, {}),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
+export const useRespingeNotaComanda = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, motiv }: { proiectId: string; id: string; motiv: string }) =>
+      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}/respingere`, { motiv }),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
+export interface ComandaLaFurnizor {
+  data: string | null
+  lucrare: string | null
+  furnizorDenumire: string
+  furnizorCui: string | null
+  furnizorAdresa: string | null
+  furnizorTelefon: string | null
+  furnizorEmail: string | null
+  conditii: ConditiiComanda
+  /** index = poziția pe nota acceptată; cantitatea poate fi mai mică (restul rămâne pentru alt furnizor). */
+  linii: { index: number; denumire: string | null; cantitate: number; termen: string | null }[]
+  observatii: string | null
+}
+
+/** Achiziții: trimite nota acceptată (toată sau liniile alese) la un furnizor. */
+export const useComandaLaFurnizor = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, date }: { proiectId: string; id: string; date: ComandaLaFurnizor }) =>
+      api.post<{ emisa: NotaComanda; ramasaId: string | null; liniiRamase: number }>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}/comanda`, date),
+    onSuccess: () => invalideazaFlux(qc),
   })
 }

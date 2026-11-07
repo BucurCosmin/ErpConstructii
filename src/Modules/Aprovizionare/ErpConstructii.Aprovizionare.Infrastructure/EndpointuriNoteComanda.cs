@@ -15,7 +15,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ErpConstructii.Aprovizionare.Infrastructure;
 
-public sealed record LinieNotaComandaDto(string Denumire, string UnitateMasura, decimal Cantitate, string? Termen);
+public sealed record LinieNotaComandaDto(string Denumire, string UnitateMasura, decimal Cantitate, string? Termen, string? Observatii = null);
 
 /// <summary>Condițiile bifate pe formular: Receptie = LaFurnizor | LaPrimire; ClasaCalitate = Clasa4 | BestComercial; Transport = Auto | Cfr; Plata = Op | FilaCec | Alte.</summary>
 public sealed record ConditiiComandaDto(string? Receptie, string? ClasaCalitate, string? Transport, string? Plata);
@@ -42,7 +42,13 @@ public sealed record NotaComandaDto(
     string? FurnizorEmail,
     ConditiiComandaDto Conditii,
     Guid? NecesarId,
-    bool AreSablon);
+    bool AreSablon,
+    string Stare = "Emisa",
+    string? AcceptataDe = null,
+    DateTimeOffset? AcceptataLa = null,
+    string? MotivRespingere = null,
+    Guid? NotaSursaId = null,
+    string? NecesarNumar = null);
 
 public sealed record LinieNotaComandaCititaDto(int Rand, CampTextDto Denumire, CampTextDto UnitateMasura, CampNumarDto Cantitate, string? Termen);
 
@@ -96,7 +102,7 @@ public sealed record EmiteNotaComandaCerere(
 /// <param name="Sursa">Sistem (emise în aplicație) sau Import (de pe hârtie).</param>
 public sealed record FiltreNoteComanda(
     Guid? ProiectId, string? Furnizor, string? Material, DateOnly? DataDe, DateOnly? DataPanaLa,
-    string? Cauta = null, string? Lucrare = null, string? Sursa = null);
+    string? Cauta = null, string? Lucrare = null, string? Sursa = null, string? Stare = null);
 
 /// <summary>
 /// Notele de comandă către furnizori (formularul GC 007). Cele emise pe hârtie se importă (PDF / scanare / Word):
@@ -105,7 +111,7 @@ public sealed record FiltreNoteComanda(
 /// </summary>
 internal static class EndpointuriNoteComanda
 {
-    private const string SecventaComenzi = ":nc";
+    private const string SecventaComenzi = FluxNotaComanda.SecventaComenzi;
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public static void Mapeaza(RouteGroupBuilder grup)
@@ -200,6 +206,12 @@ internal static class EndpointuriNoteComanda
             q = q.Where(c => c.Data <= panaLa);
         if (!string.IsNullOrWhiteSpace(filtre.Lucrare))
             q = q.Where(c => c.Lucrare != null && EF.Functions.ILike(c.Lucrare, $"%{filtre.Lucrare.Trim()}%"));
+        // Implicit doar comenzile emise către furnizori; cele de acceptat / acceptate / respinse se cer explicit (D-37).
+        if (string.Equals(filtre.Stare, "Toate", StringComparison.OrdinalIgnoreCase)) { }
+        else if (Enum.TryParse<StareNotaComanda>(filtre.Stare, true, out var stare) && Enum.IsDefined(stare))
+            q = q.Where(c => c.Stare == stare);
+        else
+            q = q.Where(c => c.Stare == StareNotaComanda.Emisa);
         if (Enum.TryParse<SursaDocument>(filtre.Sursa, true, out var sursa))
             q = q.Where(c => c.Sursa == sursa);
         if (!string.IsNullOrWhiteSpace(filtre.Cauta))
@@ -220,7 +232,10 @@ internal static class EndpointuriNoteComanda
             comenzi = comenzi.Where(c => c.Linii.Any(l => RaportNoteComanda.CheieMaterial(l.Denumire).Contains(m, StringComparison.Ordinal))).ToList();
         }
 
-        return Results.Ok(comenzi.Select(CaDto).ToList());
+        var necesare = comenzi.Where(c => c.NecesarId != null).Select(c => c.NecesarId!.Value).Distinct().ToList();
+        var numere = necesare.Count == 0 ? [] : await db.NecesareMateriale.AsNoTracking().Where(n => necesare.Contains(n.Id))
+            .Select(n => new { n.Id, n.An, n.Numar }).ToDictionaryAsync(n => n.Id, n => $"NM/{n.An}/{n.Numar:D4}", ct);
+        return Results.Ok(comenzi.Select(c => CaDto(c) with { NecesarNumar = c.NecesarId is { } nid ? numere.GetValueOrDefault(nid) : null }).ToList());
     }
 
     private static async Task<IResult> Emite(
@@ -299,7 +314,7 @@ internal static class EndpointuriNoteComanda
         return Results.Created($"/api/aprovizionare/proiecte/{proiectId}/note-comanda/{dto.Id}", dto);
     }
 
-    private static bool Conditii(ConditiiComandaDto? dto, out ConditiiComanda conditii)
+    internal static bool Conditii(ConditiiComandaDto? dto, out ConditiiComanda conditii)
     {
         conditii = ConditiiComanda.Niciuna;
         if (dto is null)
@@ -553,11 +568,11 @@ internal static class EndpointuriNoteComanda
     private static NotaComandaDto CaDto(NotaComanda c) => new(
         c.Id, c.NumarAfisat, c.NumarExtern, c.Data, c.ProiectId, c.ProiectCod, c.Lucrare,
         c.FurnizorId, c.FurnizorDenumire, c.FurnizorCui,
-        c.Linii.Select(l => new LinieNotaComandaDto(l.Denumire, l.UnitateMasura, l.Cantitate, l.Termen)).ToList(),
+        c.Linii.Select(l => new LinieNotaComandaDto(l.Denumire, l.UnitateMasura, l.Cantitate, l.Termen, l.Observatii)).ToList(),
         c.Observatii, c.Sursa.ToString(), c.DocumentOriginalId is not null, c.InregistrataDeNume, c.CreatLa,
         c.FurnizorAdresa, c.FurnizorTelefon, c.FurnizorEmail,
         new ConditiiComandaDto(c.Conditii.Receptie?.ToString(), c.Conditii.ClasaCalitate?.ToString(), c.Conditii.Transport?.ToString(), c.Conditii.Plata?.ToString()),
-        c.NecesarId, c.SablonId is not null);
+        c.NecesarId, c.SablonId is not null, c.Stare.ToString(), c.AcceptataDeNume, c.AcceptataLa, c.MotivRespingere, c.NotaSursaId);
 
     internal static NotaComandaDto LaDto(NotaComanda c) => CaDto(c);
 

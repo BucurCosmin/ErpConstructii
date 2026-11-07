@@ -35,6 +35,11 @@ internal sealed class ConfigurareNotaComanda : IEntityTypeConfiguration<NotaComa
         b.Property(x => x.Observatii).HasMaxLength(1000);
         b.Property(x => x.Sursa).HasConversion<string>().HasMaxLength(20).IsRequired();
         b.Property(x => x.InregistrataDeNume).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Stare).HasConversion<string>().HasMaxLength(20).IsRequired(); // fără valoare implicită în model: DeAcceptat (0) trebuie scris explicit
+        b.Property(x => x.AcceptataDeNume).HasMaxLength(200);
+        b.Property(x => x.MotivRespingere).HasMaxLength(1000);
+        b.HasIndex(x => new { x.FirmaId, x.Stare });
+        b.HasIndex(x => new { x.FirmaId, x.NotaSursaId });
         b.Ignore(x => x.NumarAfisat);
         b.Ignore(x => x.Linii);
         b.Ignore(x => x.Conditii);

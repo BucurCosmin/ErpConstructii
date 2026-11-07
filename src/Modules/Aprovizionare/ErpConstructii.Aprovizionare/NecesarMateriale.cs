@@ -85,7 +85,9 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
     public string? DecisaDeNume { get; private set; }
     public DateTimeOffset? DecisaLa { get; private set; }
     public string? MotivRespingere { get; private set; }
-    public bool EsteBlocat => true;
+
+    /// <summary>Blocat după decizie (aprobare / respingere); până atunci se poate aproba sau respinge.</summary>
+    public bool EsteBlocat => Stare != StareNecesarMateriale.InAsteptareAprobare;
 
     public static Rezultat<NecesarMateriale> Emite(
         int an,

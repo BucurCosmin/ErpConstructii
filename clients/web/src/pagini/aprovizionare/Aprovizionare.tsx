@@ -21,6 +21,7 @@ import { AntetPagina } from '../../layout/AntetPagina'
 import { ImportNecesarExtern } from './ImportNecesarExtern'
 import { ImportNotaComanda } from './ImportNotaComanda'
 import { ListaNoteComanda } from './ListaNoteComanda'
+import { NecesarAchizitie } from './NecesarAchizitie'
 import { NotaComandaNoua } from './NotaComandaNoua'
 
 interface LinieNecesarValues {
@@ -174,7 +175,7 @@ export function Aprovizionare() {
         })),
       })
       formNota.resetFields()
-      message.success(`Necesarul ${nota.numar} a fost emis și trimis spre aprobare.`)
+      message.success(`Necesarul ${nota.numar} a fost emis; nota de comandă generată din el așteaptă acceptarea (Note de comandă → De acceptat).`)
     } catch (eroare) {
       message.error(eroare instanceof Error ? eroare.message : 'Necesarul nu a putut fi emis.')
     }
@@ -183,7 +184,7 @@ export function Aprovizionare() {
   const aproba = async (nota: NecesarMateriale) => {
     try {
       await aprobaNota.mutateAsync({ proiectId: nota.proiectId, id: nota.id })
-      message.success(`Necesarul ${nota.numar} a fost aprobat.`)
+      message.success(`Necesarul ${nota.numar} a fost aprobat; nota lui de comandă a ajuns în „Necesar de achiziție”.`)
     } catch (eroare) {
       message.error(eroare instanceof Error ? eroare.message : 'Necesarul nu a putut fi aprobat.')
     }
@@ -461,7 +462,7 @@ export function Aprovizionare() {
                     type="info"
                     showIcon
                     message="Numărul și data se generează automat la emitere."
-                    description="Lucrarea este preluată din proiect, iar compartimentul / șantierul se completează manual. Necesarul nu are furnizor; după aprobare, aprovizionarea emite notele de comandă către furnizori."
+                    description="Lucrarea este preluată din proiect, iar compartimentul / șantierul se completează manual. La emitere se generează automat nota de comandă (fără furnizor), care trebuie acceptată; acceptarea aprobă necesarul, iar nota ajunge la achiziții („Necesar de achiziție”), unde primește furnizorul."
                     style={{ marginBottom: 16 }}
                   />
                   <Form form={formNota} layout="vertical" initialValues={{ linii: [{}] }} onFinish={emite}>
@@ -475,7 +476,7 @@ export function Aprovizionare() {
                     <LiniiNecesar />
                     <Form.Item style={{ marginTop: 16, marginBottom: 0 }}>
                       <Button type="primary" htmlType="submit" loading={emiteNota.isPending} disabled={!poateCrea || !proiectId || !sablonActiv}>
-                        Emite și trimite spre aprobare
+                        Emite (generează nota de comandă de acceptat)
                       </Button>
                     </Form.Item>
                   </Form>
@@ -486,7 +487,12 @@ export function Aprovizionare() {
           {
             key: 'note-comanda',
             label: 'Note de comandă',
-            children: <ListaNoteComanda poateCrea={poateCrea} onNotaNoua={() => setTab('nota-noua')} />,
+            children: <ListaNoteComanda poateCrea={poateCrea} poateAproba={poateAproba} onNotaNoua={() => setTab('nota-noua')} />,
+          },
+          {
+            key: 'necesar-achizitie',
+            label: 'Necesar de achiziție',
+            children: <NecesarAchizitie poateCrea={poateCrea} />,
           },
           {
             key: 'nota-noua',

@@ -6,7 +6,37 @@ namespace ErpConstructii.Aprovizionare;
 
 /// <param name="Termen">Termenul de livrare, așa cum e scris pe comandă (dată sau text, ex. „imediat”).</param>
 /// <param name="PretUnitar">Prețul negociat, dacă apare pe comandă (formularul uzual nu îl are).</param>
-public sealed record LinieNotaComanda(string Denumire, string UnitateMasura, decimal Cantitate, string? Termen, decimal? PretUnitar);
+/// <param name="Observatii">Observațiile de pe linia necesarului (la notele generate din necesar).</param>
+public sealed record LinieNotaComanda(string Denumire, string UnitateMasura, decimal Cantitate, string? Termen, decimal? PretUnitar, string? Observatii = null);
+
+/// <summary>
+/// Starea notei de comandă (D-37). Cea generată din necesar trece prin DeAcceptat → Acceptata (ajunge la achiziții, în
+/// „Necesar de achiziție”) sau Respinsa; la achiziții primește furnizorul și devine Emisa. Cele emise direct sau importate
+/// sunt Emisa de la început. Doar Emisa / Respinsa sunt blocate (regula 6).
+/// </summary>
+public enum StareNotaComanda
+{
+    DeAcceptat,
+    Acceptata,
+    Respinsa,
+    Emisa,
+}
+
+/// <summary>O linie a notei acceptate trimisă la furnizor: indexul în nota sursă și cât se comandă acum.</summary>
+public sealed record LinieDeComandat(int Index, string? Denumire, decimal Cantitate, string? Termen, decimal? PretUnitar);
+
+/// <summary>Furnizorul și condițiile cu care achizițiile emit nota acceptată.</summary>
+public sealed record DateComandaFurnizor(
+    DateOnly Data,
+    string? Lucrare,
+    Guid? FurnizorId,
+    string FurnizorDenumire,
+    string? FurnizorCui,
+    string? FurnizorAdresa,
+    string? FurnizorTelefon,
+    string? FurnizorEmail,
+    ConditiiComanda? Conditii,
+    string? Observatii);
 
 public enum ReceptieComanda
 {
@@ -107,7 +137,154 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
     public int? VersiuneSablon { get; private set; }
     public Guid InregistrataDeId { get; private set; }
     public string InregistrataDeNume { get; private set; } = string.Empty;
-    public bool EsteBlocat => true;
+
+    public StareNotaComanda Stare { get; private set; } = StareNotaComanda.Emisa;
+    public Guid? AcceptataDeId { get; private set; }
+    public string? AcceptataDeNume { get; private set; }
+    public DateTimeOffset? AcceptataLa { get; private set; }
+    public string? MotivRespingere { get; private set; }
+
+    /// <summary>Nota acceptată din care s-a desprins această comandă (când liniile ei s-au împărțit pe mai mulți furnizori).</summary>
+    public Guid? NotaSursaId { get; private set; }
+
+    public bool EsteBlocat => Stare is StareNotaComanda.Emisa or StareNotaComanda.Respinsa;
+
+    /// <summary>
+    /// Nota generată automat la crearea unui necesar: materialele necesarului, fără furnizor, în așteptarea acceptării.
+    /// Acceptarea ei aprobă și necesarul.
+    /// </summary>
+    public static Rezultat<NotaComanda> GenereazaDinNecesar(int an, int numar, NecesarMateriale necesar, Guid utilizatorId, string utilizatorNume)
+    {
+        if (an < 2000 || numar < 1)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Numărul notei de comandă nu este valid."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Utilizatorul care înregistrează nota de comandă este obligatoriu."));
+        var linii = necesar.Linii.Select(l => new LinieNotaComanda(l.Denumire, l.UnitateMasura, l.Cantitate, null, null,
+            string.IsNullOrWhiteSpace(l.Observatii) ? null : l.Observatii.Trim())).ToList();
+        if (linii.Count == 0)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Necesarul nu are materiale."));
+
+        var nota = Construieste(an, numar,
+            new DateNotaComanda(null, necesar.Data, necesar.ProiectId, necesar.ProiectCod, necesar.Lucrare, null, string.Empty, null, linii,
+                $"Din necesarul {necesar.NumarAfisat} ({necesar.CompartimentSantier})", NecesarId: necesar.Id),
+            SursaDocument.Sistem, null, utilizatorId, utilizatorNume);
+        nota.Stare = StareNotaComanda.DeAcceptat;
+        return Rezultat.Ok(nota);
+    }
+
+    public Rezultat Accepta(Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (Stare != StareNotaComanda.DeAcceptat)
+            return Rezultat.Esuat(Eroare.Validare("Doar notele de comandă în așteptarea acceptării pot fi acceptate."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume) || utilizatorNume.Length > 200)
+            return Rezultat.Esuat(Eroare.Validare("Numele celui care acceptă este obligatoriu."));
+        Stare = StareNotaComanda.Acceptata;
+        AcceptataDeId = utilizatorId;
+        AcceptataDeNume = utilizatorNume.Trim();
+        AcceptataLa = moment;
+        return Rezultat.Ok();
+    }
+
+    public Rezultat Respinge(Guid utilizatorId, string utilizatorNume, DateTimeOffset moment, string motiv)
+    {
+        if (Stare != StareNotaComanda.DeAcceptat)
+            return Rezultat.Esuat(Eroare.Validare("Doar notele de comandă în așteptarea acceptării pot fi respinse."));
+        if (string.IsNullOrWhiteSpace(motiv) || motiv.Length > 1000)
+            return Rezultat.Esuat(Eroare.Validare("Motivul respingerii este obligatoriu (cel mult 1000 de caractere)."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume) || utilizatorNume.Length > 200)
+            return Rezultat.Esuat(Eroare.Validare("Numele celui care respinge este obligatoriu."));
+        Stare = StareNotaComanda.Respinsa;
+        AcceptataDeId = utilizatorId;
+        AcceptataDeNume = utilizatorNume.Trim();
+        AcceptataLa = moment;
+        MotivRespingere = motiv.Trim();
+        return Rezultat.Ok();
+    }
+
+    /// <summary>
+    /// Achizițiile trimit nota acceptată (sau o parte din ea) la un furnizor. Dacă se comandă tot ce a rămas, nota însăși
+    /// primește furnizorul și devine emisă (își păstrează numărul). Altfel liniile alese pleacă într-o notă nouă, emisă,
+    /// cu numărul <paramref name="numarNou"/> (legată prin <see cref="NotaSursaId"/>), iar aici rămâne restul, pentru alt furnizor.
+    /// Întoarce nota emisă (aceasta sau cea nouă).
+    /// </summary>
+    public Rezultat<NotaComanda> ComandaLaFurnizor(
+        DateComandaFurnizor date, IReadOnlyList<LinieDeComandat> linii, int anNou, int numarNou,
+        Guid? sablonId, int? versiuneSablon, Guid utilizatorId, string utilizatorNume)
+    {
+        if (Stare != StareNotaComanda.Acceptata)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Doar notele de comandă acceptate se trimit la furnizor."));
+        if (linii is null || linii.Count == 0)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Alege cel puțin un material de comandat la acest furnizor."));
+        if (linii.Select(l => l.Index).Distinct().Count() != linii.Count)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Un material apare de două ori."));
+        var actuale = Linii;
+        foreach (var l in linii)
+        {
+            if (l.Index < 0 || l.Index >= actuale.Count)
+                return Rezultat.Esuat<NotaComanda>(Eroare.Validare("Un material ales nu mai există pe nota de comandă."));
+            var s = actuale[l.Index];
+            if (l.Cantitate <= 0 || l.Cantitate > s.Cantitate)
+                return Rezultat.Esuat<NotaComanda>(Eroare.Validare(
+                    $"Cantitatea pentru „{s.Denumire}” trebuie să fie pozitivă și cel mult {s.Cantitate.ToString("0.####", System.Globalization.CultureInfo.GetCultureInfo("ro-RO"))} {s.UnitateMasura}."));
+        }
+
+        var comandate = linii.OrderBy(l => l.Index).Select(l =>
+        {
+            var sursa = actuale[l.Index];
+            return sursa with
+            {
+                Denumire = string.IsNullOrWhiteSpace(l.Denumire) ? sursa.Denumire : l.Denumire,
+                Cantitate = l.Cantitate,
+                Termen = l.Termen,
+                PretUnitar = l.PretUnitar,
+            };
+        }).ToList();
+        var dateComanda = new DateNotaComanda(null, date.Data, ProiectId, ProiectCod, string.IsNullOrWhiteSpace(date.Lucrare) ? Lucrare : date.Lucrare,
+            date.FurnizorId, date.FurnizorDenumire ?? string.Empty, date.FurnizorCui, comandate, date.Observatii,
+            date.FurnizorAdresa, date.FurnizorTelefon, date.FurnizorEmail, date.Conditii, NecesarId);
+        var tot = linii.Count == actuale.Count && linii.All(l => l.Cantitate == actuale[l.Index].Cantitate);
+        var probleme = Valideaza(tot ? An : anNou, tot ? Numar : numarNou, dateComanda, utilizatorId, utilizatorNume);
+        if ((sablonId is null) != (versiuneSablon is null))
+            probleme.Add("Șablonul și versiunea lui se dau împreună.");
+        if (probleme.Count > 0)
+            return Rezultat.Esuat<NotaComanda>(Eroare.Validare(string.Join(" ", probleme)));
+
+        var emisa = Construieste(tot ? An : anNou, tot ? Numar : numarNou, dateComanda, SursaDocument.Sistem, null, utilizatorId, utilizatorNume);
+        if (tot)
+        {
+            // Nota însăși devine comanda către furnizor; acceptarea rămâne consemnată pe ea.
+            Data = emisa.Data;
+            Lucrare = emisa.Lucrare;
+            FurnizorId = emisa.FurnizorId;
+            FurnizorDenumire = emisa.FurnizorDenumire;
+            FurnizorCui = emisa.FurnizorCui;
+            FurnizorAdresa = emisa.FurnizorAdresa;
+            FurnizorTelefon = emisa.FurnizorTelefon;
+            FurnizorEmail = emisa.FurnizorEmail;
+            LiniiJson = emisa.LiniiJson;
+            _linii = null;
+            ConditiiJson = emisa.ConditiiJson;
+            Observatii = emisa.Observatii;
+            SablonId = sablonId;
+            VersiuneSablon = versiuneSablon;
+            InregistrataDeId = emisa.InregistrataDeId;
+            InregistrataDeNume = emisa.InregistrataDeNume;
+            Stare = StareNotaComanda.Emisa;
+            return Rezultat.Ok(this);
+        }
+
+        emisa.SablonId = sablonId;
+        emisa.VersiuneSablon = versiuneSablon;
+        emisa.NotaSursaId = Id;
+        emisa.AcceptataDeId = AcceptataDeId;
+        emisa.AcceptataDeNume = AcceptataDeNume;
+        emisa.AcceptataLa = AcceptataLa;
+        var ramase = actuale.Select((l, i) => l with { Cantitate = l.Cantitate - (linii.FirstOrDefault(x => x.Index == i)?.Cantitate ?? 0) })
+            .Where(l => l.Cantitate > 0).ToList();
+        LiniiJson = JsonSerializer.Serialize(ramase);
+        _linii = null;
+        return Rezultat.Ok(emisa);
+    }
 
     /// <summary>Notă de comandă emisă în sistem; Word-ul se generează din șablonul firmei (dacă există).</summary>
     public static Rezultat<NotaComanda> Emite(

@@ -233,6 +233,13 @@ internal static class ImportNecesarMateriale
 
         db.DocumenteOriginale.Add(original);
         db.NecesareMateriale.Add(rezultat.Valoare);
+        // D-37: și necesarul importat generează nota de comandă „de acceptat”.
+        var nota = await FluxNotaComanda.GenereazaAsync(db, tranzactie, firmaId, azi.Year, rezultat.Valoare, utilizatorId, utilizator.Nume, ct);
+        if (nota.Esec)
+        {
+            return Results.BadRequest(new { mesaj = nota.Eroare.Mesaj });
+        }
+
         await db.SaveChangesAsync(ct);
         await tranzactie.CommitAsync(ct);
 

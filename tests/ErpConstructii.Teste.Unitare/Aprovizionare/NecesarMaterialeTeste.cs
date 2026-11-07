@@ -13,7 +13,7 @@ public sealed class NecesarMaterialeTeste
         Assert.Equal("NM/2026/0007", rezultat.Valoare.NumarAfisat);
         Assert.Equal(StareNecesarMateriale.InAsteptareAprobare, rezultat.Valoare.Stare);
         Assert.Equal("Nume Emitent", rezultat.Valoare.EmitentNume);
-        Assert.True(rezultat.Valoare.EsteBlocat);
+        Assert.False(rezultat.Valoare.EsteBlocat); // încă se aprobă / respinge; blocat abia după decizie
     }
 
     [Fact]
@@ -28,6 +28,7 @@ public sealed class NecesarMaterialeTeste
         Assert.False(nota.Aproba(Guid.NewGuid(), "Alt aprobator", DateTimeOffset.UtcNow).Succes);
         Assert.False(nota.Respinge(Guid.NewGuid(), "Alt aprobator", DateTimeOffset.UtcNow, "Motiv").Succes);
         Assert.Equal(StareNecesarMateriale.Aprobata, nota.Stare);
+        Assert.True(nota.EsteBlocat);
     }
 
     [Fact]

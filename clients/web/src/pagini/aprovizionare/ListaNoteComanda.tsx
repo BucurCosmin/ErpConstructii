@@ -1,10 +1,10 @@
-import { DownloadOutlined, FilePdfOutlined, FileWordOutlined, PaperClipOutlined, PlusOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, DatePicker, Dropdown, Form, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { CheckOutlined, CloseOutlined, DownloadOutlined, FilePdfOutlined, FileWordOutlined, PaperClipOutlined, PlusOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, App, Badge, Button, Card, DatePicker, Dropdown, Form, Input, Modal, Popconfirm, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useState } from 'react'
 import { api } from '../../api/client'
-import { useNoteComanda } from '../../api/aprovizionare'
-import type { FiltreNoteComanda, LinieNotaComanda, NotaComanda } from '../../api/aprovizionare'
+import { useAcceptaNotaComanda, useNoteComanda, useRespingeNotaComanda } from '../../api/aprovizionare'
+import type { FiltreNoteComanda, LinieNotaComanda, NotaComanda, StareNotaComanda } from '../../api/aprovizionare'
 import { useProiecte } from '../../api/interogari'
 import { formatData } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
@@ -45,11 +45,40 @@ const cantitate = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigi
  * Notele de comandă către furnizori (formularul GC 007): filtre (perioadă, lucrare / proiect, număr, furnizor, material, sursă),
  * documentul Word din șablonul firmei, PDF, originalul scanat, rapoarte PDF pe lucrare și export CSV.
  */
-export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () => void; poateCrea?: boolean }) {
+export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNotaNoua?: () => void; poateCrea?: boolean; poateAproba?: boolean }) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const [filtre, setFiltre] = useState<FiltreNoteComanda>({})
-  const note = useNoteComanda(filtre)
+  // D-37: notele generate din necesare se acceptă aici; „Emise” = comenzile trimise la furnizori (rapoartele le iau doar pe ele).
+  const [stare, setStare] = useState<StareNotaComanda>('Emisa')
+  const note = useNoteComanda({ ...filtre, stare })
+  const deAcceptat = useNoteComanda({ stare: 'DeAcceptat' })
+  const accepta = useAcceptaNotaComanda()
+  const respingeNota = useRespingeNotaComanda()
+  const [deRespins, setDeRespins] = useState<NotaComanda>()
+  const [motiv, setMotiv] = useState('')
+  const emise = stare === 'Emisa'
+
+  const acceptaNota = async (n: NotaComanda) => {
+    try {
+      await accepta.mutateAsync({ proiectId: n.proiectId, id: n.id })
+      message.success(`${n.numar} a fost acceptată${n.necesarNumar ? ` (necesarul ${n.necesarNumar} e aprobat)` : ''}: a ajuns la achiziții, în „Necesar de achiziție”.`)
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
+  const respinge = async () => {
+    if (!deRespins || !motiv.trim()) return
+    try {
+      await respingeNota.mutateAsync({ proiectId: deRespins.proiectId, id: deRespins.id, motiv: motiv.trim() })
+      message.success(`${deRespins.numar} a fost respinsă.`)
+      setDeRespins(undefined)
+      setMotiv('')
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
   const [selectate, setSelectate] = useState<string[]>([])
   const [seGenereaza, setSeGenereaza] = useState(false)
 
@@ -115,6 +144,13 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () =>
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }} size="middle">
+      <Segmented<StareNotaComanda> value={stare} onChange={(v) => { setStare(v); setSelectate([]) }}
+        options={[
+          { value: 'Emisa', label: 'Emise către furnizori' },
+          { value: 'DeAcceptat', label: <Badge count={deAcceptat.data?.length ?? 0} size="small" offset={[10, -2]}>De acceptat</Badge> },
+          { value: 'Acceptata', label: 'Acceptate (la achiziții)' },
+          { value: 'Respinsa', label: 'Respinse' },
+        ]} />
       <Form<ValoriFiltre>
         layout="inline"
         style={{ rowGap: 8 }}
@@ -179,7 +215,7 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () =>
         extra={
           <Space wrap>
             {selectate.length > 0 && <Tag color="blue" closable onClose={() => setSelectate([])}>{selectate.length} bifate</Tag>}
-            <Dropdown
+            {emise && <Dropdown
               disabled={nr === 0}
               menu={{
                 items: [
@@ -191,13 +227,13 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () =>
               }}
             >
               <Button icon={<FilePdfOutlined />} loading={seGenereaza}>Rapoarte PDF{selectate.length ? ' (bifate)' : ''}</Button>
-            </Dropdown>
-            <Tooltip title="Notele alese, fiecare pe pagina ei, într-un singur PDF">
+            </Dropdown>}
+            {emise && <Tooltip title="Notele alese, fiecare pe pagina ei, într-un singur PDF">
               <Button icon={<PrinterOutlined />} disabled={nr === 0} loading={seGenereaza}
                 onClick={() => (nr > 200 ? message.warning('Se pot tipări cel mult 200 de note deodată: bifează mai puține.') : void pdf('/api/aprovizionare/note-comanda/pdf', { id: alese.map((n) => n.id) }))}>
                 Tipărește ({nr})
               </Button>
-            </Tooltip>
+            </Tooltip>}
             <Dropdown disabled={nr === 0}
               menu={{ items: [{ key: 'n', label: 'Note (o linie pe notă)' }, { key: 'l', label: 'Materiale (o linie pe poziție)' }], onClick: ({ key }) => (key === 'n' ? exportNote() : exportLinii()) }}>
               <Button icon={<DownloadOutlined />}>Excel (CSV)</Button>
@@ -238,6 +274,10 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () =>
                     <Typography.Text type="secondary">Furnizor: {[n.furnizorAdresa, n.furnizorTelefon, n.furnizorEmail].filter(Boolean).join(' · ')}</Typography.Text>
                   )}
                   <Typography.Text type="secondary">Întocmită de {n.inregistrataDe}, {formatData(n.inregistrataLa)}</Typography.Text>
+                  {n.acceptataDe && (
+                    <Typography.Text type="secondary">{n.stare === 'Respinsa' ? 'Respinsă' : 'Acceptată'} de {n.acceptataDe}{n.acceptataLa ? `, ${formatData(n.acceptataLa)}` : ''}</Typography.Text>
+                  )}
+                  {n.motivRespingere && <Typography.Text type="danger">Motiv: {n.motivRespingere}</Typography.Text>}
                   {n.observatii && <Typography.Text type="secondary">Observații: {n.observatii}</Typography.Text>}
                 </Space>
               </div>
@@ -249,22 +289,42 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () =>
               render: (numar: string, n) => (
                 <Tooltip title={n.sursa === 'Import' ? `Importată de pe hârtie${n.numarExtern ? `; nr. ${n.numarExtern} pe document` : ''}` : 'Emisă în aplicație'}>
                   <span>{numar}</span>{n.numarExtern && <Typography.Text type="secondary"> · {n.numarExtern}</Typography.Text>}
+                  {n.necesarNumar && <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>din {n.necesarNumar}</Typography.Text></div>}
                 </Tooltip>
               ),
             },
             { title: 'Data', dataIndex: 'data', width: 92, render: formatData, sorter: (a, b) => a.data.localeCompare(b.data), defaultSortOrder: 'descend' },
             { title: 'Proiect', dataIndex: 'proiectCod', width: 110, ellipsis: { showTitle: true }, sorter: (a, b) => a.proiectCod.localeCompare(b.proiectCod) },
             { title: 'Obiect / lucrare', dataIndex: 'lucrare', ellipsis: { showTitle: true } },
-            { title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: { showTitle: true }, sorter: (a, b) => a.furnizorDenumire.localeCompare(b.furnizorDenumire) },
+            {
+              title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: { showTitle: true }, sorter: (a, b) => a.furnizorDenumire.localeCompare(b.furnizorDenumire),
+              render: (f: string) => f || <Typography.Text type="secondary">— (se alege la achiziții)</Typography.Text>,
+            },
             { title: 'Poz.', key: 'linii', width: 55, className: 'numeric', render: (_, n) => n.linii.length },
             {
               title: 'Sursă', dataIndex: 'sursa', width: 85,
-              render: (s: NotaComanda['sursa']) => (s === 'Sistem' ? <Tag color="green">emisă</Tag> : <Tag color="purple">hârtie</Tag>),
+              render: (s: NotaComanda['sursa'], n) => {
+                if (n.stare === 'DeAcceptat') return <Tag color="gold">de acceptat</Tag>
+                if (n.stare === 'Acceptata') return <Tag color="blue">acceptată</Tag>
+                if (n.stare === 'Respinsa') return <Tag color="red">respinsă</Tag>
+                return s === 'Sistem' ? <Tag color="green">emisă</Tag> : <Tag color="purple">hârtie</Tag>
+              },
             },
             {
-              title: '', key: 'actiuni', width: 118, fixed: 'right',
+              title: '', key: 'actiuni', width: stare === 'DeAcceptat' ? 210 : 118, fixed: 'right',
               render: (_, n) => (
                 <Space size={2}>
+                  {n.stare === 'DeAcceptat' && poateAproba && (
+                    <>
+                      <Popconfirm title={`Accepți ${n.numar}?`} description="Se aprobă și necesarul; nota ajunge la achiziții." okText="Acceptă" cancelText="Nu"
+                        onConfirm={() => acceptaNota(n)}>
+                        <Button size="small" type="primary" icon={<CheckOutlined />} loading={accepta.isPending}>Acceptă</Button>
+                      </Popconfirm>
+                      <Tooltip title="Respinge (cu motiv)">
+                        <Button size="small" danger icon={<CloseOutlined />} onClick={() => setDeRespins(n)} />
+                      </Tooltip>
+                    </>
+                  )}
                   <Tooltip title="Word (șablonul firmei GC 007)">
                     <Button size="small" type="text" icon={<FileWordOutlined />} onClick={() => void word(n)} />
                   </Tooltip>
@@ -282,6 +342,12 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea }: { onNotaNoua?: () =>
           ]}
         />
       </Card>
+
+      <Modal open={!!deRespins} title={deRespins && `Respinge ${deRespins.numar}${deRespins.necesarNumar ? ` (și necesarul ${deRespins.necesarNumar})` : ''}`}
+        okText="Respinge" okButtonProps={{ danger: true, disabled: !motiv.trim(), loading: respingeNota.isPending }} cancelText="Renunță"
+        onOk={() => void respinge()} onCancel={() => { setDeRespins(undefined); setMotiv('') }} destroyOnHidden>
+        <Input.TextArea rows={3} maxLength={1000} value={motiv} onChange={(e) => setMotiv(e.target.value)} placeholder="Motivul respingerii (obligatoriu)" />
+      </Modal>
     </Space>
   )
 }

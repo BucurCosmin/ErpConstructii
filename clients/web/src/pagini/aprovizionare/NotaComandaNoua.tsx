@@ -4,7 +4,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { api } from '../../api/client'
-import { useEmiteNotaComanda, useNecesareMateriale } from '../../api/aprovizionare'
+import { useComandaLaFurnizor, useEmiteNotaComanda, useNecesareMateriale } from '../../api/aprovizionare'
 import type { ConditiiComanda, NotaComanda } from '../../api/aprovizionare'
 import { useSabloaneFormular } from '../../api/formulare'
 import { useProiecte } from '../../api/interogari'
@@ -18,6 +18,10 @@ interface LinieValori {
   unitateMasura: string
   cantitate: number
   termen?: string
+  /** Poziția pe nota acceptată și cantitatea rămasă de comandat (doar în modul „din nota acceptată”). */
+  index?: number
+  max?: number
+  observatii?: string | null
 }
 
 interface Valori {
@@ -53,8 +57,10 @@ function Bife({ nume, eticheta, optiuni }: { nume: keyof Valori; eticheta: strin
 /**
  * Notă de comandă nouă către furnizor (formularul GC 007): proiect / lucrare, furnizor (din nomenclator sau nou),
  * condițiile bifate, materialele (preluate opțional dintr-un necesar aprobat) cu termen. După emitere: Word din șablonul firmei și PDF.
+ * Cu `dinNota` (D-37, „Necesar de achiziție”): materialele notei acceptate; ce se șterge sau se micșorează rămâne pe ea
+ * pentru alt furnizor.
  */
-export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; onEmisa?: () => void }) {
+export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: boolean; onEmisa?: () => void; dinNota?: NotaComanda }) {
   const { message } = App.useApp()
   const navigheaza = useNavigate()
   const [form] = Form.useForm<Valori>()
@@ -62,6 +68,8 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
   const furnizori = useFurnizori(false)
   const sabloane = useSabloaneFormular()
   const emite = useEmiteNotaComanda()
+  const comanda = useComandaLaFurnizor()
+  const [ramase, setRamase] = useState(0)
   const proiectId = Form.useWatch('proiectId', form)
   const necesare = useNecesareMateriale({ proiectId, stare: 'Aprobata' })
   const [emisa, setEmisa] = useState<NotaComanda>()
@@ -90,7 +98,40 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
     message.info(`Am preluat ${n.linii.length} materiale din necesarul ${n.numar}. Șterge ce nu comanzi la acest furnizor.`)
   }
 
+  const conditiiDin = (v: Valori): ConditiiComanda => ({
+    receptie: (v.receptie || null) as ConditiiComanda['receptie'],
+    clasaCalitate: (v.clasaCalitate || null) as ConditiiComanda['clasaCalitate'],
+    transport: (v.transport || null) as ConditiiComanda['transport'],
+    plata: (v.plata || null) as ConditiiComanda['plata'],
+  })
+
   const trimite = async (v: Valori) => {
+    if (dinNota) {
+      try {
+        const r = await comanda.mutateAsync({
+          proiectId: dinNota.proiectId,
+          id: dinNota.id,
+          date: {
+            data: v.data.format('YYYY-MM-DD'),
+            lucrare: gol(v.lucrare),
+            furnizorDenumire: v.furnizorDenumire.trim(),
+            furnizorCui: gol(v.furnizorCui),
+            furnizorAdresa: gol(v.furnizorAdresa),
+            furnizorTelefon: gol(v.furnizorTelefon),
+            furnizorEmail: gol(v.furnizorEmail),
+            conditii: conditiiDin(v),
+            linii: v.linii.map((l) => ({ index: l.index!, denumire: gol(l.denumire), cantitate: l.cantitate, termen: gol(l.termen) })),
+            observatii: gol(v.observatii),
+          },
+        })
+        setRamase(r.liniiRamase)
+        setEmisa(r.emisa)
+        onEmisa?.()
+      } catch (e) {
+        message.error((e as Error).message)
+      }
+      return
+    }
     try {
       const nota = await emite.mutateAsync({
         proiectId: v.proiectId,
@@ -102,12 +143,7 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
           furnizorAdresa: gol(v.furnizorAdresa),
           furnizorTelefon: gol(v.furnizorTelefon),
           furnizorEmail: gol(v.furnizorEmail),
-          conditii: {
-            receptie: (v.receptie || null) as ConditiiComanda['receptie'],
-            clasaCalitate: (v.clasaCalitate || null) as ConditiiComanda['clasaCalitate'],
-            transport: (v.transport || null) as ConditiiComanda['transport'],
-            plata: (v.plata || null) as ConditiiComanda['plata'],
-          },
+          conditii: conditiiDin(v),
           linii: v.linii.map((l) => ({ denumire: l.denumire.trim(), unitateMasura: l.unitateMasura.trim(), cantitate: l.cantitate, termen: gol(l.termen) })),
           observatii: gol(v.observatii),
           necesarId: v.necesarId ?? null,
@@ -140,14 +176,14 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
         <Result
           status="success"
           title={`Nota de comandă ${emisa.numar} a fost emisă`}
-          subTitle={`${emisa.furnizorDenumire} · ${emisa.proiectCod} · ${emisa.linii.length} materiale`}
+          subTitle={`${emisa.furnizorDenumire} · ${emisa.proiectCod} · ${emisa.linii.length} materiale${ramase > 0 ? ` · pe nota ${dinNota?.numar} au rămas ${ramase} materiale pentru alt furnizor` : ''}`}
           extra={[
             <Button key="w" type="primary" icon={<FileWordOutlined />} onClick={() => void word(emisa)} disabled={!areSablon}>Descarcă Word</Button>,
             <Button key="p" icon={<FilePdfOutlined />}
               onClick={() => void deschidePdf(`/api/aprovizionare/proiecte/${emisa.proiectId}/note-comanda/${emisa.id}/pdf`).catch((e: Error) => message.error(e.message))}>
               PDF
             </Button>,
-            <Button key="n" icon={<PlusOutlined />} onClick={() => { setEmisa(undefined); form.resetFields() }}>Altă notă de comandă</Button>,
+            ...(dinNota ? [] : [<Button key="n" icon={<PlusOutlined />} onClick={() => { setEmisa(undefined); form.resetFields() }}>Altă notă de comandă</Button>]),
           ]}
         />
       </Card>
@@ -155,7 +191,12 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
   }
 
   return (
-    <Card title="Notă de comandă nouă către furnizor (GC 007)">
+    <Card title={dinNota ? undefined : 'Notă de comandă nouă către furnizor (GC 007)'} variant={dinNota ? 'borderless' : undefined} styles={dinNota ? { body: { padding: 0 } } : undefined}>
+      {dinNota && (
+        <Alert type="info" showIcon style={{ marginBottom: 16 }}
+          title="Comanzi la acest furnizor tot sau doar o parte."
+          description="Șterge materialele pe care nu le iei de la acest furnizor sau micșorează cantitatea: restul rămâne în „Necesar de achiziție”, pe aceeași notă, pentru alt furnizor. Dacă comanzi tot, nota își păstrează numărul." />
+      )}
       {sabloane.isSuccess && !areSablon && (
         <Alert
           type="warning"
@@ -170,13 +211,23 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
         form={form}
         layout="vertical"
         name="notaComandaNoua"
-        initialValues={{ data: dayjs(), receptie: 'LaPrimire', clasaCalitate: 'BestComercial', transport: '', plata: '', linii: [{}] }}
+        initialValues={{
+          data: dayjs(), receptie: 'LaPrimire', clasaCalitate: 'BestComercial', transport: '', plata: '',
+          ...(dinNota
+            ? {
+                proiectId: dinNota.proiectId, lucrare: dinNota.lucrare ?? undefined,
+                linii: dinNota.linii.map((l, i) => ({
+                  denumire: l.denumire, unitateMasura: l.unitateMasura, cantitate: l.cantitate, termen: l.termen ?? undefined, index: i, max: l.cantitate, observatii: l.observatii,
+                })),
+              }
+            : { linii: [{}] }),
+        }}
         onFinish={trimite}
       >
         <Row gutter={12}>
           <Col xs={24} md={9}>
             <Form.Item name="proiectId" label="Proiect" rules={[{ required: true, message: 'Alege proiectul.' }]}>
-              <Select showSearch={{ optionFilterProp: 'label' }} placeholder="Proiectul (sau proiectul de stoc)" loading={proiecte.isLoading} onChange={alegeProiect}
+              <Select showSearch={{ optionFilterProp: 'label' }} placeholder="Proiectul (sau proiectul de stoc)" loading={proiecte.isLoading} onChange={alegeProiect} disabled={!!dinNota}
                 options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
             </Form.Item>
           </Col>
@@ -242,13 +293,13 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
         <Card
           size="small"
           title="Materiale / produse"
-          extra={
+          extra={dinNota ? (dinNota.necesarNumar && <Typography.Text type="secondary">din necesarul {dinNota.necesarNumar}</Typography.Text>) : (
             <Form.Item name="necesarId" noStyle>
               <Select allowClear style={{ width: 300 }} placeholder={proiectId ? 'Preia dintr-un necesar aprobat…' : 'Alege întâi proiectul'} disabled={!proiectId}
                 loading={necesare.isLoading} onChange={alegeNecesar}
                 options={necesare.data?.map((n) => ({ value: n.id, label: `${n.numar} · ${dayjs(n.data).format('DD.MM.YYYY')} · ${n.linii.length} mat.` }))} />
             </Form.Item>
-          }
+          )}
           style={{ marginBottom: 16 }}
         >
           <Form.List name="linii" rules={[{ validator: async (_, l) => { if (!l?.length) throw new Error('Adaugă cel puțin un material.') } }]}>
@@ -261,21 +312,30 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
                   <Col span={4}>Cantitate</Col>
                   <Col span={4}>Termen</Col>
                 </Row>
-                {campuri.map(({ key, name }, i) => (
+                {campuri.map(({ key, name }, i) => {
+                  const max = form.getFieldValue(['linii', name, 'max']) as number | undefined
+                  const obs = form.getFieldValue(['linii', name, 'observatii']) as string | null | undefined
+                  return (
                   <Row gutter={8} key={key} align="top">
-                    <Col span={1} style={{ paddingTop: 5 }}>{i + 1}.</Col>
+                    <Col span={1} style={{ paddingTop: 5 }}>
+                      {i + 1}.
+                      {/* poziția pe nota acceptată: înregistrată ca să ajungă în valorile trimise */}
+                      {dinNota && <Form.Item name={[name, 'index']} hidden noStyle><Input /></Form.Item>}
+                    </Col>
                     <Col span={11}>
-                      <Form.Item name={[name, 'denumire']} rules={[{ required: true, whitespace: true, message: 'Denumirea' }]} style={{ marginBottom: 6 }}>
+                      <Form.Item name={[name, 'denumire']} rules={[{ required: true, whitespace: true, message: 'Denumirea' }]} style={{ marginBottom: 6 }}
+                        extra={obs ? `Observații din necesar: ${obs}` : undefined}>
                         <Input maxLength={300} />
                       </Form.Item>
                     </Col>
                     <Col span={3}>
                       <Form.Item name={[name, 'unitateMasura']} rules={[{ required: true, whitespace: true, message: 'UM' }]} style={{ marginBottom: 6 }}>
-                        <Input maxLength={30} placeholder="BUC" />
+                        <Input maxLength={30} placeholder="BUC" disabled={!!dinNota} />
                       </Form.Item>
                     </Col>
                     <Col span={4}>
-                      <Form.Item name={[name, 'cantitate']} rules={[{ required: true, message: 'Cantitatea' }, { type: 'number', min: 0.0001, message: 'Pozitivă' }]} style={{ marginBottom: 6 }}>
+                      <Form.Item name={[name, 'cantitate']} style={{ marginBottom: 6 }}
+                        rules={[{ required: true, message: 'Cantitatea' }, { type: 'number', min: 0.0001, max, message: max !== undefined ? `Între 0 și ${max.toLocaleString('ro-RO')}` : 'Pozitivă' }]}>
                         <NumarRo min={0} precision={undefined} style={{ width: '100%' }} />
                       </Form.Item>
                     </Col>
@@ -285,12 +345,14 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
                       </Form.Item>
                     </Col>
                     <Col span={1}>
-                      <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)} disabled={campuri.length === 1} />
+                      <Button type="text" danger icon={<DeleteOutlined />} onClick={() => remove(name)} disabled={campuri.length === 1}
+                        title={dinNota ? 'Nu comand acum la acest furnizor (rămâne pe notă)' : undefined} />
                     </Col>
                   </Row>
-                ))}
+                  )
+                })}
                 <Form.ErrorList errors={errors} />
-                <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} style={{ marginTop: 4 }}>Adaugă material</Button>
+                {!dinNota && <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} style={{ marginTop: 4 }}>Adaugă material</Button>}
               </>
             )}
           </Form.List>
@@ -301,8 +363,12 @@ export function NotaComandaNoua({ poateCrea, onEmisa }: { poateCrea: boolean; on
         </Form.Item>
 
         <Space>
-          <Button type="primary" htmlType="submit" loading={emite.isPending} disabled={!poateCrea}>Emite nota de comandă</Button>
-          <Typography.Text type="secondary">Numărul (NC/AAAA/NNNN) se dă la emitere; nota nu se mai modifică după aceea.</Typography.Text>
+          <Button type="primary" htmlType="submit" loading={emite.isPending || comanda.isPending} disabled={!poateCrea}>
+            {dinNota ? 'Emite comanda la furnizor' : 'Emite nota de comandă'}
+          </Button>
+          <Typography.Text type="secondary">
+            {dinNota ? 'Comanda emisă nu se mai modifică; restul materialelor rămâne pe notă.' : 'Numărul (NC/AAAA/NNNN) se dă la emitere; nota nu se mai modifică după aceea.'}
+          </Typography.Text>
         </Space>
       </Form>
     </Card>

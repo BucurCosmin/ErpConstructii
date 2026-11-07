@@ -88,6 +88,9 @@ public sealed partial class ModulAprovizionare : IModul
         EndpointuriNoteComanda.Mapeaza(grup);
         DocumenteNoteComanda.Mapeaza(grup);
 
+        // Necesar → notă de comandă de acceptat → achiziții (furnizor, emitere), D-37.
+        FluxNotaComanda.Mapeaza(grup);
+
         grup.MapGet("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/document.docx", DescarcaNecesar)
             .WithName("DescarcaNecesarMateriale")
             .WithSummary("Generează documentul Word al unui necesar, indiferent de status")
@@ -265,6 +268,10 @@ public sealed partial class ModulAprovizionare : IModul
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
 
         db.NecesareMateriale.Add(rezultat.Valoare);
+        // D-37: necesarul nou generează nota de comandă „de acceptat”; acceptarea ei aprobă necesarul.
+        var nota = await FluxNotaComanda.GenereazaAsync(db, tranzactie, firmaId, azi.Year, rezultat.Valoare, utilizatorId, utilizator.Nume, ct);
+        if (nota.Esec)
+            return Results.BadRequest(new { mesaj = nota.Eroare.Mesaj });
         await db.SaveChangesAsync(ct);
         await tranzactie.CommitAsync(ct);
 
@@ -301,10 +308,14 @@ public sealed partial class ModulAprovizionare : IModul
         Guid proiectId,
         Guid id,
         AprovizionareDbContext db,
+        IFirmaCurenta firma,
         IUtilizatorCurent utilizator,
         ICeas ceas,
         CancellationToken ct)
     {
+        if (firma.FirmaId is not { } firmaId)
+            return Results.Unauthorized();
+        await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         var necesar = await db.NecesareMateriale.FirstOrDefaultAsync(n => n.Id == id && n.ProiectId == proiectId, ct);
         if (necesar is null)
             return Results.NotFound();
@@ -319,7 +330,12 @@ public sealed partial class ModulAprovizionare : IModul
                 ? Results.Problem(statusCode: StatusCodes.Status403Forbidden, title: rezultat.Eroare.Mesaj)
                 : Results.Conflict(new { mesaj = rezultat.Eroare.Mesaj });
 
+        // Aprobarea necesarului acceptă și nota lui de comandă (necesarele vechi o primesc acum, direct acceptată).
+        var nota = await FluxNotaComanda.LaAprobareaNecesaruluiAsync(db, tranzactie, firmaId, ceas.Azi.Year, necesar, utilizatorId, utilizator.Nume, ceas.Acum, ct);
+        if (nota.Esec)
+            return Results.Conflict(new { mesaj = nota.Eroare.Mesaj });
         await db.SaveChangesAsync(ct);
+        await tranzactie.CommitAsync(ct);
         return Results.Ok(MapareNecesarMateriale.LaDto(necesar));
     }
 
@@ -345,6 +361,9 @@ public sealed partial class ModulAprovizionare : IModul
         var rezultat = necesar.Respinge(utilizatorId, utilizator.Nume, ceas.Acum, cerere.Motiv);
         if (rezultat.Esec)
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
+        var nota = await FluxNotaComanda.LaRespingereaNecesaruluiAsync(db, necesar, utilizatorId, utilizator.Nume, ceas.Acum, cerere.Motiv, ct);
+        if (nota.Esec)
+            return Results.BadRequest(new { mesaj = nota.Eroare.Mesaj });
 
         await db.SaveChangesAsync(ct);
         return Results.Ok(MapareNecesarMateriale.LaDto(necesar));

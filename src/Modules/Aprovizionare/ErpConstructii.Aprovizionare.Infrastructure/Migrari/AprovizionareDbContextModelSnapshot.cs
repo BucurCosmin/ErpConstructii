@@ -235,6 +235,19 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("AcceptataDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("acceptata_de_id");
+
+                    b.Property<string>("AcceptataDeNume")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("acceptata_de_nume");
+
+                    b.Property<DateTimeOffset?>("AcceptataLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("acceptata_la");
+
                     b.Property<int>("An")
                         .HasColumnType("integer")
                         .HasColumnName("an");
@@ -321,9 +334,18 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
+                    b.Property<string>("MotivRespingere")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv_respingere");
+
                     b.Property<Guid?>("NecesarId")
                         .HasColumnType("uuid")
                         .HasColumnName("necesar_id");
+
+                    b.Property<Guid?>("NotaSursaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nota_sursa_id");
 
                     b.Property<int>("Numar")
                         .HasColumnType("integer")
@@ -353,6 +375,12 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("sablon_id");
 
+                    b.Property<string>("Stare")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("stare");
+
                     b.Property<string>("Sursa")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -371,6 +399,12 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
 
                     b.HasIndex("FirmaId", "NecesarId")
                         .HasDatabaseName("ix_note_comanda_firma_id_necesar_id");
+
+                    b.HasIndex("FirmaId", "NotaSursaId")
+                        .HasDatabaseName("ix_note_comanda_firma_id_nota_sursa_id");
+
+                    b.HasIndex("FirmaId", "Stare")
+                        .HasDatabaseName("ix_note_comanda_firma_id_stare");
 
                     b.HasIndex("FirmaId", "An", "Numar")
                         .IsUnique()
