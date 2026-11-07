@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useGestiuni, useTrasabilitate } from '../../api/stocuri'
 import type { FiltreTrasabilitate, LotStoc } from '../../api/stocuri'
+import { LinkFactura } from '../../componente/LinkFactura'
 import { formatCantitate, formatLei } from '../../util/format'
 
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
@@ -130,7 +131,7 @@ export function ProvenientaStoc() {
                   render: (_, l) => l.origine === 'NIR' ? l.documentNumar
                     : <>{l.documentNumar} <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag></>,
                 },
-                { title: 'Factura', width: 170, render: (_, l) => l.facturaNumar && <>{l.facturaNumar}<div><Typography.Text type="secondary">{data(l.facturaData)}</Typography.Text></div></> },
+                { title: 'Factura', width: 170, render: (_, l) => l.facturaNumar && <><LinkFactura id={l.facturaId} numar={l.facturaNumar} /><div><Typography.Text type="secondary">{data(l.facturaData)}</Typography.Text></div></> },
                 { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
                 { title: 'Proiect factură', dataIndex: 'facturaProiectCod', width: 130 },
                 ...(cuPreturi ? [

@@ -1,12 +1,15 @@
-import { DownloadOutlined, FilePdfOutlined, PrinterOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons'
+import { DownloadOutlined, EditOutlined, FilePdfOutlined, HistoryOutlined, PrinterOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router'
 import { useProiecte } from '../../api/interogari'
 import { useGestiuni, useNir, useStorneazaNir } from '../../api/stocuri'
 import type { FiltreNir, Nir } from '../../api/stocuri'
+import { LinkFactura } from '../../componente/LinkFactura'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
+import { CorectieNir } from './CorectieNir'
 
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
 const data = (d: string) => dayjs(d).format('DD.MM.YYYY')
@@ -46,11 +49,16 @@ function exportaCsv(lista: Nir[]) {
  * Registrul NIR-urilor: toate recepțiile, cu filtre (perioadă, depozit, proiect, furnizor / factură / număr, material, stare),
  * tipărirea NIR-urilor (unul, cele bifate sau toate cele filtrate, într-un singur PDF), registrul în PDF și exportul pentru Excel.
  */
-export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
+export function RegistruNir({ poateAnula, poateEdita }: { poateAnula: boolean; poateEdita: boolean }) {
   const { message } = App.useApp()
+  const navigheaza = useNavigate()
+  // Link din corectura unei facturi: NIR-urile ei, indiferent de perioadă.
+  const [parametri, setParametri] = useSearchParams()
+  const facturaUrl = parametri.get('factura') ?? undefined
+  const [deCorectat, setDeCorectat] = useState<Nir>()
   const gestiuni = useGestiuni()
   const proiecte = useProiecte()
-  const [filtre, setFiltre] = useState<FiltreNir>({ dataDe: dayjs().startOf('month').format('YYYY-MM-DD'), dataPanaLa: dayjs().format('YYYY-MM-DD') })
+  const [filtre, setFiltre] = useState<FiltreNir>(facturaUrl ? { facturaId: facturaUrl } : { dataDe: dayjs().startOf('month').format('YYYY-MM-DD'), dataPanaLa: dayjs().format('YYYY-MM-DD') })
   const nir = useNir(filtre)
   const [selectate, setSelectate] = useState<string[]>([])
   const [deStornat, setDeStornat] = useState<Nir>()
@@ -74,7 +82,8 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
     if (p) parti.push(`proiectul ${p.cod}`)
     if (filtre.cauta) parti.push(`„${filtre.cauta}”`)
     if (filtre.material) parti.push(`materialul „${filtre.material}”`)
-    if (filtre.stare) parti.push({ Activ: 'doar active', Stornat: 'doar stornate', CuDiferente: 'cu diferențe' }[filtre.stare])
+    if (filtre.stare) parti.push({ Activ: 'doar active', Stornat: 'doar stornate', CuDiferente: 'cu diferențe', Corectat: 'corectate' }[filtre.stare])
+    if (filtre.facturaId && lista[0]) parti.push(`factura ${lista[0].facturaNumar}`)
     return parti.join(', ')
   }
 
@@ -134,11 +143,18 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
           </Form.Item>
           <Form.Item name="stare">
             <Select allowClear placeholder="Orice stare" style={{ width: 150 }}
-              options={[{ value: 'Activ', label: 'Active' }, { value: 'Stornat', label: 'Stornate' }, { value: 'CuDiferente', label: 'Cu diferențe' }]} />
+              options={[{ value: 'Activ', label: 'Active' }, { value: 'Stornat', label: 'Stornate' }, { value: 'CuDiferente', label: 'Cu diferențe' }, { value: 'Corectat', label: 'Corectate' }]} />
           </Form.Item>
           <Button type="primary" htmlType="submit">Filtrează</Button>
         </Form>
       </Card>
+
+      {filtre.facturaId && (
+        <Alert type="info" showIcon
+          title={lista[0] ? `NIR-urile facturii ${lista[0].facturaNumar} — ${lista[0].furnizorDenumire}` : 'NIR-urile facturii alese'}
+          description="Corectează NIR-ul (✎) dacă recepția trebuie adusă la factura corectată."
+          action={<Button size="small" onClick={() => { setFiltre({ dataDe: dayjs().startOf('month').format('YYYY-MM-DD'), dataPanaLa: dayjs().format('YYYY-MM-DD') }); setParametri((p) => { p.delete('factura'); return p }, { replace: true }) }}>Toate NIR-urile</Button>} />
+      )}
 
       {deStornatAnulate.length > 0 && (
         <Alert type="warning" showIcon
@@ -198,7 +214,7 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
           columns={[
             { title: 'Număr', dataIndex: 'numar', width: 120, sorter: (a, b) => a.numar.localeCompare(b.numar) },
             { title: 'Data', dataIndex: 'data', width: 95, render: data, sorter: (a, b) => a.data.localeCompare(b.data) },
-            { title: 'Factura', dataIndex: 'facturaNumar', width: 140, ellipsis: { showTitle: true } },
+            { title: 'Factura', dataIndex: 'facturaNumar', width: 140, ellipsis: { showTitle: true }, render: (_, n) => <LinkFactura id={n.facturaId} numar={n.facturaNumar} /> },
             {
               title: 'Furnizor', width: 230, sorter: (a, b) => a.furnizorDenumire.localeCompare(b.furnizorDenumire),
               render: (_, n) => (
@@ -221,17 +237,20 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
                     ? <Tag color="volcano" title={`${data(n.storno.data)}: ${n.storno.motiv} (${n.storno.stornatDe})`}>stornat</Tag>
                     : <Tag color="green">activ</Tag>}
                   {n.areDiferente && <Tag color="red">diferențe</Tag>}
+                  {n.corectii > 0 && <Tag color="blue" title={`${n.corectii} corecturi`}>corectat</Tag>}
                   {n.facturaAnulata && !n.storno && <Tag color="orange">factură anulată</Tag>}
                 </Space>
               ),
             },
             { title: 'Recepționat de', dataIndex: 'receptionatDe', width: 130, ellipsis: { showTitle: true }, responsive: ['xxl'] },
             {
-              title: '', width: 105, fixed: 'right',
+              title: '', width: 165, fixed: 'right',
               render: (_, n) => (
                 <Space size={4}>
                   <Button size="small" icon={<FilePdfOutlined />}
                     onClick={(e) => { e.stopPropagation(); void deschidePdf(`/api/stocuri/nir/${n.id}/pdf`).catch((x) => message.error((x as Error).message)) }}>PDF</Button>
+                  {!n.storno && poateEdita && <Tooltip title="Corectează NIR-ul (cantități, preț); stocul primește diferența"><Button size="small" icon={<EditOutlined />} onClick={(e) => { e.stopPropagation(); setDeCorectat(n) }} /></Tooltip>}
+                  <Tooltip title="Istoricul modificărilor"><Button size="small" icon={<HistoryOutlined />} onClick={(e) => { e.stopPropagation(); navigheaza(`/jurnal?document=${encodeURIComponent(n.numar)}`) }} /></Tooltip>
                   {!n.storno && poateAnula && <Tooltip title="Stornează NIR-ul"><Button size="small" danger icon={<RollbackOutlined />} onClick={(e) => { e.stopPropagation(); setDeStornat(n) }} /></Tooltip>}
                 </Space>
               ),
@@ -239,6 +258,8 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
           ]}
         />
       </Card>
+
+      <CorectieNir nir={deCorectat} onInchide={() => setDeCorectat(undefined)} />
 
       <Modal open={!!deStornat} title={deStornat && `Stornează ${deStornat.numar} (factura ${deStornat.facturaNumar})`} okText="Stornează" okButtonProps={{ danger: true }}
         cancelText="Renunță" onCancel={() => setDeStornat(undefined)} onOk={() => formStorno.submit()} confirmLoading={storneaza.isPending} destroyOnHidden>

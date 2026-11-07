@@ -72,3 +72,9 @@ public interface ICorectieDocument
 {
     Guid DocumentCorectatId { get; }
 }
+
+/// <summary>
+/// Entitate care NU intră în jurnalul de modificări (date derivate, recalculate din alte înregistrări jurnalizate:
+/// ex. soldul de stoc, care rezultă din mișcări).
+/// </summary>
+public interface IFaraJurnal;

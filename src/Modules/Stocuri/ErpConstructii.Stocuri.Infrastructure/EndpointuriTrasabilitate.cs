@@ -68,12 +68,16 @@ internal static class EndpointuriTrasabilitate
 
         var lista = await miscari.OrderBy(m => m.CreatLa).ThenBy(m => m.Id).ToListAsync(ct);
         var stornari = await db.StornariNir.AsNoTracking().ToDictionaryAsync(s => s.Id, s => s.NirId, ct);
+        var idNir = lista.Where(m => m.Tip == TipMiscare.IntrareNir).Select(m => m.DocumentId).Distinct().ToList();
+        var nir = await db.Nir.AsNoTracking().Where(n => idNir.Contains(n.Id)).ToDictionaryAsync(n => n.Id, ct);
+        // Prețul de intrare actual al fiecărui material din NIR (după eventualele corecturi, D-35).
+        var preturiNir = nir.Values
+            .SelectMany(n => n.Linii.Where(l => l.CantitateReceptionata > 0).Select(l => (n.Id, l.ArticolId, l.CantitateReceptionata, l.Valoare)))
+            .GroupBy(x => (x.Id, x.ArticolId))
+            .ToDictionary(g => g.Key, g => Math.Round(g.Sum(x => x.Valoare) / g.Sum(x => x.CantitateReceptionata), 4, MidpointRounding.AwayFromZero));
         var loturi = TrasabilitateStoc.Calculeaza(
             lista.Select(m => new MiscareTrasabilitate(m.GestiuneId, m.ArticolId, m.Tip, m.Cantitate, m.Valoare, m.DocumentId, m.DocumentNumar, m.Data)),
-            stornari);
-
-        var idNir = loturi.Where(l => l.TipOrigine == TipMiscare.IntrareNir).Select(l => l.DocumentOrigineId).Distinct().ToList();
-        var nir = await db.Nir.AsNoTracking().Where(n => idNir.Contains(n.Id)).ToDictionaryAsync(n => n.Id, ct);
+            stornari, preturiNir);
 
         var rezultat = loturi
             .Where(l => gestiuni.ContainsKey(l.GestiuneId) && articole.ContainsKey(l.ArticolId))

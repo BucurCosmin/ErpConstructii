@@ -9,6 +9,7 @@ import {
   FileDoneOutlined,
   FileTextOutlined,
   FundProjectionScreenOutlined,
+  HistoryOutlined,
   InboxOutlined,
   ProjectOutlined,
   SafetyCertificateOutlined,
@@ -208,6 +209,15 @@ export const module: ModulAplicatie[] = [
     faza: 'Faza 2',
     descriere: 'Curba S, EVM (CPI, SPI, EAC), buget vs. realizat, consum normat vs. real, rapoarte PDF/Excel programate.',
     cerinte: ['REQ-RPT-01', 'REQ-RPT-02', 'REQ-RPT-03', 'REQ-RPT-04'],
+  },
+  {
+    cheie: 'jurnal',
+    cale: '/jurnal',
+    eticheta: 'Jurnal modificări',
+    icon: <HistoryOutlined />,
+    grup: 'sistem',
+    permisiune: ['financiar.vizualizare', 'aprovizionare.vizualizare', 'administrare.vizualizare'],
+    implementat: true,
   },
   {
     cheie: 'formulare',

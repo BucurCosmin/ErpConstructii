@@ -19,6 +19,7 @@ import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, LotStoc, Miscar
 import { deschidePdf } from '../../util/pdf'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
+import { LinkFactura } from '../../componente/LinkFactura'
 import { PrevizualizareFactura } from './PrevizualizareFactura'
 import { exportaCsv, ProvenientaStoc } from './ProvenientaStoc'
 import { RegistruNir } from './RegistruNir'
@@ -53,7 +54,7 @@ function TabelLoturi({ loturi }: { loturi: LotStoc[] }) {
         {
           title: 'Factura', width: 210,
           render: (_, l) => l.facturaNumar
-            ? <>{l.facturaNumar} <Typography.Text type="secondary">din {dayjs(l.facturaData).format('DD.MM.YYYY')}</Typography.Text></>
+            ? <><LinkFactura id={l.facturaId} numar={l.facturaNumar} /> <Typography.Text type="secondary">din {dayjs(l.facturaData).format('DD.MM.YYYY')}</Typography.Text></>
             : <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag>,
         },
         { title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: { showTitle: true } },
@@ -259,7 +260,7 @@ function LiniiFacturaDeReceptionat({ facturaId }: { facturaId: string }) {
 }
 
 /** Recepțiile: facturile de recepționat (NIR nou, total sau parțial) și registrul tuturor NIR-urilor. */
-function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: boolean }) {
+function Receptii({ poateCrea, poateAnula, poateEdita }: { poateCrea: boolean; poateAnula: boolean; poateEdita: boolean }) {
   const [parametri, setParametri] = useSearchParams()
   const sub = parametri.get('nir') ?? 'de-receptionat'
   return (
@@ -269,7 +270,7 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
       onChange={(k) => setParametri((p) => { p.set('nir', k); return p }, { replace: true })}
       items={[
         { key: 'de-receptionat', label: 'De recepționat', children: <DeReceptionat poateCrea={poateCrea} /> },
-        { key: 'registru', label: 'Registru NIR (toate)', children: <RegistruNir poateAnula={poateAnula} /> },
+        { key: 'registru', label: 'Registru NIR (toate)', children: <RegistruNir poateAnula={poateAnula} poateEdita={poateEdita} /> },
         { key: 'provenienta', label: 'Proveniență materiale (NIR / factură)', children: <ProvenientaStoc /> },
       ]}
     />
@@ -437,7 +438,7 @@ export function Stocuri() {
         items={[
           { key: 'depozite', label: 'Stoc în depozite', children: <StocDepozite poateEdita={poateEdita} /> },
           { key: 'santier', label: 'Materiale în șantier', children: <MaterialeInSantier /> },
-          { key: 'receptii', label: 'Recepții (NIR)', children: <Receptii poateCrea={poateCrea} poateAnula={poateAnula} /> },
+          { key: 'receptii', label: 'Recepții (NIR)', children: <Receptii poateCrea={poateCrea} poateAnula={poateAnula} poateEdita={poateEdita} /> },
           { key: 'transfer', label: 'Transfer / retur', children: <TransferSantier poateCrea={poateCrea} /> },
           { key: 'consum', label: 'Consum în șantier', children: <ConsumSantier poateCrea={poateCrea} /> },
           { key: 'consum-articole', label: 'Consum pe articole', children: <ConsumPeArticoleRaport /> },

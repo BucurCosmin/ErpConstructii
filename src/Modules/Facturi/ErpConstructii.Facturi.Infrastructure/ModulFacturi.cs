@@ -165,7 +165,7 @@ public sealed class ModulFacturi : IModul
     /// <param name="material">Un material din liniile facturii (fără diacritice / majuscule).</param>
     private static async Task<IResult> Lista(
         Guid? proiectId, string? furnizor, string? cauta, string? material, DateOnly? dataDe, DateOnly? dataPanaLa, string? stare,
-        FacturiDbContext db, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
+        FacturiDbContext db, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct, Guid? facturaId = null)
     {
         if (utilizator.UtilizatorId is not { } uid || firma.FirmaId is not { } fid)
         {
@@ -173,6 +173,9 @@ public sealed class ModulFacturi : IModul
         }
 
         var q = db.FacturiPrimite.AsNoTracking();
+        // O factură anume (link din NIR, stocuri, proveniență, jurnal).
+        if (facturaId is { } doarFactura)
+            q = q.Where(f => f.Id == doarFactura);
         var accesibile = (await permisiuni.PentruUtilizatorAsync(uid, ct)).ProiecteAccesibile(Permisiuni.Pentru(ModulErp.Financiar, Actiune.Vizualizare), fid);
         if (accesibile is not null)
         {

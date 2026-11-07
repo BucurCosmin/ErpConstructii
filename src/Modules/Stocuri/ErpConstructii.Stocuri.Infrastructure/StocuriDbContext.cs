@@ -17,6 +17,7 @@ public sealed class StocuriDbContext(DbContextOptions<StocuriDbContext> optiuni)
     public DbSet<TransferStoc> Transferuri => Set<TransferStoc>();
     public DbSet<BonConsum> BonuriConsum => Set<BonConsum>();
     public DbSet<StornoNir> StornariNir => Set<StornoNir>();
+    public DbSet<CorectieNir> CorectiiNir => Set<CorectieNir>();
     public DbSet<Inventar> Inventare => Set<Inventar>();
     public DbSet<MiscareStoc> Miscari => Set<MiscareStoc>();
     public DbSet<SoldStoc> Solduri => Set<SoldStoc>();
@@ -134,6 +135,25 @@ internal sealed class ConfigurareStornoNir : IEntityTypeConfiguration<StornoNir>
         b.Property(x => x.StornatDeNume).HasMaxLength(200).IsRequired();
         b.Ignore(x => x.Linii);
         b.HasIndex(x => new { x.FirmaId, x.NirId }).IsUnique(); // un NIR se stornează o singură dată
+    }
+}
+
+internal sealed class ConfigurareCorectieNir : IEntityTypeConfiguration<CorectieNir>
+{
+    public void Configure(EntityTypeBuilder<CorectieNir> b)
+    {
+        b.ToTable("corectii_nir");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.NirNumar).HasMaxLength(30).IsRequired();
+        b.Property(x => x.Motiv).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.Rezumat).HasMaxLength(4000).IsRequired();
+        b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.DiferentaValoare).HasPrecision(18, 2);
+        b.Property(x => x.CorectatDeNume).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.Linii);
+        b.Ignore(x => x.DocumentCorectatId);
+        b.HasIndex(x => new { x.FirmaId, x.NirId });
+        b.HasIndex(x => new { x.FirmaId, x.FacturaId });
     }
 }
 

@@ -20,6 +20,10 @@
     <Project Path="src/Modules/Aprovizionare/ErpConstructii.Aprovizionare/ErpConstructii.Aprovizionare.csproj" />
     <Project Path="src/Modules/Aprovizionare/ErpConstructii.Aprovizionare.Infrastructure/ErpConstructii.Aprovizionare.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/Modules/Audit/">
+    <Project Path="src/Modules/Audit/ErpConstructii.Audit/ErpConstructii.Audit.csproj" />
+    <Project Path="src/Modules/Audit/ErpConstructii.Audit.Infrastructure/ErpConstructii.Audit.Infrastructure.csproj" />
+  </Folder>
   <Folder Name="/Modules/Identitate/">
     <Project Path="src/Modules/Identitate/ErpConstructii.Identitate/ErpConstructii.Identitate.csproj" />
     <Project Path="src/Modules/Identitate/ErpConstructii.Identitate.Infrastructure/ErpConstructii.Identitate.Infrastructure.csproj" />

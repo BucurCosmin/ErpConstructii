@@ -53,7 +53,7 @@ public sealed record LinieNirDto(string ArticolCod, string Denumire, string Unit
 
 public sealed record NirDto(Guid Id, string Numar, DateOnly Data, string Gestiune, Guid FacturaId, string FacturaNumar, string FurnizorDenumire, string ProiectCod,
     IReadOnlyList<LinieNirDto> Linii, decimal? Valoare, bool AreDiferente, string ReceptionatDe, string? Observatii,
-    StornoDto? Storno = null, bool FacturaAnulata = false, IReadOnlyList<string>? MaterialeGasite = null);
+    StornoDto? Storno = null, bool FacturaAnulata = false, IReadOnlyList<string>? MaterialeGasite = null, int Corectii = 0);
 
 public sealed record StornoDto(DateOnly Data, string Motiv, string StornatDe);
 
@@ -71,7 +71,7 @@ public sealed record FiltreSold(Guid? GestiuneId, string? Tip, Guid? ProiectId, 
 /// <param name="Cauta">Numărul NIR-ului / facturii sau furnizorul.</param>
 /// <param name="Material">Un material din liniile NIR-ului: denumire sau cod (fără diacritice / majuscule).</param>
 /// <param name="Stare">„Activ”, „Stornat” sau „CuDiferente”.</param>
-public sealed record FiltreNir(string? Cauta, string? Material, DateOnly? DataDe, DateOnly? DataPanaLa, Guid? GestiuneId, Guid? ProiectId, string? Stare);
+public sealed record FiltreNir(string? Cauta, string? Material, DateOnly? DataDe, DateOnly? DataPanaLa, Guid? GestiuneId, Guid? ProiectId, string? Stare, Guid? FacturaId = null);
 
 /// <summary>
 /// Stocurile: gestiuni (depozite + „Materiale în șantier” pe proiect), nomenclatorul de materiale, recepția facturilor
@@ -126,6 +126,7 @@ public sealed class ModulStocuri : IModul
 
         // Inventarul gestiunilor și stornarea NIR-urilor.
         EndpointuriInventar.Mapeaza(g);
+        EndpointuriCorectieNir.Mapeaza(g);
 
         // Proveniența stocului: pe ce NIR / factură a intrat ce e acum în gestiuni.
         EndpointuriTrasabilitate.Mapeaza(g);
@@ -396,6 +397,8 @@ public sealed class ModulStocuri : IModul
         if (filtre.DataPanaLa is { } d2) q = q.Where(n => n.Data <= d2);
         if (filtre.GestiuneId is { } gid) q = q.Where(n => n.GestiuneId == gid);
         if (filtre.ProiectId is { } pid) q = q.Where(n => n.ProiectId == pid);
+        if (filtre.FacturaId is { } fid) q = q.Where(n => n.FacturaId == fid);
+        if (string.Equals(filtre.Stare, "Corectat", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => db.CorectiiNir.Any(c => c.NirId == n.Id));
         if (string.Equals(filtre.Stare, "Stornat", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => db.StornariNir.Any(s => s.NirId == n.Id));
         if (string.Equals(filtre.Stare, "Activ", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => !db.StornariNir.Any(s => s.NirId == n.Id));
 
@@ -416,8 +419,11 @@ public sealed class ModulStocuri : IModul
         var ids = lista.Select(n => n.Id).ToList();
         var stornari = await db.StornariNir.AsNoTracking().Where(s => ids.Contains(s.NirId)).ToDictionaryAsync(s => s.NirId, ct);
         var anulate = await facturi.FacturiAnulateAsync(ct);
+        var corectii = await db.CorectiiNir.AsNoTracking().Where(c => ids.Contains(c.NirId)).GroupBy(c => c.NirId)
+            .Select(g => new { g.Key, Numar = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Numar, ct);
         return Results.Ok(lista.Select(n => Dto(n, preturi) with
         {
+            Corectii = corectii.GetValueOrDefault(n.Id),
             Storno = stornari.TryGetValue(n.Id, out var s) ? new StornoDto(s.Data, s.Motiv, s.StornatDeNume) : null,
             FacturaAnulata = anulate.Contains(n.FacturaId),
             MaterialeGasite = termen is null ? null

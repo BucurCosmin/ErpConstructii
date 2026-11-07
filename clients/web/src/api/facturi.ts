@@ -57,6 +57,8 @@ export interface FiltreFacturi {
   dataDe?: string
   dataPanaLa?: string
   stare?: FacturaPrimita['stare']
+  /** O factură anume (link din NIR, stocuri, proveniență). */
+  facturaId?: string
 }
 
 export interface LinieFacturaCitita {

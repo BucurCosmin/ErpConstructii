@@ -115,6 +115,65 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
             ReceptionatDeNume = utilizatorNume.Trim(),
         });
     }
+
+    /// <summary>
+    /// Corectează NIR-ul recepționat greșit (cantitatea cf. factură, cantitatea recepționată, prețul, observațiile) și întoarce
+    /// corectura cu liniile schimbate, de salvat odată cu NIR-ul. Stocul primește diferențele (infrastructura le aplică prin
+    /// <see cref="CalculStoc.Corectie"/>). Liniile nemenționate rămân; nu se adaugă și nu se scot linii (pentru asta: storno și recepție nouă).
+    /// </summary>
+    public Rezultat<CorectieNir> Corecteaza(IReadOnlyList<LinieNirCorectata> linii, DateOnly data, string motiv, Guid utilizatorId, string utilizatorNume)
+    {
+        var probleme = new List<string>();
+        if (string.IsNullOrWhiteSpace(motiv) || motiv.Trim().Length > 1000) probleme.Add("Motivul corecturii este obligatoriu (cel mult 1000 de caractere).");
+        if (data < Data) probleme.Add("Corectura nu poate avea data înaintea NIR-ului.");
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume)) probleme.Add("Utilizatorul este obligatoriu.");
+        var existente = Linii.ToDictionary(l => l.IndexFactura);
+        if (linii.GroupBy(l => l.IndexFactura).Any(g => g.Count() > 1)) probleme.Add("O linie apare de două ori.");
+        if (linii.Any(l => !existente.ContainsKey(l.IndexFactura))) probleme.Add("Corectura conține o linie care nu e pe NIR.");
+        if (linii.Any(l => l.CantitateReceptionata < 0 || l.CantitateFactura <= 0 || l.PretUnitar < 0)) probleme.Add("Cantitățile și prețurile nu pot fi negative.");
+        if (probleme.Count > 0)
+            return Rezultat.Esuat<CorectieNir>(Eroare.Validare(string.Join(" ", probleme)));
+
+        var noi = new List<LinieNir>();
+        var schimbate = new List<LinieCorectieNir>();
+        var corectate = linii.ToDictionary(l => l.IndexFactura);
+        foreach (var v in Linii)
+        {
+            if (!corectate.TryGetValue(v.IndexFactura, out var c))
+            {
+                noi.Add(v);
+                continue;
+            }
+
+            var observatii = string.IsNullOrWhiteSpace(c.Observatii) ? null : c.Observatii.Trim();
+            var partiala = v.Partiala && c.CantitateReceptionata < c.CantitateFactura;
+            var n = v with
+            {
+                CantitateFactura = c.CantitateFactura,
+                CantitateReceptionata = c.CantitateReceptionata,
+                PretUnitar = c.PretUnitar,
+                Valoare = Rotunjire.Lei.Aplica(c.CantitateReceptionata * c.PretUnitar),
+                Observatii = observatii,
+                Partiala = partiala,
+            };
+            if (!n.Partiala && n.CantitateReceptionata != n.CantitateFactura && observatii is null)
+                return Rezultat.Esuat<CorectieNir>(Eroare.Validare($"„{v.Denumire}”: diferența față de factură cere o observație."));
+            noi.Add(n);
+            if (n != v)
+                schimbate.Add(new LinieCorectieNir(v.IndexFactura, v.ArticolId, v.ArticolCod, v.Denumire, v.UnitateMasura,
+                    v.CantitateFactura, n.CantitateFactura, v.CantitateReceptionata, n.CantitateReceptionata, v.PretUnitar, n.PretUnitar, v.Valoare, n.Valoare));
+        }
+
+        if (schimbate.Count == 0)
+            return Rezultat.Esuat<CorectieNir>(Eroare.Validare("Nu ai modificat nimic."));
+        if (noi.All(l => l.CantitateReceptionata == 0))
+            return Rezultat.Esuat<CorectieNir>(Eroare.Validare("După corectură NIR-ul n-ar mai avea nimic recepționat: stornează-l."));
+
+        LiniiJson = JsonSerializer.Serialize(noi);
+        _linii = null;
+        Valoare = noi.Sum(l => l.Valoare);
+        return Rezultat.Ok(CorectieNir.Creeaza(this, data, motiv, schimbate, utilizatorId, utilizatorNume));
+    }
 }
 
 public enum DirectieTransfer
@@ -209,6 +268,9 @@ public enum TipMiscare
     IesireStornoNir,
     PlusInventar,
     MinusInventar,
+
+    /// <summary>Corectura unui NIR (D-35): diferența de cantitate / valoare față de recepția inițială, pe același NIR (DocumentId = NIR-ul).</summary>
+    CorectieNir,
 }
 
 /// <param name="ArticolDevizCheie">Cheia stabilă a articolului de deviz pe care se consumă (D-05); null = cheltuieli generale de șantier.</param>
@@ -298,7 +360,7 @@ public sealed class MiscareStoc : EntitateFirma
 }
 
 /// <summary>Soldul curent al unui articol într-o gestiune (actualizat în aceeași tranzacție cu mișcarea).</summary>
-public sealed class SoldStoc : EntitateFirma
+public sealed class SoldStoc : EntitateFirma, IFaraJurnal
 {
     private SoldStoc() { }
 

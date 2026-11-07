@@ -15,6 +15,7 @@ import { ConfigurareMfa } from './pagini/autentificare/ConfigurareMfa'
 import { SchimbareParola } from './pagini/autentificare/SchimbareParola'
 import { Administrare } from './pagini/administrare/Administrare'
 import { Facturi } from './pagini/facturi/Facturi'
+import { JurnalModificari } from './pagini/jurnal/JurnalModificari'
 import { DetaliiDeviz } from './pagini/devize/DetaliiDeviz'
 import { DetaliiProiect } from './pagini/proiecte/DetaliiProiect'
 import { ListaProiecte } from './pagini/proiecte/ListaProiecte'
@@ -53,6 +54,7 @@ const router = createBrowserRouter([
       { path: 'stocuri', element: <Stocuri /> },
       { path: 'import', element: <CentruImport /> },
       { path: 'facturi', element: <Facturi /> },
+      { path: 'jurnal', element: <JurnalModificari /> },
       { path: 'administrare/:tab?', element: <Administrare /> },
       ...module
         .filter((m) => !m.implementat && !['aprovizionare', 'formulare'].includes(m.cheie))

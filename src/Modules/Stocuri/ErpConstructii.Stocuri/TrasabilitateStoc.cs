@@ -18,7 +18,8 @@ public sealed record LotStoc(
 /// <summary>
 /// Proveniența stocului (pe ce NIR / factură a intrat ce e acum în gestiune). Evaluarea rămâne la CMP (<see cref="CalculStoc"/>);
 /// pentru trasabilitate, ieșirile se atribuie FIFO (iese întâi ce a intrat primul), deci în stoc rămân cele mai recente intrări.
-/// Excepția: stornarea unui NIR scoate exact cantitatea acelui NIR (cât mai e din ea în gestiune).
+/// Excepția: stornarea unui NIR scoate exact cantitatea acelui NIR (cât mai e din ea în gestiune). Corectura unui NIR (D-35)
+/// scoate / adaugă diferența pe lotul acelui NIR, iar prețul loturilor NIR-ului devine cel corectat.
 /// </summary>
 public static class TrasabilitateStoc
 {
@@ -39,7 +40,10 @@ public static class TrasabilitateStoc
 
     /// <param name="miscari">Mișcările în ordinea înregistrării (data creării), nu a datei documentului.</param>
     /// <param name="nirStornat">Pentru fiecare stornare: Id-ul NIR-ului stornat.</param>
-    public static IReadOnlyList<LotStoc> Calculeaza(IEnumerable<MiscareTrasabilitate> miscari, IReadOnlyDictionary<Guid, Guid> nirStornat)
+    /// <param name="preturiNir">Prețul de intrare actual (după corecturi) al fiecărui material din fiecare NIR; lipsă = prețul din mișcare.</param>
+    public static IReadOnlyList<LotStoc> Calculeaza(
+        IEnumerable<MiscareTrasabilitate> miscari, IReadOnlyDictionary<Guid, Guid> nirStornat,
+        IReadOnlyDictionary<(Guid Nir, Guid Articol), decimal>? preturiNir = null)
     {
         var stoc = new Dictionary<(Guid Gestiune, Guid Articol), List<Bucata>>();
         // Ce a scos un transfer din gestiunea sursă, pe articol: intră cu aceeași origine în gestiunea destinație.
@@ -69,7 +73,9 @@ public static class TrasabilitateStoc
                 var coada = Coada(m.GestiuneId, m.ArticolId);
                 var scoase = m.Tip == TipMiscare.IesireStornoNir && nirStornat.TryGetValue(m.DocumentId, out var nir)
                     ? Scoate(coada, -m.Cantitate, b => b.DocumentId == nir)
-                    : Scoate(coada, -m.Cantitate, _ => true);
+                    : m.Tip == TipMiscare.CorectieNir
+                        ? Scoate(coada, -m.Cantitate, b => b.DocumentId == m.DocumentId)
+                        : Scoate(coada, -m.Cantitate, _ => true);
                 if (m.Tip == TipMiscare.IesireTransfer)
                 {
                     if (!inTranzit.TryGetValue((m.DocumentId, m.ArticolId), out var t))
@@ -94,14 +100,20 @@ public static class TrasabilitateStoc
                 }
 
                 // Intrarea propriu-zisă (NIR, plus de inventar) sau un transfer fără origine cunoscută: originea e documentul.
+                // Plusul din corectura unui NIR are ca origine NIR-ul însuși (mișcarea poartă Id-ul lui).
                 if (rest > 0)
-                    coada.Add(new Bucata(m.Tip, m.DocumentId, m.DocumentNumar, m.Data, rest, PretIntrare.Aplica(m.Valoare / m.Cantitate)));
+                    coada.Add(new Bucata(m.Tip == TipMiscare.CorectieNir ? TipMiscare.IntrareNir : m.Tip, m.DocumentId, m.DocumentNumar, m.Data, rest,
+                        PretIntrare.Aplica(m.Valoare / m.Cantitate)));
             }
         }
 
+        // Bucățile aceluiași document (ex. NIR-ul și plusul din corectura lui) apar ca un singur lot.
         return stoc
-            .SelectMany(x => x.Value.Where(b => b.Cantitate > 0).Select(b =>
-                new LotStoc(x.Key.Gestiune, x.Key.Articol, b.Tip, b.DocumentId, b.DocumentNumar, b.Data, b.Cantitate, b.Pret)))
+            .SelectMany(x => x.Value.Where(b => b.Cantitate > 0).Select(b => (x.Key.Gestiune, x.Key.Articol, Bucata: b,
+                Pret: b.Tip == TipMiscare.IntrareNir && preturiNir is not null && preturiNir.TryGetValue((b.DocumentId, x.Key.Articol), out var pret) ? pret : b.Pret)))
+            .GroupBy(x => (x.Gestiune, x.Articol, x.Bucata.Tip, x.Bucata.DocumentId, x.Pret))
+            .Select(g => new LotStoc(g.Key.Gestiune, g.Key.Articol, g.Key.Tip, g.Key.DocumentId, g.First().Bucata.DocumentNumar, g.Min(x => x.Bucata.Data),
+                g.Sum(x => x.Bucata.Cantitate), g.Key.Pret))
             .ToList();
     }
 

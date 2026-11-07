@@ -74,7 +74,8 @@ $contexte = @(
     @("Parteneri", "ParteneriDbContext"),
     @("Aprovizionare", "AprovizionareDbContext"),
     @("Facturi", "FacturiDbContext"),
-    @("Stocuri", "StocuriDbContext")
+    @("Stocuri", "StocuriDbContext"),
+    @("Audit", "AuditDbContext")
 )
 Push-Location $radacina
 foreach ($c in $contexte) {

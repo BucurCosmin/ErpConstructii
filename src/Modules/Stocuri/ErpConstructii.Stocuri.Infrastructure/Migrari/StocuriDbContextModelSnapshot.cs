@@ -226,6 +226,95 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                     b.ToTable("bonuri_consum", "stocuri");
                 });
 
+            modelBuilder.Entity("ErpConstructii.Stocuri.CorectieNir", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CorectatDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("corectat_de_id");
+
+                    b.Property<string>("CorectatDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("corectat_de_nume");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<DateOnly>("Data")
+                        .HasColumnType("date")
+                        .HasColumnName("data");
+
+                    b.Property<decimal>("DiferentaValoare")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("diferenta_valoare");
+
+                    b.Property<Guid>("FacturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("factura_id");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<string>("LiniiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("linii_json");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv");
+
+                    b.Property<Guid>("NirId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nir_id");
+
+                    b.Property<string>("NirNumar")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("nir_numar");
+
+                    b.Property<string>("Rezumat")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("rezumat");
+
+                    b.HasKey("Id")
+                        .HasName("pk_corectii_nir");
+
+                    b.HasIndex("FirmaId", "FacturaId")
+                        .HasDatabaseName("ix_corectii_nir_firma_id_factura_id");
+
+                    b.HasIndex("FirmaId", "NirId")
+                        .HasDatabaseName("ix_corectii_nir_firma_id_nir_id");
+
+                    b.ToTable("corectii_nir", "stocuri");
+                });
+
             modelBuilder.Entity("ErpConstructii.Stocuri.Gestiune", b =>
                 {
                     b.Property<Guid>("Id")

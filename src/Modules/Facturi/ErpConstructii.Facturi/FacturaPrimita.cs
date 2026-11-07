@@ -220,7 +220,7 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
         {
             if (!AceeasiLinieDeStoc(vechi.Linii[i], nou.Linii[i]))
                 avertismente.Add($"Linia {i + 1} („{nou.Linii[i].Denumire.Trim()}”) e recepționată: NIR-ul și stocul rămân cu cantitatea și prețul din NIR. " +
-                    "Dacă trebuie corectat și stocul, stornează NIR-ul și recepționează din nou.");
+                    "Dacă și recepția e greșită, corectează NIR-ul (Stocuri → Recepții → Registru NIR): stocul primește diferența.");
         }
 
         if (liniiReceptionate.Count > 0 && nou.ProiectId != vechi.ProiectId)

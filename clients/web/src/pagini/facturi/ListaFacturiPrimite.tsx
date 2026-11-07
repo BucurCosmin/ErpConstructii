@@ -1,7 +1,8 @@
-import { DownloadOutlined, EditOutlined, FilePdfOutlined, PrinterOutlined, SearchOutlined, StopOutlined, WarningOutlined } from '@ant-design/icons'
+import { DownloadOutlined, EditOutlined, FilePdfOutlined, HistoryOutlined, PrinterOutlined, SearchOutlined, StopOutlined, WarningOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, DatePicker, Dropdown, Form, Input, Modal, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import { useAnuleazaFactura, useFacturiPrimite } from '../../api/facturi'
 import type { FacturaPrimita, FiltreFacturi, LinieFactura } from '../../api/facturi'
@@ -95,10 +96,16 @@ function totaluri(facturi: FacturaPrimita[], grupare: Grupare): TotalGrup[] {
  * Facturile primite: filtre (proiect, furnizor / CUI / număr, material, perioadă, stare, sursă, monedă), tabel compact
  * cu totaluri pe monedă, totaluri pe furnizor / proiect / lună / cotă TVA, rapoarte PDF, tipărirea originalelor și export CSV.
  */
-export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImport }: { poateCrea: boolean; poateAnula: boolean; poateEdita: boolean; onImport: () => void }) {
+export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImport, facturaId, onToate }: {
+  poateCrea: boolean; poateAnula: boolean; poateEdita: boolean; onImport: () => void
+  /** O factură anume (link din NIR, stocuri, proveniență): lista arată doar factura aceasta. */
+  facturaId?: string
+  onToate?: () => void
+}) {
   const { message } = App.useApp()
+  const navigheaza = useNavigate()
   const proiecte = useProiecte()
-  const [filtre, setFiltre] = useState<FiltreFacturi>({ stare: 'Inregistrata' })
+  const [filtre, setFiltre] = useState<FiltreFacturi>(facturaId ? { facturaId } : { stare: 'Inregistrata' })
   const [filtreLocale, setFiltreLocale] = useState<{ sursa?: FacturaPrimita['sursa']; moneda?: string }>({})
   const facturi = useFacturiPrimite(filtre)
   const anuleaza = useAnuleazaFactura()
@@ -239,6 +246,11 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImpor
       </Form>
 
       {facturi.error && <Alert type="error" showIcon title={(facturi.error as Error).message} />}
+      {filtre.facturaId && (
+        <Alert type="info" showIcon
+          title={facturi.data?.[0] ? `Afișez doar factura ${facturi.data[0].numar} — ${facturi.data[0].furnizorDenumire}` : 'Afișez doar factura deschisă din altă pagină'}
+          action={<Button size="small" onClick={() => { setFiltre({ stare: 'Inregistrata' }); onToate?.() }}>Arată toate facturile</Button>} />
+      )}
 
       <Card
         size="small"
@@ -296,6 +308,7 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImpor
           rowClassName={(f) => (f.stare === 'Anulata' ? 'rand-inactiv' : '')}
           pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [25, 50, 100, 200], hideOnSinglePage: true, size: 'small' }}
           expandable={{
+            defaultExpandedRowKeys: facturaId ? [facturaId] : undefined,
             expandedRowRender: (f) => (
               <div>
                 <Table<LinieFactura>
@@ -330,7 +343,7 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImpor
               render: (n: string, f) => (
                 <>
                   {n} {f.esteStorno && <Tag color="volcano">storno</Tag>}
-                  {f.corectii > 0 && <Tooltip title={`Corectată de ${f.corectii} ori (istoricul e în fereastra de corectare)`}><EditOutlined style={{ color: '#1677ff', marginInlineStart: 4 }} /></Tooltip>}
+                  {f.corectii > 0 && <Tooltip title={`Corectată de ${f.corectii} ori (istoricul e în fereastra de corectare și în jurnal)`}><EditOutlined style={{ color: '#1677ff', marginInlineStart: 4 }} /></Tooltip>}
                   {!f.liniiConcordante && f.stare !== 'Anulata' && (
                     <Tooltip title="Suma liniilor nu dă totalul facturii: liniile au fost citite greșit la import. Totalurile facturii sunt cele folosite în rapoarte.">
                       <WarningOutlined style={{ color: '#d48806', marginInlineStart: 4 }} />
@@ -364,7 +377,7 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImpor
               render: (_, f) => f.stare === 'Anulata' ? <Tag color="red">Anulată</Tag> : f.sursa === 'EFactura' ? <Tag color="blue">e-Factura</Tag> : <Tag>PDF</Tag>,
             },
             {
-              title: '', width: 140, fixed: 'right',
+              title: '', width: 170, fixed: 'right',
               render: (_, f) => (
                 <Space size={2} onClick={(e) => e.stopPropagation()}>
                   {f.areXml && <Tooltip title="Descarcă XML-ul"><Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => void original(f, 'xml')}>XML</Button></Tooltip>}
@@ -374,6 +387,9 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImpor
                       <Button size="small" type="text" icon={<EditOutlined />} onClick={() => setDeCorectat(f)} />
                     </Tooltip>
                   )}
+                  <Tooltip title="Istoricul modificărilor facturii (jurnal)">
+                    <Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => navigheaza(`/jurnal?document=${encodeURIComponent(f.numar)}`)} />
+                  </Tooltip>
                   {f.stare === 'Inregistrata' && poateAnula && (
                     <Tooltip title="Anulează înregistrarea (ex. proiect greșit)">
                       <Button size="small" type="text" danger icon={<StopOutlined />} onClick={() => setDeAnulat(f)} />

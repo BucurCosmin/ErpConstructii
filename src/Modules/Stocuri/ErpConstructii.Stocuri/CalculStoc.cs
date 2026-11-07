@@ -43,6 +43,28 @@ public static class CalculStoc
         return Rezultat.Ok(new Sold(sold.Cantitate - cantitate, sold.Valoare - valoare));
     }
 
+    /// <summary>
+    /// Corectura unei recepții (D-35): soldul primește diferența de cantitate și de valoare față de NIR-ul inițial. Diferența
+    /// negativă trebuie să mai fie în gestiune; o schimbare de preț cere material rămas în gestiune (altfel valoarea n-ar avea
+    /// pe ce să stea). Dacă nu mai rămâne nimic din articol, soldul devine zero.
+    /// </summary>
+    public static Rezultat<Sold> Corectie(Sold sold, decimal diferentaCantitate, decimal diferentaValoare, string articol)
+    {
+        if (sold.Cantitate == 0 && diferentaCantitate == 0 && diferentaValoare != 0)
+            return Rezultat.Esuat<Sold>(Eroare.Validare($"„{articol}”: nu mai e nimic în gestiune pe care să se corecteze prețul (a ieșit la prețul vechi). Fă întâi returul în depozit."));
+        var cantitate = sold.Cantitate + diferentaCantitate;
+        if (cantitate < 0)
+            return Rezultat.Esuat<Sold>(Eroare.Validare(
+                $"„{articol}”: în gestiune au rămas {sold.Cantitate:0.####}, iar corectura scoate {-diferentaCantitate:0.####} (restul a fost transferat sau consumat). Fă întâi returul în depozit."));
+        if (cantitate == 0)
+            return Rezultat.Ok(Sold.Zero);
+        var valoare = sold.Valoare + Rotunjire.Lei.Aplica(diferentaValoare);
+        if (valoare < 0)
+            return Rezultat.Esuat<Sold>(Eroare.Validare(
+                $"„{articol}”: corectura scade valoarea cu {-diferentaValoare:N2}, dar în gestiune a rămas doar {sold.Valoare:N2} (restul a ieșit la prețul vechi)."));
+        return Rezultat.Ok(new Sold(cantitate, valoare));
+    }
+
     /// <returns>Soldul rămas și valoarea ieșirii (cantitate × CMP).</returns>
     public static Rezultat<(Sold Ramas, decimal ValoareIesire)> Iesire(Sold sold, decimal cantitate, string articol)
     {

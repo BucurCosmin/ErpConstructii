@@ -10,6 +10,7 @@ export function Facturi() {
   const [parametri, setParametri] = useSearchParams()
   const navigheaza = useNavigate()
   const tab = parametri.get('tab') ?? 'primite'
+  const facturaId = parametri.get('factura') ?? undefined
   const permisiuni = usePermisiuni()
   const poateCrea = permisiuni.data?.includes('financiar.creare') ?? false
   const poateAnula = permisiuni.data?.includes('financiar.anulare') ?? false
@@ -30,7 +31,11 @@ export function Facturi() {
             {
               key: 'primite',
               label: 'Facturi primite',
-              children: <ListaFacturiPrimite poateCrea={poateCrea} poateAnula={poateAnula} poateEdita={poateEdita} onImport={() => navigheaza('/facturi?tab=import')} />,
+              children: (
+                <ListaFacturiPrimite key={facturaId ?? 'toate'} poateCrea={poateCrea} poateAnula={poateAnula} poateEdita={poateEdita}
+                  facturaId={facturaId} onToate={() => setParametri({ tab: 'primite' }, { replace: true })}
+                  onImport={() => navigheaza('/facturi?tab=import')} />
+              ),
             },
             { key: 'import', label: 'Import factură', children: <ImportFactura poateCrea={poateCrea} /> },
           ]}

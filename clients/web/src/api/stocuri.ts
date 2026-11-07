@@ -110,6 +110,8 @@ export interface Nir {
   facturaAnulata: boolean
   /** Materialele care au potrivit filtrul „material”. */
   materialeGasite?: string[] | null
+  /** Câte corecturi are NIR-ul (D-35). */
+  corectii: number
 }
 
 /** Filtrele listelor de recepție: factura / furnizorul și materialul. */
@@ -182,7 +184,9 @@ export interface FiltreNir extends FiltreReceptii {
   dataPanaLa?: string
   gestiuneId?: string
   proiectId?: string
-  stare?: 'Activ' | 'Stornat' | 'CuDiferente'
+  stare?: 'Activ' | 'Stornat' | 'CuDiferente' | 'Corectat'
+  /** NIR-urile unei facturi (link din corectura facturii). */
+  facturaId?: string
 }
 
 export const useNir = (filtre: FiltreNir = {}) =>
@@ -335,6 +339,53 @@ export const useReturneaza = () => {
 }
 
 // ---------------------------------------------------------------- storno NIR, inventar
+
+export interface LinieStareCorectieNir {
+  indexFactura: number
+  articolCod: string
+  denumire: string
+  unitateMasura: string
+  cantitateFactura: number
+  cantitateReceptionata: number
+  pretUnitar: number | null
+  valoare: number | null
+  observatii: string | null
+  partiala: boolean
+  /** Ce scrie acum pe factură (după corecturile ei); null dacă factura e anulată / linia nu mai e de stoc. */
+  facturaDenumire: string | null
+  facturaCantitate: number | null
+  facturaPret: number | null
+}
+
+export interface StareCorectieNir {
+  nirId: string
+  numar: string
+  stornat: boolean
+  vedePreturi: boolean
+  linii: LinieStareCorectieNir[]
+  corectii: { id: string; data: string; corectatLa: string; corectatDe: string; motiv: string; rezumat: string; diferentaValoare: number | null }[]
+}
+
+export interface CorecteazaNirCerere {
+  linii: { indexFactura: number; cantitateFactura: number; cantitateReceptionata: number; pretUnitar: number | null; observatii: string | null }[]
+  motiv: string
+  data: string | null
+}
+
+export const useStareCorectieNir = (id?: string) =>
+  useQuery({ queryKey: [...chei.nir, 'corectare', id], queryFn: () => api.get<StareCorectieNir>(`/api/stocuri/nir/${id}/corectare`), enabled: !!id })
+
+/** Corectează un NIR recepționat greșit; stocul primește diferențele. */
+export const useCorecteazaNir = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, cerere }: { id: string; cerere: CorecteazaNirCerere }) => api.put<{ mesaj: string; rezumat: string; nir: Nir }>(`/api/stocuri/nir/${id}`, cerere),
+    onSuccess: () => {
+      void reincarca(qc)
+      void qc.invalidateQueries({ queryKey: ['audit'] })
+    },
+  })
+}
 
 export const useStorneazaNir = () => {
   const qc = useQueryClient()

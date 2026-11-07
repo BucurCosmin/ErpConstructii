@@ -2,6 +2,7 @@ import { DeleteOutlined, InboxOutlined, PlusOutlined, WarningOutlined } from '@a
 import { Alert, App, Button, Checkbox, Col, DatePicker, Flex, Form, Input, Modal, Row, Select, Space, Switch, Table, Timeline, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { useCorecteazaFactura, useStareCorectie } from '../../api/facturi'
 import type { FacturaPrimita } from '../../api/facturi'
 import { useProiecte } from '../../api/interogari'
@@ -47,6 +48,7 @@ const tvaLinie = (l?: Partial<LinieValori>) => bani((l?.valoareFaraTva ?? 0) * (
  */
 export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimita; onInchide: () => void }) {
   const { message } = App.useApp()
+  const navigheaza = useNavigate()
   const proiecte = useProiecte()
   const stare = useStareCorectie(factura?.id)
   const corecteaza = useCorecteazaFactura()
@@ -123,7 +125,8 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
           <>
             <p>{r.rezumat}</p>
             {avertismente.length > 0 && (
-              <Alert type="warning" showIcon title="De verificat în stoc" description={<ul style={{ paddingLeft: 18, margin: 0 }}>{avertismente.map((a) => <li key={a}>{a}</li>)}</ul>} />
+              <Alert type="warning" showIcon title="De verificat în stoc" description={<ul style={{ paddingLeft: 18, margin: 0 }}>{avertismente.map((a) => <li key={a}>{a}</li>)}</ul>}
+                action={<Button size="small" type="primary" onClick={() => { Modal.destroyAll(); navigheaza(`/stocuri?tab=receptii&nir=registru&factura=${factura.id}`) }}>Corectează NIR-ul</Button>} />
             )}
           </>
         ),
@@ -155,7 +158,7 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
             style={{ marginBottom: 12 }}
             title="Numerele se scriu cu VIRGULĂ la zecimale și punct la mii: 1.234,56 (punctul tastat e ignorat)."
             description={blocate.size > 0
-              ? 'Liniile marcate cu cutie au intrat deja în stoc (NIR). Le poți corecta; cât factura are recepții, liniile existente nu se șterg (se pot adăuga linii noi). NIR-ul și stocul rămân cu cantitatea și prețul recepționate: dacă și acolo e greșit, stornează NIR-ul și recepționează din nou.'
+              ? 'Liniile marcate cu cutie au intrat deja în stoc (NIR). Le poți corecta; cât factura are recepții, liniile existente nu se șterg (se pot adăuga linii noi). NIR-ul și stocul rămân cu cantitatea și prețul recepționate: dacă și acolo e greșit, corectează apoi NIR-ul (Stocuri → Recepții → Registru NIR, ✎).'
               : 'Corectura păstrează istoricul: ce era înainte, ce ai schimbat, cine și de ce.'}
           />
           <Form<Valori> form={form} layout="vertical" onFinish={salveaza} requiredMark="optional" size="small">
