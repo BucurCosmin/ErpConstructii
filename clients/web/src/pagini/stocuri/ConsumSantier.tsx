@@ -3,11 +3,12 @@ import { Alert, App, Button, Card, Checkbox, Col, DatePicker, Form, Input, Modal
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
-import { useBonuriConsum, useConsuma, useConsumPeArticole, useDevizReferinta, useFacturiPentruConsum, useSoldStoc, useTransfera } from '../../api/stocuri'
+import { useBonuriConsum, useConsuma, useConsumPeArticole, useDevizReferinta, useSoldStoc, useTransfera } from '../../api/stocuri'
 import type { BonConsum, ConsumPeArticole, FacturaPentruConsum } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { NumarRo } from '../../componente/NumarRo'
+import { TabelFacturiReceptionate } from './TabelFacturiReceptionate'
 
 const GENERALE = '__generale__'
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
@@ -36,11 +37,9 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
   const disponibil = useMemo(() => new Map((proiectId ? sold.data ?? [] : []).map((s) => [s.articolId, s])), [sold.data, proiectId])
   const transfera = useTransfera()
   const [dinFactura, setDinFactura] = useState(false)
-  const [cautaFactura, setCautaFactura] = useState<string>()
   const [facturaAleasa, setFacturaAleasa] = useState<FacturaPentruConsum>()
   const [devizToate, setDevizToate] = useState<string>(GENERALE)
   const [transferaLipsa, setTransferaLipsa] = useState(true)
-  const facturi = useFacturiPentruConsum(dinFactura ? proiectId : undefined, cautaFactura)
 
   /** Pe material: cât e de consumat din factură, cât e în șantier, cât lipsește și de unde se poate transfera. */
   const necesar = useMemo(() => {
@@ -218,24 +217,7 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
         onOk={() => void adaugaFactura()}
         destroyOnHidden
       >
-        <Input.Search allowClear placeholder="Caută factura după număr sau furnizor" onSearch={(v) => setCautaFactura(v.trim() || undefined)} style={{ marginBottom: 12 }} />
-        <Table<FacturaPentruConsum>
-          size="small"
-          rowKey="facturaId"
-          loading={facturi.isLoading}
-          dataSource={facturi.data}
-          pagination={{ pageSize: 6, hideOnSinglePage: true }}
-          rowSelection={{ type: 'radio', selectedRowKeys: facturaAleasa ? [facturaAleasa.facturaId] : [], onChange: (_, r) => setFacturaAleasa(r[0]) }}
-          onRow={(f) => ({ onClick: () => setFacturaAleasa(f) })}
-          locale={{ emptyText: 'Nicio factură recepționată (NIR) cu materiale.' }}
-          columns={[
-            { title: 'Factura', dataIndex: 'numar', width: 140 },
-            { title: 'Data', dataIndex: 'data', width: 100, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
-            { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
-            { title: 'Proiect', width: 140, render: (_, f) => (f.acelasiProiect ? <Tag color="green">{f.proiectCod}</Tag> : f.proiectCod) },
-            { title: 'Materiale', width: 90, align: 'right', render: (_, f) => f.linii.length },
-          ]}
-        />
+        <TabelFacturiReceptionate proiectId={dinFactura ? proiectId : undefined} aleasa={facturaAleasa} onAlege={setFacturaAleasa} />
         {facturaAleasa && (
           <>
             <Typography.Title level={5} style={{ marginTop: 12 }}>Materialele facturii {facturaAleasa.numar}</Typography.Title>

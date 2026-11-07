@@ -1,13 +1,14 @@
-import { DeleteOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, DatePicker, Form, Input, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd'
+import { DeleteOutlined, FileDoneOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Col, DatePicker, Form, Input, Modal, Row, Segmented, Select, Space, Table, Tag, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
 import { useGestiuni, useReturneaza, useSoldStoc, useTransfera, useTransferuri } from '../../api/stocuri'
-import type { TransferStoc } from '../../api/stocuri'
+import type { FacturaPentruConsum, TransferStoc } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { NumarRo } from '../../componente/NumarRo'
+import { TabelFacturiReceptionate } from './TabelFacturiReceptionate'
 
 interface Valori {
   gestiuneSursaId?: string
@@ -40,6 +41,40 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
   }, [depozite, form])
 
   const disponibil = useMemo(() => new Map((sold.data ?? []).map((s) => [s.articolId, s])), [sold.data])
+
+  const [dinFactura, setDinFactura] = useState(false)
+  const [facturaAleasa, setFacturaAleasa] = useState<FacturaPentruConsum>()
+  const [seTransfera, setSeTransfera] = useState(false)
+  const inchideFactura = () => { setDinFactura(false); setFacturaAleasa(undefined) }
+  // Liniile facturii vin pe (material, depozitul recepției): fiecare trebuie să fie întreagă în depozitul ei.
+  const liniiFactura = facturaAleasa?.linii ?? []
+  const lipsesc = liniiFactura.filter((l) => l.inDepozit < l.cantitate)
+  const dejaInSantier = liniiFactura.length > 0 && liniiFactura.every((l) => l.inSantier >= l.cantitate)
+
+  /** Toată factura în șantier: un bon de transfer pe fiecare depozit în care a fost recepționată, cu cantitățile din NIR. */
+  const transferaFactura = async () => {
+    const proiectId = form.getFieldValue('proiectId') as string | undefined
+    if (!proiectId || !facturaAleasa || lipsesc.length > 0) return
+    const data = ((form.getFieldValue('data') as Dayjs | undefined) ?? dayjs()).format('YYYY-MM-DD')
+    const peDepozit = new Map<string, { articolId: string; cantitate: number }[]>()
+    for (const l of liniiFactura) peDepozit.set(l.depozitId, [...(peDepozit.get(l.depozitId) ?? []), { articolId: l.articolId, cantitate: l.cantitate }])
+    setSeTransfera(true)
+    try {
+      for (const [gestiuneSursaId, linii] of peDepozit) {
+        const bt = await transfera.mutateAsync({
+          proiectId, gestiuneSursaId, data, linii,
+          observatii: (form.getFieldValue('observatii') as string | undefined)?.trim() || `Factura ${facturaAleasa.numar} (${facturaAleasa.furnizorDenumire})`,
+        })
+        message.success(`${bt.numar}: factura ${facturaAleasa.numar} a fost transferată în ${bt.gestiuneDestinatie}.`)
+      }
+      form.setFieldsValue({ linii: [{}], observatii: undefined })
+      inchideFactura()
+    } catch (e) {
+      message.error((e as Error).message)
+    } finally {
+      setSeTransfera(false)
+    }
+  }
 
   const trimite = async (v: Valori) => {
     if (!v.gestiuneSursaId || !v.proiectId) return
@@ -126,7 +161,17 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
                     </Row>
                   )
                 })}
-                <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} block style={{ marginBottom: 16 }}>Adaugă material</Button>
+                {retur
+                  ? <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} block style={{ marginBottom: 16 }}>Adaugă material</Button>
+                  : (
+                    <Space.Compact block style={{ marginBottom: 16 }}>
+                      <Button type="dashed" icon={<PlusOutlined />} onClick={() => add({})} style={{ width: '60%' }}>Adaugă material</Button>
+                      <Button type="dashed" icon={<FileDoneOutlined />} onClick={() => setDinFactura(true)} disabled={!proiectAles} style={{ width: '40%' }}
+                        title={proiectAles ? undefined : 'Alege întâi proiectul'}>
+                        Transferă o factură întreagă
+                      </Button>
+                    </Space.Compact>
+                  )}
               </>
             )}
           </Form.List>
@@ -136,6 +181,55 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
           <Button type="primary" htmlType="submit" loading={transfera.isPending || returneaza.isPending}>{retur ? 'Emite returul' : 'Emite bonul de transfer'}</Button>
         </Form>
       </Card>
+
+      <Modal
+        open={dinFactura}
+        onCancel={inchideFactura}
+        width="min(1100px, 96vw)"
+        title="Transferă o factură întreagă în șantier"
+        okText="Transferă factura în șantier"
+        okButtonProps={{ disabled: !facturaAleasa || lipsesc.length > 0, loading: seTransfera }}
+        onOk={() => void transferaFactura()}
+        destroyOnHidden
+      >
+        <TabelFacturiReceptionate proiectId={dinFactura ? proiectAles : undefined} aleasa={facturaAleasa} onAlege={setFacturaAleasa} />
+        {facturaAleasa && (
+          <>
+            <Typography.Title level={5} style={{ marginTop: 12 }}>Materialele facturii {facturaAleasa.numar}</Typography.Title>
+            {!facturaAleasa.acelasiProiect && (
+              <Alert type="info" showIcon style={{ marginBottom: 8 }} title={`Factura e înregistrată pe proiectul ${facturaAleasa.proiectCod}, nu pe cel ales pentru transfer.`} />
+            )}
+            {lipsesc.length > 0
+              ? <Alert type="error" showIcon style={{ marginBottom: 8 }} title="Nu toate materialele facturii sunt în depozit: factura nu se poate transfera întreagă."
+                  description="Transferă materialele disponibile cu „Adaugă material”, în cantitățile care există." />
+              : dejaInSantier && (
+                <Alert type="warning" showIcon style={{ marginBottom: 8 }} title="În șantier sunt deja cel puțin cantitățile din factură."
+                  description="Poate că factura a fost transferată deja: verifică bonurile de transfer de mai jos înainte să o transferi din nou." />
+              )}
+            <Table
+              size="small"
+              rowKey={(l) => `${l.articolId}-${l.depozitId}`}
+              pagination={false}
+              dataSource={liniiFactura}
+              columns={[
+                { title: 'Material', render: (_, l) => `${l.articolCod} — ${l.denumire}` },
+                { title: 'Din factură (NIR)', width: 140, align: 'right', render: (_, l) => `${formatCantitate(l.cantitate)} ${l.unitateMasura}` },
+                { title: 'Din depozitul', dataIndex: 'depozit', width: 170 },
+                {
+                  title: 'În depozit', width: 150,
+                  render: (_, l) => l.inDepozit >= l.cantitate
+                    ? <Tag color="green">{formatCantitate(l.inDepozit)} {l.unitateMasura}</Tag>
+                    : <Tag color="red">{formatCantitate(l.inDepozit)} — lipsesc {formatCantitate(l.cantitate - l.inDepozit)}</Tag>,
+                },
+                { title: 'Acum în șantier', width: 120, align: 'right', render: (_, l) => formatCantitate(l.inSantier) },
+              ]}
+            />
+            <Typography.Paragraph type="secondary" style={{ marginTop: 8, marginBottom: 0 }}>
+              Se emite un bon de transfer cu data din formular, din depozitul în care a fost recepționată factura, la CMP.
+            </Typography.Paragraph>
+          </>
+        )}
+      </Modal>
 
       <Card title="Bonuri de transfer">
         <Table<TransferStoc>
