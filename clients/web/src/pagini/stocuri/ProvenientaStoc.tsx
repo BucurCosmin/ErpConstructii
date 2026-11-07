@@ -22,7 +22,7 @@ interface GrupMaterial {
 }
 
 /** Raportul pentru Excel: o linie pe lot, separator „;” și BOM (Excel în română îl deschide direct). */
-function exportaCsv(loturi: LotStoc[]) {
+export function exportaCsv(loturi: LotStoc[]) {
   const cap = ['Gestiune', 'Cod material', 'Material', 'UM', 'Cantitate', 'Intrat la', 'Document intrare', 'Factura', 'Data facturii', 'Furnizor',
     'Proiect factură', 'Preț intrare', 'Valoare']
   const camp = (v: string | number | null) => {

@@ -1,7 +1,7 @@
-import { EditOutlined, EyeOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Drawer, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
+import { DownloadOutlined, EditOutlined, EyeOutlined, FilePdfOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Col, Drawer, Flex, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { usePermisiuni, useProiecte } from '../../api/interogari'
 import {
@@ -13,12 +13,14 @@ import {
   useModificaArticol,
   usePropunereReceptie,
   useSoldStoc,
+  useTrasabilitate,
 } from '../../api/stocuri'
-import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, MiscareStoc, SoldStoc } from '../../api/stocuri'
+import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, LotStoc, MiscareStoc, SoldStoc } from '../../api/stocuri'
+import { deschidePdf } from '../../util/pdf'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { PrevizualizareFactura } from './PrevizualizareFactura'
-import { ProvenientaStoc } from './ProvenientaStoc'
+import { exportaCsv, ProvenientaStoc } from './ProvenientaStoc'
 import { RegistruNir } from './RegistruNir'
 import { ReceptieFactura, type ModReceptie } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
@@ -36,36 +38,120 @@ const tipMiscare: Record<MiscareStoc['tip'], { text: string; culoare: string }> 
   MinusInventar: { text: 'Minus inventar', culoare: 'magenta' },
 }
 
-/** Tabelul de sold: cantitate, CMP, valoare; clic pe rând → fișa de magazie. */
-function TabelSold({ randuri, incarcare, cuGestiune }: { randuri: SoldStoc[] | undefined; incarcare: boolean; cuGestiune: boolean }) {
+/** Loturile unui material (factura → NIR de origine), la prețul de intrare. */
+function TabelLoturi({ loturi }: { loturi: LotStoc[] }) {
+  const cuPreturi = loturi.some((l) => l.valoare !== null)
+  return (
+    <Table<LotStoc>
+      size="small"
+      pagination={false}
+      rowKey={(l) => `${l.documentId}-${l.dataIntrare}-${l.cantitate}`}
+      dataSource={loturi}
+      locale={{ emptyText: 'Fără proveniență (material intrat fără NIR).' }}
+      columns={[
+        {
+          title: 'Factura', width: 170,
+          render: (_, l) => l.facturaNumar
+            ? <>{l.facturaNumar}<div><Typography.Text type="secondary">{dayjs(l.facturaData).format('DD.MM.YYYY')}</Typography.Text></div></>
+            : <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag>,
+        },
+        { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
+        { title: 'NIR / intrat la', width: 160, render: (_, l) => <>{l.documentNumar}<div><Typography.Text type="secondary">{dayjs(l.dataIntrare).format('DD.MM.YYYY')}</Typography.Text></div></> },
+        { title: 'Proiect factură', dataIndex: 'facturaProiectCod', width: 120 },
+        { title: 'Cantitate', width: 120, align: 'right', render: (_, l) => `${formatCantitate(l.cantitate)} ${l.unitateMasura}` },
+        ...(cuPreturi ? [
+          { title: 'Preț intrare', dataIndex: 'pretIntrare', width: 110, align: 'right' as const, render: bani },
+          { title: 'Valoare', dataIndex: 'valoare', width: 120, align: 'right' as const, render: bani },
+        ] : []),
+      ]}
+    />
+  )
+}
+
+/**
+ * Tabelul de sold: cantitate, CMP, valoare și proveniența (factura → NIR) a fiecărui material; rândul se desface cu
+ * loturile, clic pe rând → fișa de magazie. Raportul (PDF sumar / pe proveniență, CSV) folosește aceleași filtre.
+ */
+function TabelSold({ randuri, incarcare, cuGestiune, filtre }: {
+  randuri: SoldStoc[] | undefined; incarcare: boolean; cuGestiune: boolean
+  filtre: { tip: 'Depozit' | 'Santier'; gestiuneId?: string; proiectId?: string; material?: string }
+}) {
+  const { message } = App.useApp()
   const [fisa, setFisa] = useState<SoldStoc>()
   const miscari = useFisaMagazie(fisa?.gestiuneId, fisa?.articolId)
+  const loturi = useTrasabilitate({ tip: filtre.tip, gestiuneId: filtre.gestiuneId, material: filtre.material })
+  const peMaterial = useMemo(() => {
+    const m = new Map<string, LotStoc[]>()
+    for (const l of loturi.data ?? []) {
+      const k = `${l.gestiuneId}-${l.articolId}`
+      m.set(k, [...(m.get(k) ?? []), l])
+    }
+    return m
+  }, [loturi.data])
   const total = (randuri ?? []).reduce((s, r) => s + (r.valoare ?? 0), 0)
   const cuValori = (randuri ?? []).some((r) => r.valoare !== null)
+  const cheie = (r: SoldStoc) => `${r.gestiuneId}-${r.articolId}`
+  const loturiAfisate = () => (randuri ?? []).flatMap((r) => peMaterial.get(cheie(r)) ?? [])
+
+  const raportPdf = (detaliat: boolean) => {
+    const p = new URLSearchParams({ tip: filtre.tip, detaliat: String(detaliat) })
+    if (filtre.gestiuneId) p.set('gestiuneId', filtre.gestiuneId)
+    if (filtre.proiectId) p.set('proiectId', filtre.proiectId)
+    if (filtre.material) p.set('material', filtre.material)
+    void deschidePdf(`/api/stocuri/raport-stoc/pdf?${p.toString()}`).catch((e) => message.error((e as Error).message))
+  }
 
   return (
     <>
-      {cuValori && <Statistic title="Valoarea stocului" value={total} formatter={(v) => formatLei(Number(v))} style={{ marginBottom: 12 }} />}
+      <Flex justify="space-between" align="end" wrap gap={8} style={{ marginBottom: 12 }}>
+        {cuValori ? <Statistic title="Valoarea stocului (CMP)" value={total} formatter={(v) => formatLei(Number(v))} /> : <span />}
+        <Space wrap>
+          <Button icon={<FilePdfOutlined />} disabled={!randuri?.length} onClick={() => raportPdf(false)}>Raport stoc (PDF)</Button>
+          <Button icon={<FilePdfOutlined />} disabled={!randuri?.length} onClick={() => raportPdf(true)}>Raport pe factură / NIR (PDF)</Button>
+          <Button icon={<DownloadOutlined />} disabled={!randuri?.length || loturi.isLoading} onClick={() => exportaCsv(loturiAfisate())}>Excel (CSV)</Button>
+        </Space>
+      </Flex>
       <Table<SoldStoc>
-        rowKey={(r) => `${r.gestiuneId}-${r.articolId}`}
+        rowKey={cheie}
         size="small"
         loading={incarcare}
         dataSource={randuri}
         pagination={{ pageSize: 25, hideOnSinglePage: true }}
         onRow={(r) => ({ onClick: () => setFisa(r), style: { cursor: 'pointer' } })}
+        expandable={{
+          expandedRowRender: (r) => <TabelLoturi loturi={peMaterial.get(cheie(r)) ?? []} />,
+          rowExpandable: () => !loturi.isLoading,
+        }}
         columns={[
-          ...(cuGestiune ? [{ title: 'Gestiune', dataIndex: 'gestiuneDenumire', width: 260, ellipsis: true }] : []),
+          ...(cuGestiune ? [{ title: 'Gestiune', dataIndex: 'gestiuneDenumire', width: 220, ellipsis: true }] : []),
           { title: 'Cod', dataIndex: 'articolCod', width: 110 },
           { title: 'Material', dataIndex: 'denumire' },
-          { title: 'Cantitate', width: 150, align: 'right', render: (_, r) => `${formatCantitate(r.cantitate)} ${r.unitateMasura}` },
-          { title: 'Preț mediu (CMP)', dataIndex: 'cmp', width: 150, align: 'right', render: bani },
-          { title: 'Valoare', dataIndex: 'valoare', width: 140, align: 'right', render: bani },
+          {
+            title: 'Factura → NIR', width: 230,
+            render: (_, r) => {
+              const l = peMaterial.get(cheie(r)) ?? []
+              if (loturi.isLoading) return <Typography.Text type="secondary">…</Typography.Text>
+              const facturi = [...new Set(l.map((x) => x.facturaNumar ?? (x.origine === 'Inventar' ? 'plus inventar' : 'transfer')))]
+              if (facturi.length === 0) return null
+              return (
+                <Tooltip title={l.map((x, i) => <div key={i}>{formatCantitate(x.cantitate)} {x.unitateMasura}: {x.facturaNumar ?? '—'} → {x.documentNumar}</div>)}>
+                  <span>{facturi[0]} → {l[0].documentNumar}{facturi.length > 1 && <Typography.Text type="secondary"> +{facturi.length - 1}</Typography.Text>}</span>
+                </Tooltip>
+              )
+            },
+          },
+          { title: 'Cantitate', width: 140, align: 'right', render: (_, r) => `${formatCantitate(r.cantitate)} ${r.unitateMasura}` },
+          { title: 'Preț mediu (CMP)', dataIndex: 'cmp', width: 140, align: 'right', render: bani },
+          { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
         ]}
       />
-      <Drawer open={!!fisa} onClose={() => setFisa(undefined)} size={720} title={fisa && `Fișa de magazie — ${fisa.articolCod} ${fisa.denumire}`}>
+      <Drawer open={!!fisa} onClose={() => setFisa(undefined)} size={820} title={fisa && `Fișa de magazie — ${fisa.articolCod} ${fisa.denumire}`}>
         {fisa && (
           <>
-            <Typography.Paragraph type="secondary">{fisa.gestiuneDenumire}</Typography.Paragraph>
+            <Typography.Paragraph type="secondary">{fisa.gestiuneDenumire} · în stoc {formatCantitate(fisa.cantitate)} {fisa.unitateMasura}</Typography.Paragraph>
+            <Typography.Title level={5}>Proveniența stocului (factura → NIR)</Typography.Title>
+            <TabelLoturi loturi={peMaterial.get(cheie(fisa)) ?? []} />
+            <Typography.Title level={5} style={{ marginTop: 16 }}>Mișcări</Typography.Title>
             <Table<MiscareStoc>
               rowKey="id"
               size="small"
@@ -107,7 +193,7 @@ function StocDepozite({ poateEdita }: { poateEdita: boolean }) {
           options={(gestiuni.data ?? []).filter((g) => g.tip === 'Depozit').map((g) => ({ value: g.id, label: `${g.cod} — ${g.denumire}` }))} />
         <Input.Search allowClear placeholder="Caută material" style={{ width: 280 }} onSearch={(v) => setCauta(v || undefined)} />
       </Space>
-      <TabelSold randuri={sold.data} incarcare={sold.isLoading} cuGestiune={!gestiuneId} />
+      <TabelSold randuri={sold.data} incarcare={sold.isLoading} cuGestiune={!gestiuneId} filtre={{ tip: 'Depozit', gestiuneId, material: cauta }} />
       <Modal open={depozitNou} title="Depozit nou" okText="Adaugă" cancelText="Renunță" onCancel={() => setDepozitNou(false)} onOk={() => form.submit()}
         confirmLoading={creeaza.isPending} destroyOnHidden>
         <Form form={form} layout="vertical" name="depozitNou" onFinish={async (v) => {
@@ -142,7 +228,7 @@ function MaterialeInSantier() {
       {sold.data?.length === 0 && !sold.isLoading && (
         <Alert type="info" showIcon style={{ marginBottom: 12 }} title="Niciun material în șantier. Materialele ajung aici prin transfer din depozit." />
       )}
-      <TabelSold randuri={sold.data} incarcare={sold.isLoading} cuGestiune={!proiectId} />
+      <TabelSold randuri={sold.data} incarcare={sold.isLoading} cuGestiune={!proiectId} filtre={{ tip: 'Santier', proiectId, material: cauta }} />
     </Card>
   )
 }

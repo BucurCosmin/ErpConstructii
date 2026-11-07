@@ -45,6 +45,13 @@ internal static class EndpointuriTrasabilitate
         var evaluator = await permisiuni.PentruUtilizatorAsync(uid, ct);
         var preturi = evaluator.Are(Permisiuni.PreturiCost, new Domeniu(fid));
         var accesibile = evaluator.ProiecteAccesibile(Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare), fid);
+        return Results.Ok(await LoturiAsync(db, gestiuneId, tip, material, cauta, preturi, accesibile, ct));
+    }
+
+    /// <summary>Loturile stocului curent, cu NIR-ul și factura de origine (filtrate; șantierele doar pe proiectele accesibile).</summary>
+    internal static async Task<List<LotStocDto>> LoturiAsync(
+        StocuriDbContext db, Guid? gestiuneId, string? tip, string? material, string? cauta, bool preturi, IReadOnlySet<Guid>? accesibile, CancellationToken ct)
+    {
 
         var gestiuni = await db.Gestiuni.AsNoTracking().ToDictionaryAsync(x => x.Id, ct);
         var articole = await db.Articole.AsNoTracking().ToDictionaryAsync(x => x.Id, ct);
@@ -84,7 +91,7 @@ internal static class EndpointuriTrasabilitate
                 x.Nir?.FacturaId, x.Nir?.FacturaNumar, x.Nir?.FacturaData, x.Nir?.FurnizorDenumire, x.Nir?.ProiectCod,
                 preturi ? x.Lot.PretUnitar : null, preturi ? Rotunjire.Lei.Aplica(x.Lot.Cantitate * x.Lot.PretUnitar) : null))
             .ToList();
-        return Results.Ok(rezultat);
+        return rezultat;
     }
 
     private static bool Potriveste(string cauta, params string?[] campuri)

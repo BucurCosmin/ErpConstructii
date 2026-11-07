@@ -29,6 +29,9 @@ internal static class DocumenteStocPdf
             .Produces(StatusCodes.Status404NotFound).CerePermisiune(vizualizare);
         g.MapPost("/nir/pdf", NirMultiple).WithName("PdfNirMultiple").WithSummary("Mai multe NIR-uri într-un singur PDF (tipărire)")
             .Produces(StatusCodes.Status200OK, contentType: "application/pdf").Produces(StatusCodes.Status400BadRequest).CerePermisiune(vizualizare);
+        g.MapGet("/raport-stoc/pdf", RaportStoc).WithName("PdfRaportStoc")
+            .WithSummary("Raportul stocului (depozite / șantiere): sumar la CMP sau detaliat pe proveniență (factură → NIR)")
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf").CerePermisiune(vizualizare);
         g.MapPost("/nir/registru/pdf", RegistruNir).WithName("PdfRegistruNir").WithSummary("Registrul NIR-urilor alese (raport)")
             .Produces(StatusCodes.Status200OK, contentType: "application/pdf").Produces(StatusCodes.Status400BadRequest).CerePermisiune(vizualizare);
         g.MapGet("/consumuri/{id:guid}/pdf", BonConsum).WithName("PdfBonConsum").WithSummary("Bonul de consum în PDF")
@@ -108,6 +111,98 @@ internal static class DocumenteStocPdf
             Peisaj: true);
         var date = new DateFormular(campuri, new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> { ["linii"] = linii });
         var doc = await documente.PdfAsync("registru-nir", antet, aspect, date, "Registru_NIR.pdf", ct);
+        return Results.File(doc.Continut, doc.TipContinut, doc.NumeFisier);
+    }
+
+    /// <param name="Detaliat">Câte o linie pe lot (factura și NIR-ul de origine, la prețul de intrare); altfel câte una pe material (CMP).</param>
+    internal sealed record FiltreRaportStoc(string? Tip, Guid? GestiuneId, Guid? ProiectId, string? Material, bool Detaliat = false);
+
+    /// <summary>
+    /// Raportul stocului la zi: sumar (cantitate, CMP, valoare din evidență) sau detaliat pe proveniență (pentru fiecare
+    /// material, cantitățile cu factura și NIR-ul pe care au intrat, din <see cref="TrasabilitateStoc"/>).
+    /// </summary>
+    private static async Task<IResult> RaportStoc(
+        [AsParameters] FiltreRaportStoc filtre, StocuriDbContext db, IServiciuDocumente documente, IInterogareFirma firme, IServiciuPermisiuni permisiuni,
+        IUtilizatorCurent utilizator, IFirmaCurenta firma, ICeas ceas, CancellationToken ct)
+    {
+        if (utilizator.UtilizatorId is not { } uid || firma.FirmaId is not { } fid)
+            return Results.Unauthorized();
+        var evaluator = await permisiuni.PentruUtilizatorAsync(uid, ct);
+        var preturi = evaluator.Are(Permisiuni.PreturiCost, new Domeniu(fid));
+        var accesibile = evaluator.ProiecteAccesibile(Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare), fid);
+        var gestiuni = await db.Gestiuni.AsNoTracking().ToDictionaryAsync(x => x.Id, ct);
+        var tip = Enum.TryParse<TipGestiune>(filtre.Tip, true, out var t) ? t : (TipGestiune?)null;
+        bool GestiuneAleasa(Guid id) => gestiuni.TryGetValue(id, out var gst)
+            && (filtre.GestiuneId is null || gst.Id == filtre.GestiuneId)
+            && (tip is null || gst.Tip == tip)
+            && (filtre.ProiectId is null || gst.ProiectId == filtre.ProiectId)
+            && (gst.ProiectId is null || accesibile is null || accesibile.Contains(gst.ProiectId.Value));
+
+        var (antet, campuri) = await AntetAsync(firme, ct);
+        var gestiuniAlese = filtre.GestiuneId is { } gid && gestiuni.TryGetValue(gid, out var aleasa) ? aleasa.Denumire
+            : tip == TipGestiune.Depozit ? "toate depozitele" : tip == TipGestiune.Santier ? "toate șantierele" : "toate gestiunile";
+        campuri["gestiuni"] = gestiuniAlese;
+        campuri["material"] = string.IsNullOrWhiteSpace(filtre.Material) ? "toate" : filtre.Material.Trim();
+        List<IReadOnlyDictionary<string, string>> linii;
+        List<ColoanaPdf> coloane;
+        string total;
+
+        if (filtre.Detaliat)
+        {
+            var loturi = (await EndpointuriTrasabilitate.LoturiAsync(db, null, null, filtre.Material, null, preturi, accesibile, ct))
+                .Where(l => GestiuneAleasa(l.GestiuneId)).ToList();
+            linii = loturi.Select((l, i) => Rand(
+                ("numar_crt", (i + 1).ToString(Ro)), ("gestiune", l.Gestiune), ("cod", l.ArticolCod), ("denumire", l.Denumire), ("um", l.UnitateMasura),
+                ("cantitate", Cant(l.Cantitate)),
+                ("factura", l.FacturaNumar is null ? string.Empty : $"{l.FacturaNumar} / {(l.FacturaData is { } fd ? Data(fd) : string.Empty)}"),
+                ("furnizor", l.FurnizorDenumire ?? string.Empty),
+                ("nir", $"{l.DocumentNumar} / {Data(l.DataIntrare)}"),
+                ("pret", l.PretIntrare is { } pi ? Pret(pi) : string.Empty), ("valoare", l.Valoare is { } v ? Lei(v) : string.Empty))).ToList();
+            coloane =
+            [
+                new("numar_crt", "Nr. crt.", 0.6, AliniereColoana.Centru), new("gestiune", "Gestiunea", 1.7), new("cod", "Cod", 1.25), new("denumire", "Material", 2.85),
+                new("um", "UM", 0.6, AliniereColoana.Centru), new("cantitate", "Cantitate", 1.0, AliniereColoana.Dreapta),
+                new("factura", "Factura / data", 2.0), new("furnizor", "Furnizor", 2.2), new("nir", "NIR / data intrării", 2.0),
+                new("pret", "Preț intrare", 1.1, AliniereColoana.Dreapta), new("valoare", "Valoare (lei)", 1.2, AliniereColoana.Dreapta),
+            ];
+            total = preturi ? Lei(loturi.Sum(l => l.Valoare ?? 0)) : string.Empty;
+            campuri["observatii"] = "Proveniența: ieșirile se atribuie FIFO (în stoc rămân cele mai recente intrări); valoarea e la prețul de intrare din NIR, nu la CMP.";
+        }
+        else
+        {
+            var articole = await db.Articole.AsNoTracking().ToDictionaryAsync(x => x.Id, ct);
+            var termen = string.IsNullOrWhiteSpace(filtre.Material) ? null : Text.FaraDiacritice(filtre.Material.Trim());
+            var solduri = (await db.Solduri.AsNoTracking().Where(x => x.Cantitate != 0).ToListAsync(ct))
+                .Where(x => GestiuneAleasa(x.GestiuneId) && articole.ContainsKey(x.ArticolId))
+                .Select(x => (Sold: x, Gestiune: gestiuni[x.GestiuneId], Articol: articole[x.ArticolId]))
+                .Where(x => termen is null || Text.FaraDiacritice(x.Articol.Denumire).Contains(termen, StringComparison.Ordinal)
+                    || x.Articol.Cod.Contains(termen, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(x => x.Gestiune.Tip).ThenBy(x => x.Gestiune.Cod).ThenBy(x => x.Articol.Denumire).ToList();
+            linii = solduri.Select((x, i) => Rand(
+                ("numar_crt", (i + 1).ToString(Ro)), ("gestiune", x.Gestiune.Denumire), ("cod", x.Articol.Cod), ("denumire", x.Articol.Denumire),
+                ("um", x.Articol.UnitateMasura), ("cantitate", Cant(x.Sold.Cantitate)),
+                ("cmp", preturi && x.Sold.Sold.Cmp is { } cmp ? Pret(cmp) : string.Empty), ("valoare", preturi ? Lei(x.Sold.Valoare) : string.Empty))).ToList();
+            coloane =
+            [
+                new("numar_crt", "Nr. crt.", 0.6, AliniereColoana.Centru), new("gestiune", "Gestiunea", 2.6), new("cod", "Cod", 1.2), new("denumire", "Material", 5.0),
+                new("um", "UM", 0.7, AliniereColoana.Centru), new("cantitate", "Cantitate", 1.3, AliniereColoana.Dreapta),
+                new("cmp", "Preț mediu (CMP)", 1.5, AliniereColoana.Dreapta), new("valoare", "Valoare (lei)", 1.6, AliniereColoana.Dreapta),
+            ];
+            total = preturi ? Lei(solduri.Sum(x => x.Sold.Valoare)) : string.Empty;
+            campuri["observatii"] = string.Empty;
+        }
+
+        campuri["total_valoare"] = total;
+        var aspect = new AspectDocument(
+            filtre.Detaliat ? "Stocul pe proveniență (factură → NIR)" : "Situația stocului", null, $"la {Data(ceas.Azi)}",
+            [new("Gestiuni", "gestiuni"), new("Material", "material")],
+            "linii", coloane,
+            [new(filtre.Detaliat ? "Total (preț de intrare, lei):" : "Total valoare (CMP, lei):", "total_valoare")],
+            ["Gestionar"],
+            "observatii",
+            Peisaj: true);
+        var date = new DateFormular(campuri, new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> { ["linii"] = linii });
+        var doc = await documente.PdfAsync("raport-stoc", antet, aspect, date, $"Stoc_{ceas.Azi:yyyy-MM-dd}.pdf", ct);
         return Results.File(doc.Continut, doc.TipContinut, doc.NumeFisier);
     }
 
