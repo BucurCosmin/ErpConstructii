@@ -176,8 +176,17 @@ export const usePropunereReceptie = (facturaId?: string) =>
     queryFn: () => api.get<PropunereReceptie>(`/api/stocuri/receptii/de-facut/${facturaId}`),
     enabled: !!facturaId,
   })
-export const useNir = (filtre: FiltreReceptii = {}) =>
-  useQuery({ queryKey: [...chei.nir, filtre], queryFn: () => api.get<Nir[]>(`/api/stocuri/nir${parametri(filtre)}`) })
+/** Filtrele registrului NIR. */
+export interface FiltreNir extends FiltreReceptii {
+  dataDe?: string
+  dataPanaLa?: string
+  gestiuneId?: string
+  proiectId?: string
+  stare?: 'Activ' | 'Stornat' | 'CuDiferente'
+}
+
+export const useNir = (filtre: FiltreNir = {}) =>
+  useQuery({ queryKey: [...chei.nir, filtre], queryFn: () => api.get<Nir[]>(`/api/stocuri/nir${interogare({ ...filtre })}`) })
 export const useTransferuri = () => useQuery({ queryKey: chei.transferuri, queryFn: () => api.get<TransferStoc[]>('/api/stocuri/transferuri') })
 
 /** După orice operație de stoc se reîncarcă tot modulul (solduri, liste, propuneri). */

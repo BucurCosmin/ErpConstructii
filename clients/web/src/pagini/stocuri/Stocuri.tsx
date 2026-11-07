@@ -1,4 +1,4 @@
-import { EditOutlined, EyeOutlined, FilePdfOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { EditOutlined, EyeOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Drawer, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useState } from 'react'
@@ -11,17 +11,15 @@ import {
   useFisaMagazie,
   useGestiuni,
   useModificaArticol,
-  useNir,
   usePropunereReceptie,
   useSoldStoc,
-  useStorneazaNir,
 } from '../../api/stocuri'
-import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, MiscareStoc, Nir, SoldStoc } from '../../api/stocuri'
+import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, MiscareStoc, SoldStoc } from '../../api/stocuri'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
-import { deschidePdf } from '../../util/pdf'
 import { PrevizualizareFactura } from './PrevizualizareFactura'
 import { ProvenientaStoc } from './ProvenientaStoc'
+import { RegistruNir } from './RegistruNir'
 import { ReceptieFactura, type ModReceptie } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
 import { InventarGestiune } from './InventarGestiune'
@@ -170,11 +168,26 @@ function LiniiFacturaDeReceptionat({ facturaId }: { facturaId: string }) {
   )
 }
 
+/** Recepțiile: facturile de recepționat (NIR nou, total sau parțial) și registrul tuturor NIR-urilor. */
 function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: boolean }) {
-  const { message } = App.useApp()
+  const [parametri, setParametri] = useSearchParams()
+  const sub = parametri.get('nir') ?? 'de-receptionat'
+  return (
+    <Tabs
+      type="card"
+      activeKey={sub}
+      onChange={(k) => setParametri((p) => { p.set('nir', k); return p }, { replace: true })}
+      items={[
+        { key: 'de-receptionat', label: 'De recepționat', children: <DeReceptionat poateCrea={poateCrea} /> },
+        { key: 'registru', label: 'Registru NIR (toate)', children: <RegistruNir poateAnula={poateAnula} /> },
+      ]}
+    />
+  )
+}
+
+function DeReceptionat({ poateCrea }: { poateCrea: boolean }) {
   const [filtre, setFiltre] = useState<FiltreReceptii>({})
   const deFacut = useFacturiDeReceptionat(filtre)
-  const nir = useNir(filtre)
   const filtrat = !!(filtre.cauta || filtre.material)
   const gasite = (m?: string[] | null) => (m?.length ?? 0) > 0 && (
     <div style={{ marginTop: 2 }}>
@@ -182,16 +195,12 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
       {m!.length > 3 && <Typography.Text type="secondary">+{m!.length - 3}</Typography.Text>}
     </div>
   )
-  const storneaza = useStorneazaNir()
   const [facturaId, setFacturaId] = useState<string>()
   const [mod, setMod] = useState<ModReceptie>('tot')
   const deschide = (id: string, m: ModReceptie) => { setMod(m); setFacturaId(id) }
-  const [deStornat, setDeStornat] = useState<Nir>()
   const [deVazut, setDeVazut] = useState<FacturaDeReceptionat>()
-  const [formStorno] = Form.useForm<{ motiv: string }>()
-  const deStornatAnulate = (nir.data ?? []).filter((n) => n.facturaAnulata && !n.storno)
   return (
-    <Space orientation="vertical" style={{ width: '100%' }} size="large">
+    <Space orientation="vertical" style={{ width: '100%' }} size="middle">
       <Form layout="inline" style={{ rowGap: 8 }}
         onFinish={(v: FiltreReceptii) => setFiltre({ cauta: v.cauta?.trim() || undefined, material: v.material?.trim() || undefined })}>
         <Form.Item name="material">
@@ -201,7 +210,6 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
           <Input allowClear placeholder="Factura sau furnizorul" style={{ width: 220 }} />
         </Form.Item>
         <Button type="primary" htmlType="submit">Filtrează</Button>
-        {filtrat && <Typography.Text type="secondary">Filtrul se aplică facturilor de recepționat și NIR-urilor emise.</Typography.Text>}
       </Form>
       <Card title={`Facturi de recepționat${deFacut.data ? ` (${deFacut.data.length})` : ''}`}>
         <Table<FacturaDeReceptionat>
@@ -242,66 +250,6 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
           ]}
         />
       </Card>
-      {deStornatAnulate.length > 0 && (
-        <Alert type="warning" showIcon
-          title={`Facturi anulate cu NIR activ: ${deStornatAnulate.map((n) => `${n.numar} (factura ${n.facturaNumar})`).join(', ')}.`}
-          description="Materialele lor sunt încă în stoc. Stornează NIR-ul (după returul în depozit, dacă au plecat deja în șantier)." />
-      )}
-      <Card title={`NIR-uri emise${filtrat && nir.data ? ` (${nir.data.length})` : ''}`}>
-        <Table<Nir>
-          rowKey="id"
-          size="small"
-          loading={nir.isLoading}
-          dataSource={nir.data}
-          locale={filtrat ? { emptyText: 'Niciun NIR nu corespunde filtrului.' } : undefined}
-          pagination={{ pageSize: 15, hideOnSinglePage: true }}
-          expandable={{
-            expandedRowRender: (n) => (
-              <Table size="small" pagination={false} rowKey={(l) => l.articolCod + l.denumire} dataSource={n.linii}
-                columns={[
-                  { title: 'Cod', dataIndex: 'articolCod', width: 110 },
-                  { title: 'Material', dataIndex: 'denumire' },
-                  { title: 'Facturat', width: 110, align: 'right', render: (_, l) => formatCantitate(l.cantitateFactura) },
-                  {
-                    title: 'Recepționat', width: 130, align: 'right',
-                    render: (_, l) => <Typography.Text type={l.cantitateReceptionata !== l.cantitateFactura ? 'danger' : undefined}>{formatCantitate(l.cantitateReceptionata)} {l.unitateMasura}</Typography.Text>,
-                  },
-                  { title: 'Preț', dataIndex: 'pretUnitar', width: 110, align: 'right', render: bani },
-                  { title: 'Valoare', dataIndex: 'valoare', width: 120, align: 'right', render: bani },
-                  { title: 'Observații', dataIndex: 'observatii' },
-                ]} />
-            ),
-          }}
-          columns={[
-            { title: 'Număr', dataIndex: 'numar', width: 140 },
-            { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
-            { title: 'Factura', dataIndex: 'facturaNumar', width: 140 },
-            { title: 'Furnizor', render: (_, n) => <>{n.furnizorDenumire}{gasite(n.materialeGasite)}</> },
-            { title: 'Depozit', dataIndex: 'gestiune', width: 180 },
-            { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
-            {
-              title: '', width: 200,
-              render: (_, n) => (
-                <Space size={4} wrap>
-                  {n.areDiferente && <Tag color="red">cu diferențe</Tag>}
-                  {n.storno && <Tag color="volcano" title={`${dayjs(n.storno.data).format('DD.MM.YYYY')}: ${n.storno.motiv} (${n.storno.stornatDe})`}>stornat</Tag>}
-                  {n.facturaAnulata && !n.storno && <Tag color="orange">factură anulată</Tag>}
-                </Space>
-              ),
-            },
-            { title: 'Recepționat de', dataIndex: 'receptionatDe', width: 160 },
-            {
-              title: '', width: 170,
-              render: (_, n) => (
-                <Space size={4}>
-                  <Button size="small" icon={<FilePdfOutlined />} onClick={(e) => { e.stopPropagation(); void deschidePdf(`/api/stocuri/nir/${n.id}/pdf`).catch((x) => message.error((x as Error).message)) }}>PDF</Button>
-                  {!n.storno && poateAnula && <Button size="small" danger onClick={(e) => { e.stopPropagation(); setDeStornat(n) }}>Stornează</Button>}
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </Card>
       <ReceptieFactura facturaId={facturaId} mod={mod} onInchide={() => setFacturaId(undefined)} />
       <Drawer open={!!deVazut} onClose={() => setDeVazut(undefined)} size={1100} destroyOnHidden
         title={deVazut && `Factura ${deVazut.numar} din ${dayjs(deVazut.data).format('DD.MM.YYYY')} — ${deVazut.furnizorDenumire}`}
@@ -318,24 +266,6 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
           </Space>
         )}
       </Drawer>
-      <Modal open={!!deStornat} title={deStornat && `Stornează ${deStornat.numar} (factura ${deStornat.facturaNumar})`} okText="Stornează" okButtonProps={{ danger: true }}
-        cancelText="Renunță" onCancel={() => setDeStornat(undefined)} onOk={() => formStorno.submit()} confirmLoading={storneaza.isPending} destroyOnHidden>
-        <Alert type="warning" showIcon style={{ marginBottom: 12 }}
-          title="Materialele recepționate ies din depozit la valoarea cu care au intrat. Dacă factura nu e anulată, va putea fi recepționată din nou." />
-        <Form form={formStorno} layout="vertical" name="storno" onFinish={async (v) => {
-          try {
-            await storneaza.mutateAsync({ id: deStornat!.id, data: dayjs().format('YYYY-MM-DD'), motiv: v.motiv.trim() })
-            message.success(`${deStornat!.numar} a fost stornat.`)
-            setDeStornat(undefined)
-          } catch (e) {
-            message.error((e as Error).message)
-          }
-        }}>
-          <Form.Item name="motiv" label="Motivul stornării" rules={[{ required: true, whitespace: true, message: 'Motivul este obligatoriu.' }]}>
-            <Input.TextArea rows={3} maxLength={1000} placeholder="ex. factura a fost anulată de furnizor / recepție înregistrată greșit" />
-          </Form.Item>
-        </Form>
-      </Modal>
     </Space>
   )
 }

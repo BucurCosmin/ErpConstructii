@@ -17,6 +17,9 @@ namespace ErpConstructii.Stocuri.Infrastructure;
 /// </summary>
 internal static class DocumenteStocPdf
 {
+    /// <param name="Filtre">Descrierea filtrelor din ecran, tipărită pe registru.</param>
+    internal sealed record DocumenteAlese(IReadOnlyList<Guid>? Id, string? Filtre = null);
+
     private static readonly CultureInfo Ro = CultureInfo.GetCultureInfo("ro-RO");
 
     public static void Mapeaza(RouteGroupBuilder g)
@@ -24,6 +27,10 @@ internal static class DocumenteStocPdf
         var vizualizare = Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare);
         g.MapGet("/nir/{id:guid}/pdf", Nir).WithName("PdfNir").WithSummary("NIR-ul în PDF").Produces(StatusCodes.Status200OK, contentType: "application/pdf")
             .Produces(StatusCodes.Status404NotFound).CerePermisiune(vizualizare);
+        g.MapPost("/nir/pdf", NirMultiple).WithName("PdfNirMultiple").WithSummary("Mai multe NIR-uri într-un singur PDF (tipărire)")
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf").Produces(StatusCodes.Status400BadRequest).CerePermisiune(vizualizare);
+        g.MapPost("/nir/registru/pdf", RegistruNir).WithName("PdfRegistruNir").WithSummary("Registrul NIR-urilor alese (raport)")
+            .Produces(StatusCodes.Status200OK, contentType: "application/pdf").Produces(StatusCodes.Status400BadRequest).CerePermisiune(vizualizare);
         g.MapGet("/consumuri/{id:guid}/pdf", BonConsum).WithName("PdfBonConsum").WithSummary("Bonul de consum în PDF")
             .Produces(StatusCodes.Status200OK, contentType: "application/pdf").Produces(StatusCodes.Status404NotFound).CerePermisiune(vizualizare);
         g.MapGet("/transferuri/{id:guid}/pdf", Transfer).WithName("PdfBonTransfer").WithSummary("Bonul de transfer / restituire în PDF")
@@ -39,7 +46,79 @@ internal static class DocumenteStocPdf
             return Results.NotFound();
         var preturi = await ModulStocuri.VedePreturiAsync(permisiuni, utilizator, firma, ct);
         var storno = await db.StornariNir.AsNoTracking().FirstOrDefaultAsync(s => s.NirId == id, ct);
+        var doc = await NirPdfAsync(n, storno, preturi, await AntetAsync(firme, ct), documente, ct);
+        return Results.File(doc.Continut, doc.TipContinut, doc.NumeFisier);
+    }
+
+    /// <summary>NIR-urile alese, în ordinea numerelor, într-un singur PDF (fiecare pe paginile lui).</summary>
+    private static async Task<IResult> NirMultiple(
+        DocumenteAlese cerere, StocuriDbContext db, IServiciuDocumente documente, IInterogareFirma firme, IServiciuPermisiuni permisiuni,
+        IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
+    {
+        if (cerere.Id is not { Count: > 0 and <= MaximTiparire } ids)
+            return Results.BadRequest(new { mesaj = $"Alege între 1 și {MaximTiparire} NIR-uri." });
+        var lista = await db.Nir.AsNoTracking().Where(n => ids.Contains(n.Id)).OrderBy(n => n.An).ThenBy(n => n.Numar).ToListAsync(ct);
+        if (lista.Count == 0)
+            return Results.BadRequest(new { mesaj = "NIR-urile alese nu există." });
+        var preturi = await ModulStocuri.VedePreturiAsync(permisiuni, utilizator, firma, ct);
+        var stornari = await db.StornariNir.AsNoTracking().Where(s => ids.Contains(s.NirId)).ToDictionaryAsync(s => s.NirId, ct);
+        var antet = await AntetAsync(firme, ct);
+        var pdf = new List<DocumentGenerat>();
+        foreach (var n in lista)
+            pdf.Add(await NirPdfAsync(n, stornari.GetValueOrDefault(n.Id), preturi, antet, documente, ct));
+        var doc = documente.Combina(pdf, lista.Count == 1 ? pdf[0].NumeFisier : $"NIR-uri_{lista.Count}.pdf");
+        return Results.File(doc.Continut, doc.TipContinut, doc.NumeFisier);
+    }
+
+    /// <summary>Registrul NIR-urilor alese: o linie pe NIR (furnizor, factură, depozit, valoare, stare), cu totalul NIR-urilor active.</summary>
+    private static async Task<IResult> RegistruNir(
+        DocumenteAlese cerere, StocuriDbContext db, IServiciuDocumente documente, IInterogareFirma firme, IServiciuPermisiuni permisiuni,
+        IUtilizatorCurent utilizator, IFirmaCurenta firma, ICeas ceas, CancellationToken ct)
+    {
+        if (cerere.Id is not { Count: > 0 } ids)
+            return Results.BadRequest(new { mesaj = "Alege cel puțin un NIR." });
+        var lista = await db.Nir.AsNoTracking().Where(n => ids.Contains(n.Id)).OrderBy(n => n.Data).ThenBy(n => n.An).ThenBy(n => n.Numar).ToListAsync(ct);
+        var preturi = await ModulStocuri.VedePreturiAsync(permisiuni, utilizator, firma, ct);
+        var stornari = await db.StornariNir.AsNoTracking().Where(s => ids.Contains(s.NirId)).ToDictionaryAsync(s => s.NirId, ct);
         var (antet, campuri) = await AntetAsync(firme, ct);
+
+        var active = lista.Where(n => !stornari.ContainsKey(n.Id)).ToList();
+        campuri["perioada"] = lista.Count == 0 ? string.Empty : $"{Data(lista.Min(n => n.Data))} – {Data(lista.Max(n => n.Data))}";
+        campuri["numar_nir"] = $"{lista.Count} ({active.Count} active, {lista.Count - active.Count} stornate)";
+        campuri["total_valoare"] = preturi ? Lei(active.Sum(n => n.Valoare)) : string.Empty;
+        campuri["observatii"] = string.IsNullOrWhiteSpace(cerere.Filtre) ? string.Empty : $"Filtre: {cerere.Filtre.Trim()}";
+        var linii = lista.Select((n, i) => Rand(
+            ("numar_crt", (i + 1).ToString(Ro)), ("numar", n.NumarAfisat), ("data", Data(n.Data)), ("furnizor", n.FurnizorDenumire),
+            ("factura", $"{n.FacturaNumar} / {Data(n.FacturaData)}"), ("gestiune", n.GestiuneDenumire), ("proiect", n.ProiectCod),
+            ("linii", n.Linii.Count.ToString(Ro)), ("valoare", preturi ? Lei(n.Valoare) : string.Empty),
+            ("stare", stornari.TryGetValue(n.Id, out var s) ? $"stornat {Data(s.Data)}" : n.AreDiferente ? "cu diferențe" : string.Empty))).ToList();
+
+        var aspect = new AspectDocument(
+            "Registrul notelor de recepție (NIR)", null, $"Întocmit la {Data(ceas.Azi)}",
+            [new("Perioada", "perioada"), new("NIR-uri", "numar_nir")],
+            "linii",
+            [
+                new("numar_crt", "Nr. crt.", 0.6, AliniereColoana.Centru), new("numar", "NIR", 1.4), new("data", "Data", 1.0, AliniereColoana.Centru),
+                new("furnizor", "Furnizor", 3.0), new("factura", "Factura / data", 2.2), new("gestiune", "Gestiunea", 2.0), new("proiect", "Proiect", 1.2),
+                new("linii", "Linii", 0.6, AliniereColoana.Dreapta), new("valoare", "Valoare (lei)", 1.4, AliniereColoana.Dreapta), new("stare", "Stare", 1.5),
+            ],
+            [new("Total NIR-uri active (lei, fără TVA):", "total_valoare")],
+            ["Întocmit"],
+            "observatii",
+            Peisaj: true);
+        var date = new DateFormular(campuri, new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> { ["linii"] = linii });
+        var doc = await documente.PdfAsync("registru-nir", antet, aspect, date, "Registru_NIR.pdf", ct);
+        return Results.File(doc.Continut, doc.TipContinut, doc.NumeFisier);
+    }
+
+    private const int MaximTiparire = 200;
+
+    private static async Task<DocumentGenerat> NirPdfAsync(
+        Nir n, StornoNir? storno, bool preturi, (AntetFirma Antet, Dictionary<string, string> Campuri) antetFirma, IServiciuDocumente documente,
+        CancellationToken ct)
+    {
+        var antet = antetFirma.Antet;
+        var campuri = new Dictionary<string, string>(antetFirma.Campuri);
 
         campuri["numar"] = n.NumarAfisat;
         campuri["data"] = Data(n.Data);
@@ -71,7 +150,8 @@ internal static class DocumenteStocPdf
             ["Comisia de recepție", "Primit în gestiune (gestionar)"],
             "observatii",
             Peisaj: true);
-        return await Pdf(documente, CatalogFormulare.Nir.Cod, antet, aspect, campuri, linii, n.NumarAfisat, ct);
+        var date = new DateFormular(campuri, new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> { ["linii"] = linii });
+        return await documente.PdfAsync(CatalogFormulare.Nir.Cod, antet, aspect, date, n.NumarAfisat.Replace('/', '_') + ".pdf", ct);
     }
 
     private static async Task<IResult> BonConsum(

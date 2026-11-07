@@ -68,6 +68,11 @@ public sealed record TransferDto(Guid Id, string Numar, string Directie, DateOnl
 
 public sealed record FiltreSold(Guid? GestiuneId, string? Tip, Guid? ProiectId, string? Cauta);
 
+/// <param name="Cauta">Numărul NIR-ului / facturii sau furnizorul.</param>
+/// <param name="Material">Un material din liniile NIR-ului: denumire sau cod (fără diacritice / majuscule).</param>
+/// <param name="Stare">„Activ”, „Stornat” sau „CuDiferente”.</param>
+public sealed record FiltreNir(string? Cauta, string? Material, DateOnly? DataDe, DateOnly? DataPanaLa, Guid? GestiuneId, Guid? ProiectId, string? Stare);
+
 /// <summary>
 /// Stocurile: gestiuni (depozite + „Materiale în șantier” pe proiect), nomenclatorul de materiale, recepția facturilor
 /// (NIR, confirmat de gestionar), transferul în șantier (bon de transfer) și soldurile evaluate la CMP.
@@ -368,19 +373,28 @@ public sealed class ModulStocuri : IModul
         return Results.Created($"/api/stocuri/nir/{nir.Id}", Dto(nir, preturi));
     }
 
-    /// <param name="cauta">Numărul facturii sau furnizorul.</param>
-    /// <param name="material">Un material din liniile NIR-ului: denumire sau cod (fără diacritice / majuscule).</param>
+    /// <summary>Registrul NIR-urilor, cu filtre (perioadă, depozit, proiect, furnizor / factură, material, stare).</summary>
     private static async Task<IResult> ListaNir(
-        string? cauta, string? material, StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator,
+        [AsParameters] FiltreNir filtre, StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator,
         IFirmaCurenta firma, CancellationToken ct)
     {
         var preturi = await VedePreturiAsync(permisiuni, utilizator, firma, ct);
+        var (cauta, material) = (filtre.Cauta, filtre.Material);
         var q = db.Nir.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(cauta))
         {
             var t = $"%{cauta.Trim()}%";
-            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar, t) || EF.Functions.ILike(n.FurnizorDenumire, t));
+            // „NIR/2026/0003”, „0003” sau „3” găsesc NIR-ul după număr.
+            var numar = int.TryParse(cauta.Trim().Split('/')[^1], out var nr) ? nr : (int?)null;
+            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar, t) || EF.Functions.ILike(n.FurnizorDenumire, t) || (numar != null && n.Numar == numar));
         }
+
+        if (filtre.DataDe is { } d1) q = q.Where(n => n.Data >= d1);
+        if (filtre.DataPanaLa is { } d2) q = q.Where(n => n.Data <= d2);
+        if (filtre.GestiuneId is { } gid) q = q.Where(n => n.GestiuneId == gid);
+        if (filtre.ProiectId is { } pid) q = q.Where(n => n.ProiectId == pid);
+        if (string.Equals(filtre.Stare, "Stornat", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => db.StornariNir.Any(s => s.NirId == n.Id));
+        if (string.Equals(filtre.Stare, "Activ", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => !db.StornariNir.Any(s => s.NirId == n.Id));
 
         string? termen = null;
         if (!string.IsNullOrWhiteSpace(material))
@@ -393,7 +407,9 @@ public sealed class ModulStocuri : IModul
             q = q.Where(n => cuMaterial.Contains(n.Id));
         }
 
-        var lista = await q.OrderByDescending(n => n.An).ThenByDescending(n => n.Numar).Take(500).ToListAsync(ct);
+        var lista = await q.OrderByDescending(n => n.An).ThenByDescending(n => n.Numar).Take(2000).ToListAsync(ct);
+        if (string.Equals(filtre.Stare, "CuDiferente", StringComparison.OrdinalIgnoreCase))
+            lista = lista.Where(n => n.AreDiferente).ToList(); // calculat din linii (jsonb)
         var ids = lista.Select(n => n.Id).ToList();
         var stornari = await db.StornariNir.AsNoTracking().Where(s => ids.Contains(s.NirId)).ToDictionaryAsync(s => s.NirId, ct);
         var anulate = await facturi.FacturiAnulateAsync(ct);

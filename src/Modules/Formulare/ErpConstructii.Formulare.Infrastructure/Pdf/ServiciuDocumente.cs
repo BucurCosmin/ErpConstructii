@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using PdfSharp.Pdf;
+using PdfSharp.Pdf.IO;
 
 namespace ErpConstructii.Formulare.Infrastructure.Pdf;
 
@@ -31,5 +33,20 @@ internal sealed class ServiciuDocumente(
         }
 
         return new DocumentGenerat(standard.Genereaza(firma, aspect, date), "application/pdf", nume, false);
+    }
+
+    public DocumentGenerat Combina(IReadOnlyList<DocumentGenerat> documente, string numeFisier)
+    {
+        using var iesire = new PdfDocument();
+        foreach (var d in documente)
+        {
+            using var intrare = PdfReader.Open(new MemoryStream(d.Continut), PdfDocumentOpenMode.Import);
+            foreach (var pagina in intrare.Pages)
+                iesire.AddPage(pagina);
+        }
+
+        using var flux = new MemoryStream();
+        iesire.Save(flux);
+        return new DocumentGenerat(flux.ToArray(), "application/pdf", Path.ChangeExtension(numeFisier, ".pdf"), documente.Any(d => d.DinSablonFirma));
     }
 }

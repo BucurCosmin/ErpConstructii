@@ -52,4 +52,7 @@ public interface IGeneratorPdfStandard
 public interface IServiciuDocumente
 {
     Task<DocumentGenerat> PdfAsync(string codTip, AntetFirma firma, AspectDocument aspect, DateFormular date, string numeFisier, CancellationToken ct = default);
+
+    /// <summary>Mai multe PDF-uri într-unul singur, în ordinea dată (ex. tipărirea mai multor documente deodată).</summary>
+    DocumentGenerat Combina(IReadOnlyList<DocumentGenerat> documente, string numeFisier);
 }
