@@ -107,6 +107,8 @@ export function ProvenientaStoc() {
       <Table<GrupMaterial>
         rowKey="cheie"
         size="small"
+        className="tabel-compact"
+        tableLayout="fixed"
         loading={loturi.isLoading}
         dataSource={grupuri}
         pagination={{ pageSize: 50, hideOnSinglePage: true }}
@@ -116,6 +118,7 @@ export function ProvenientaStoc() {
           expandedRowRender: (g) => (
             <Table<LotStoc>
               size="small"
+              className="tabel-compact"
               pagination={false}
               rowKey={(l) => `${l.documentId}-${l.dataIntrare}-${l.cantitate}`}
               dataSource={g.loturi}
@@ -141,7 +144,7 @@ export function ProvenientaStoc() {
         columns={[
           { title: 'Gestiune', dataIndex: 'gestiune', width: 240 },
           { title: 'Cod', dataIndex: 'articolCod', width: 110 },
-          { title: 'Material', dataIndex: 'denumire' },
+          { title: 'Material', dataIndex: 'denumire', ellipsis: { showTitle: true } },
           { title: 'În stoc', width: 140, align: 'right', render: (_, g) => <Typography.Text strong>{formatCantitate(g.cantitate)} {g.unitateMasura}</Typography.Text> },
           { title: 'Intrări', width: 90, align: 'right', render: (_, g) => new Set(g.loturi.map((l) => l.documentId)).size },
           ...(cuPreturi ? [{ title: 'Valoare (preț intrare)', width: 160, align: 'right' as const, render: (_: unknown, g: GrupMaterial) => bani(g.valoare) }] : []),

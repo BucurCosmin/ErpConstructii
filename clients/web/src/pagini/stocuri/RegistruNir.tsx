@@ -1,5 +1,5 @@
-import { DownloadOutlined, FilePdfOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { DownloadOutlined, FilePdfOutlined, PrinterOutlined, RollbackOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
@@ -170,6 +170,9 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
         <Table<Nir>
           rowKey="id"
           size="small"
+          className="tabel-compact"
+          tableLayout="fixed"
+          scroll={{ x: 1200 }}
           loading={nir.isLoading}
           dataSource={lista}
           locale={{ emptyText: 'Niciun NIR pentru filtrele alese.' }}
@@ -193,25 +196,25 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
             ),
           }}
           columns={[
-            { title: 'Număr', dataIndex: 'numar', width: 135, sorter: (a, b) => a.numar.localeCompare(b.numar) },
-            { title: 'Data', dataIndex: 'data', width: 105, render: data, sorter: (a, b) => a.data.localeCompare(b.data) },
-            { title: 'Factura', dataIndex: 'facturaNumar', width: 150 },
+            { title: 'Număr', dataIndex: 'numar', width: 120, sorter: (a, b) => a.numar.localeCompare(b.numar) },
+            { title: 'Data', dataIndex: 'data', width: 95, render: data, sorter: (a, b) => a.data.localeCompare(b.data) },
+            { title: 'Factura', dataIndex: 'facturaNumar', width: 140, ellipsis: { showTitle: true } },
             {
-              title: 'Furnizor', sorter: (a, b) => a.furnizorDenumire.localeCompare(b.furnizorDenumire),
+              title: 'Furnizor', width: 230, sorter: (a, b) => a.furnizorDenumire.localeCompare(b.furnizorDenumire),
               render: (_, n) => (
                 <>
-                  {n.furnizorDenumire}
+                  <div title={n.furnizorDenumire} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{n.furnizorDenumire}</div>
                   {(n.materialeGasite?.length ?? 0) > 0 && (
                     <div style={{ marginTop: 2 }}>{n.materialeGasite!.slice(0, 3).map((x) => <Tag key={x} color="gold" style={{ marginBottom: 2 }}>{x}</Tag>)}</div>
                   )}
                 </>
               ),
             },
-            { title: 'Depozit', dataIndex: 'gestiune', width: 160, responsive: ['lg'] },
-            { title: 'Proiect', dataIndex: 'proiectCod', width: 110, responsive: ['lg'] },
-            { title: 'Valoare', dataIndex: 'valoare', width: 125, align: 'right', render: bani, sorter: (a, b) => (a.valoare ?? 0) - (b.valoare ?? 0) },
+            { title: 'Depozit', dataIndex: 'gestiune', width: 130, ellipsis: { showTitle: true }, responsive: ['lg'] },
+            { title: 'Proiect', dataIndex: 'proiectCod', width: 95, ellipsis: { showTitle: true }, responsive: ['lg'] },
+            { title: 'Valoare', dataIndex: 'valoare', width: 110, align: 'right', render: bani, sorter: (a, b) => (a.valoare ?? 0) - (b.valoare ?? 0) },
             {
-              title: 'Stare', width: 130,
+              title: 'Stare', width: 120,
               render: (_, n) => (
                 <Space size={4} wrap>
                   {n.storno
@@ -222,14 +225,14 @@ export function RegistruNir({ poateAnula }: { poateAnula: boolean }) {
                 </Space>
               ),
             },
-            { title: 'Recepționat de', dataIndex: 'receptionatDe', width: 150, responsive: ['xl'] },
+            { title: 'Recepționat de', dataIndex: 'receptionatDe', width: 130, ellipsis: { showTitle: true }, responsive: ['xxl'] },
             {
-              title: '', width: 165,
+              title: '', width: 105, fixed: 'right',
               render: (_, n) => (
                 <Space size={4}>
                   <Button size="small" icon={<FilePdfOutlined />}
                     onClick={(e) => { e.stopPropagation(); void deschidePdf(`/api/stocuri/nir/${n.id}/pdf`).catch((x) => message.error((x as Error).message)) }}>PDF</Button>
-                  {!n.storno && poateAnula && <Button size="small" danger onClick={(e) => { e.stopPropagation(); setDeStornat(n) }}>Stornează</Button>}
+                  {!n.storno && poateAnula && <Tooltip title="Stornează NIR-ul"><Button size="small" danger icon={<RollbackOutlined />} onClick={(e) => { e.stopPropagation(); setDeStornat(n) }} /></Tooltip>}
                 </Space>
               ),
             },

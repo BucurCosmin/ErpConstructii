@@ -30,3 +30,16 @@ body,
 .rand-inactiv td {
   opacity: 0.55;
 }
+
+/* Tabele dense (stocuri, rapoarte): mai multe rânduri pe ecran. */
+.tabel-compact .ant-table {
+  font-size: 12.5px;
+}
+.tabel-compact .ant-table-thead > tr > th,
+.tabel-compact .ant-table-tbody > tr > td {
+  padding: 4px 8px !important;
+  line-height: 1.35;
+}
+.tabel-compact .ant-table-thead > tr > th {
+  white-space: nowrap;
+}

@@ -44,19 +44,20 @@ function TabelLoturi({ loturi }: { loturi: LotStoc[] }) {
   return (
     <Table<LotStoc>
       size="small"
+      className="tabel-compact"
       pagination={false}
       rowKey={(l) => `${l.documentId}-${l.dataIntrare}-${l.cantitate}`}
       dataSource={loturi}
       locale={{ emptyText: 'Fără proveniență (material intrat fără NIR).' }}
       columns={[
         {
-          title: 'Factura', width: 170,
+          title: 'Factura', width: 210,
           render: (_, l) => l.facturaNumar
-            ? <>{l.facturaNumar}<div><Typography.Text type="secondary">{dayjs(l.facturaData).format('DD.MM.YYYY')}</Typography.Text></div></>
+            ? <>{l.facturaNumar} <Typography.Text type="secondary">din {dayjs(l.facturaData).format('DD.MM.YYYY')}</Typography.Text></>
             : <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag>,
         },
-        { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
-        { title: 'NIR / intrat la', width: 160, render: (_, l) => <>{l.documentNumar}<div><Typography.Text type="secondary">{dayjs(l.dataIntrare).format('DD.MM.YYYY')}</Typography.Text></div></> },
+        { title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: { showTitle: true } },
+        { title: 'NIR / intrat la', width: 200, render: (_, l) => <>{l.documentNumar} <Typography.Text type="secondary">din {dayjs(l.dataIntrare).format('DD.MM.YYYY')}</Typography.Text></> },
         { title: 'Proiect factură', dataIndex: 'facturaProiectCod', width: 120 },
         { title: 'Cantitate', width: 120, align: 'right', render: (_, l) => `${formatCantitate(l.cantitate)} ${l.unitateMasura}` },
         ...(cuPreturi ? [
@@ -108,26 +109,29 @@ function TabelSold({ randuri, incarcare, cuGestiune, filtre }: {
         <Space wrap>
           <Button icon={<FilePdfOutlined />} disabled={!randuri?.length} onClick={() => raportPdf(false)}>Raport stoc (PDF)</Button>
           <Button icon={<FilePdfOutlined />} disabled={!randuri?.length} onClick={() => raportPdf(true)}>Raport pe factură / NIR (PDF)</Button>
-          <Button icon={<DownloadOutlined />} disabled={!randuri?.length || loturi.isLoading} onClick={() => exportaCsv(loturiAfisate())}>Excel (CSV)</Button>
+          <Button icon={<DownloadOutlined />} disabled={!randuri?.length} loading={loturi.isLoading} onClick={() => exportaCsv(loturiAfisate())}>Excel (CSV)</Button>
         </Space>
       </Flex>
       <Table<SoldStoc>
         rowKey={cheie}
         size="small"
+        className="tabel-compact"
+        tableLayout="fixed"
+        scroll={{ x: 950 }}
         loading={incarcare}
         dataSource={randuri}
-        pagination={{ pageSize: 25, hideOnSinglePage: true }}
+        pagination={{ defaultPageSize: 50, showSizeChanger: true, pageSizeOptions: [25, 50, 100, 200], hideOnSinglePage: true, size: 'small' }}
         onRow={(r) => ({ onClick: () => setFisa(r), style: { cursor: 'pointer' } })}
         expandable={{
           expandedRowRender: (r) => <TabelLoturi loturi={peMaterial.get(cheie(r)) ?? []} />,
-          rowExpandable: () => !loturi.isLoading,
         }}
         columns={[
-          ...(cuGestiune ? [{ title: 'Gestiune', dataIndex: 'gestiuneDenumire', width: 220, ellipsis: true }] : []),
-          { title: 'Cod', dataIndex: 'articolCod', width: 110 },
-          { title: 'Material', dataIndex: 'denumire' },
+          ...(cuGestiune && new Set((randuri ?? []).map((r) => r.gestiuneId)).size > 1 ? [{ title: 'Gestiune', dataIndex: 'gestiuneDenumire', width: 150, ellipsis: { showTitle: true } }] : []),
+          { title: 'Cod', dataIndex: 'articolCod', width: 95 },
+          // Numele lungi: un singur rând, trunchiat; întreg în tooltip.
+          { title: 'Material', dataIndex: 'denumire', ellipsis: { showTitle: true } },
           {
-            title: 'Factura → NIR', width: 230,
+            title: 'Factura → NIR', width: 260, ellipsis: true,
             render: (_, r) => {
               const l = peMaterial.get(cheie(r)) ?? []
               if (loturi.isLoading) return <Typography.Text type="secondary">…</Typography.Text>
@@ -140,9 +144,9 @@ function TabelSold({ randuri, incarcare, cuGestiune, filtre }: {
               )
             },
           },
-          { title: 'Cantitate', width: 140, align: 'right', render: (_, r) => `${formatCantitate(r.cantitate)} ${r.unitateMasura}` },
-          { title: 'Preț mediu (CMP)', dataIndex: 'cmp', width: 140, align: 'right', render: bani },
-          { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
+          { title: 'Cantitate', width: 105, align: 'right', render: (_, r) => `${formatCantitate(r.cantitate)} ${r.unitateMasura}` },
+          { title: 'CMP', dataIndex: 'cmp', width: 95, align: 'right', render: bani },
+          { title: 'Valoare', dataIndex: 'valoare', width: 110, align: 'right', render: bani },
         ]}
       />
       <Drawer open={!!fisa} onClose={() => setFisa(undefined)} size={820} title={fisa && `Fișa de magazie — ${fisa.articolCod} ${fisa.denumire}`}>
