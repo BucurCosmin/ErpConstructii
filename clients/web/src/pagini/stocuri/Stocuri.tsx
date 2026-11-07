@@ -1,4 +1,4 @@
-import { EditOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
+import { EditOutlined, FilePdfOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Drawer, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useState } from 'react'
@@ -15,7 +15,7 @@ import {
   useSoldStoc,
   useStorneazaNir,
 } from '../../api/stocuri'
-import type { ArticolStoc, FacturaDeReceptionat, MiscareStoc, Nir, SoldStoc } from '../../api/stocuri'
+import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, MiscareStoc, Nir, SoldStoc } from '../../api/stocuri'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
@@ -148,8 +148,16 @@ function MaterialeInSantier() {
 
 function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: boolean }) {
   const { message } = App.useApp()
-  const deFacut = useFacturiDeReceptionat()
-  const nir = useNir()
+  const [filtre, setFiltre] = useState<FiltreReceptii>({})
+  const deFacut = useFacturiDeReceptionat(filtre)
+  const nir = useNir(filtre)
+  const filtrat = !!(filtre.cauta || filtre.material)
+  const gasite = (m?: string[] | null) => (m?.length ?? 0) > 0 && (
+    <div style={{ marginTop: 2 }}>
+      {m!.slice(0, 3).map((x) => <Tag key={x} color="gold" style={{ marginBottom: 2 }}>{x}</Tag>)}
+      {m!.length > 3 && <Typography.Text type="secondary">+{m!.length - 3}</Typography.Text>}
+    </div>
+  )
   const storneaza = useStorneazaNir()
   const [facturaId, setFacturaId] = useState<string>()
   const [deStornat, setDeStornat] = useState<Nir>()
@@ -157,18 +165,29 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
   const deStornatAnulate = (nir.data ?? []).filter((n) => n.facturaAnulata && !n.storno)
   return (
     <Space orientation="vertical" style={{ width: '100%' }} size="large">
+      <Form layout="inline" style={{ rowGap: 8 }}
+        onFinish={(v: FiltreReceptii) => setFiltre({ cauta: v.cauta?.trim() || undefined, material: v.material?.trim() || undefined })}>
+        <Form.Item name="material">
+          <Input allowClear prefix={<SearchOutlined />} placeholder="Material (denumire sau cod)" style={{ width: 260 }} />
+        </Form.Item>
+        <Form.Item name="cauta">
+          <Input allowClear placeholder="Factura sau furnizorul" style={{ width: 220 }} />
+        </Form.Item>
+        <Button type="primary" htmlType="submit">Filtrează</Button>
+        {filtrat && <Typography.Text type="secondary">Filtrul se aplică facturilor de recepționat și NIR-urilor emise.</Typography.Text>}
+      </Form>
       <Card title={`Facturi de recepționat${deFacut.data ? ` (${deFacut.data.length})` : ''}`}>
         <Table<FacturaDeReceptionat>
           rowKey="facturaId"
           size="small"
           loading={deFacut.isLoading}
           dataSource={deFacut.data}
-          locale={{ emptyText: 'Toate facturile cu materiale au fost recepționate.' }}
+          locale={{ emptyText: filtrat ? 'Nicio factură de recepționat nu corespunde filtrului.' : 'Toate facturile cu materiale au fost recepționate.' }}
           pagination={{ pageSize: 15, hideOnSinglePage: true }}
           columns={[
             { title: 'Factura', dataIndex: 'numar', width: 150 },
             { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
-            { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
+            { title: 'Furnizor', render: (_, f) => <>{f.furnizorDenumire}{gasite(f.materialeGasite)}</> },
             { title: 'Proiect', dataIndex: 'proiectCod', width: 130 },
             {
               title: 'Linii de stoc', width: 170, align: 'right',
@@ -190,12 +209,13 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
           title={`Facturi anulate cu NIR activ: ${deStornatAnulate.map((n) => `${n.numar} (factura ${n.facturaNumar})`).join(', ')}.`}
           description="Materialele lor sunt încă în stoc. Stornează NIR-ul (după returul în depozit, dacă au plecat deja în șantier)." />
       )}
-      <Card title="NIR-uri emise">
+      <Card title={`NIR-uri emise${filtrat && nir.data ? ` (${nir.data.length})` : ''}`}>
         <Table<Nir>
           rowKey="id"
           size="small"
           loading={nir.isLoading}
           dataSource={nir.data}
+          locale={filtrat ? { emptyText: 'Niciun NIR nu corespunde filtrului.' } : undefined}
           pagination={{ pageSize: 15, hideOnSinglePage: true }}
           expandable={{
             expandedRowRender: (n) => (
@@ -218,7 +238,7 @@ function Receptii({ poateCrea, poateAnula }: { poateCrea: boolean; poateAnula: b
             { title: 'Număr', dataIndex: 'numar', width: 140 },
             { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
             { title: 'Factura', dataIndex: 'facturaNumar', width: 140 },
-            { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
+            { title: 'Furnizor', render: (_, n) => <>{n.furnizorDenumire}{gasite(n.materialeGasite)}</> },
             { title: 'Depozit', dataIndex: 'gestiune', width: 180 },
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
             {

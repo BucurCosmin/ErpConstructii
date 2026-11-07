@@ -32,7 +32,7 @@ public sealed record MiscareDto(Guid Id, DateOnly Data, string Tip, string Docum
 
 /// <param name="Linii">Liniile de stoc ale facturii; <paramref name="LiniiDeschise"/> = cele încă de recepționat (parțial sau deloc).</param>
 public sealed record FacturaDeReceptionatDto(Guid FacturaId, string Numar, DateOnly Data, string FurnizorDenumire, string ProiectCod, int Linii, decimal? Valoare,
-    int LiniiDeschise = 0, bool ReceptionataPartial = false);
+    int LiniiDeschise = 0, bool ReceptionataPartial = false, IReadOnlyList<string>? MaterialeGasite = null);
 
 public sealed record ArticolPropusDto(Guid Id, string Cod, string Denumire, string UnitateMasura, string Sursa);
 
@@ -53,7 +53,7 @@ public sealed record LinieNirDto(string ArticolCod, string Denumire, string Unit
 
 public sealed record NirDto(Guid Id, string Numar, DateOnly Data, string Gestiune, Guid FacturaId, string FacturaNumar, string FurnizorDenumire, string ProiectCod,
     IReadOnlyList<LinieNirDto> Linii, decimal? Valoare, bool AreDiferente, string ReceptionatDe, string? Observatii,
-    StornoDto? Storno = null, bool FacturaAnulata = false);
+    StornoDto? Storno = null, bool FacturaAnulata = false, IReadOnlyList<string>? MaterialeGasite = null);
 
 public sealed record StornoDto(DateOnly Data, string Motiv, string StornatDe);
 
@@ -212,18 +212,24 @@ public sealed class ModulStocuri : IModul
 
     // ---------------------------------------------------------------- recepții (NIR)
 
+    /// <param name="cauta">Numărul facturii sau furnizorul.</param>
+    /// <param name="material">Un material din liniile de stoc ale facturii (fără diacritice / majuscule).</param>
     private static async Task<IResult> FacturiDeReceptionat(
-        StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
+        string? cauta, string? material, StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
     {
         var preturi = await VedePreturiAsync(permisiuni, utilizator, firma, ct);
         var receptii = await ReceptiiActiveAsync(db, null, ct);
         var lista = await facturi.CuMaterialeDeStocAsync(ct);
+        var text = string.IsNullOrWhiteSpace(cauta) ? null : FaraDiacritice(cauta.Trim());
+        var termen = string.IsNullOrWhiteSpace(material) ? null : FaraDiacritice(material.Trim());
         return Results.Ok(lista
-            .Select(f => (Factura: f, Stare: StareReceptie.Calculeaza(f.Linii.Select(l => (l.Index, l.Cantitate)), receptii.GetValueOrDefault(f.Id) ?? [])))
-            .Where(x => x.Stare.Any(s => s.Deschisa))
+            .Where(f => text is null || FaraDiacritice(f.Numar).Contains(text, StringComparison.Ordinal) || FaraDiacritice(f.FurnizorDenumire).Contains(text, StringComparison.Ordinal))
+            .Select(f => (Factura: f, Stare: StareReceptie.Calculeaza(f.Linii.Select(l => (l.Index, l.Cantitate)), receptii.GetValueOrDefault(f.Id) ?? []),
+                Gasite: termen is null ? null : f.Linii.Select(l => l.Denumire).Where(d => FaraDiacritice(d).Contains(termen, StringComparison.Ordinal)).Distinct().ToList()))
+            .Where(x => x.Stare.Any(s => s.Deschisa) && (x.Gasite is null || x.Gasite.Count > 0))
             .Select(x => new FacturaDeReceptionatDto(x.Factura.Id, x.Factura.Numar, x.Factura.DataEmitere, x.Factura.FurnizorDenumire, x.Factura.ProiectCod,
                 x.Factura.Linii.Count, preturi ? x.Factura.Linii.Sum(l => l.ValoareFaraTva) : null,
-                x.Stare.Count(s => s.Deschisa), x.Stare.Any(s => s.Receptionat > 0 || s.Inchisa)))
+                x.Stare.Count(s => s.Deschisa), x.Stare.Any(s => s.Receptionat > 0 || s.Inchisa), x.Gasite))
             .ToList());
     }
 
@@ -359,12 +365,32 @@ public sealed class ModulStocuri : IModul
         return Results.Created($"/api/stocuri/nir/{nir.Id}", Dto(nir, preturi));
     }
 
+    /// <param name="cauta">Numărul facturii sau furnizorul.</param>
+    /// <param name="material">Un material din liniile NIR-ului: denumire sau cod (fără diacritice / majuscule).</param>
     private static async Task<IResult> ListaNir(
-        StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma,
-        CancellationToken ct)
+        string? cauta, string? material, StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator,
+        IFirmaCurenta firma, CancellationToken ct)
     {
         var preturi = await VedePreturiAsync(permisiuni, utilizator, firma, ct);
-        var lista = await db.Nir.AsNoTracking().OrderByDescending(n => n.An).ThenByDescending(n => n.Numar).Take(500).ToListAsync(ct);
+        var q = db.Nir.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(cauta))
+        {
+            var t = $"%{cauta.Trim()}%";
+            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar, t) || EF.Functions.ILike(n.FurnizorDenumire, t));
+        }
+
+        string? termen = null;
+        if (!string.IsNullOrWhiteSpace(material))
+        {
+            termen = FaraDiacritice(material.Trim());
+            var tipar = $"%{termen}%";
+            // Liniile stau în jsonb; textul se compară fără diacritice și fără majuscule.
+            var cuMaterial = db.Database.SqlQuery<Guid>(
+                $"""SELECT n.id AS "Value" FROM stocuri.nir n WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(n.linii_json) e WHERE translate(lower(e->>'Denumire'), 'ăâîșşțţ', 'aaisstt') LIKE {tipar} OR lower(e->>'ArticolCod') LIKE {tipar})""");
+            q = q.Where(n => cuMaterial.Contains(n.Id));
+        }
+
+        var lista = await q.OrderByDescending(n => n.An).ThenByDescending(n => n.Numar).Take(500).ToListAsync(ct);
         var ids = lista.Select(n => n.Id).ToList();
         var stornari = await db.StornariNir.AsNoTracking().Where(s => ids.Contains(s.NirId)).ToDictionaryAsync(s => s.NirId, ct);
         var anulate = await facturi.FacturiAnulateAsync(ct);
@@ -372,7 +398,16 @@ public sealed class ModulStocuri : IModul
         {
             Storno = stornari.TryGetValue(n.Id, out var s) ? new StornoDto(s.Data, s.Motiv, s.StornatDeNume) : null,
             FacturaAnulata = anulate.Contains(n.FacturaId),
+            MaterialeGasite = termen is null ? null
+                : n.Linii.Where(l => FaraDiacritice(l.Denumire).Contains(termen, StringComparison.Ordinal) || l.ArticolCod.Contains(termen, StringComparison.OrdinalIgnoreCase))
+                    .Select(l => l.Denumire).Distinct().ToList(),
         }).ToList());
+    }
+
+    private static string FaraDiacritice(string text)
+    {
+        var fd = text.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+        return new string(fd.Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray());
     }
 
     // ---------------------------------------------------------------- transferuri în șantier

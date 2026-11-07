@@ -153,9 +153,10 @@ public sealed class ModulFacturi : IModul
 
     // ---------------------------------------------------------------- listă / detalii
 
-    /// <param name="cauta">Text liber: furnizor, CUI, numărul facturii sau un material din liniile ei (fără diacritice / majuscule).</param>
+    /// <param name="cauta">Text liber: furnizor, CUI sau numărul facturii.</param>
+    /// <param name="material">Un material din liniile facturii (fără diacritice / majuscule).</param>
     private static async Task<IResult> Lista(
-        Guid? proiectId, string? furnizor, string? cauta, DateOnly? dataDe, DateOnly? dataPanaLa, string? stare,
+        Guid? proiectId, string? furnizor, string? cauta, string? material, DateOnly? dataDe, DateOnly? dataPanaLa, string? stare,
         FacturiDbContext db, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
     {
         if (utilizator.UtilizatorId is not { } uid || firma.FirmaId is not { } fid)
@@ -173,16 +174,22 @@ public sealed class ModulFacturi : IModul
 
         if (proiectId is { } p) q = q.Where(f => f.ProiectId == p);
         if (!string.IsNullOrWhiteSpace(furnizor)) q = q.Where(f => EF.Functions.ILike(f.FurnizorDenumire, $"%{furnizor.Trim()}%") || f.FurnizorCui == furnizor.Trim());
-        string? termen = null;
         if (!string.IsNullOrWhiteSpace(cauta))
         {
-            termen = FaraDiacritice(cauta.Trim());
-            var tipar = $"%{termen}%";
+            var tipar = $"%{cauta.Trim()}%";
             var cui = cauta.Trim().ToUpperInvariant().Replace("RO", string.Empty, StringComparison.Ordinal);
+            q = q.Where(f => EF.Functions.ILike(f.FurnizorDenumire, tipar) || f.FurnizorCui == cui || EF.Functions.ILike(f.Numar, tipar));
+        }
+
+        string? termen = null;
+        if (!string.IsNullOrWhiteSpace(material))
+        {
+            termen = FaraDiacritice(material.Trim());
+            var tipar = $"%{termen}%";
             // Materialele stau în liniile facturii (jsonb); textul se compară fără diacritice și fără majuscule.
             var cuMaterial = db.Database.SqlQuery<Guid>(
                 $"""SELECT f.id AS "Value" FROM facturi.facturi_primite f WHERE EXISTS (SELECT 1 FROM jsonb_array_elements(f.linii_json) e WHERE translate(lower(e->>'Denumire'), 'ăâîșşțţ', 'aaisstt') LIKE {tipar})""");
-            q = q.Where(f => EF.Functions.ILike(f.FurnizorDenumire, tipar) || f.FurnizorCui == cui || EF.Functions.ILike(f.Numar, tipar) || cuMaterial.Contains(f.Id));
+            q = q.Where(f => cuMaterial.Contains(f.Id));
         }
 
         if (dataDe is { } d1) q = q.Where(f => f.DataEmitere >= d1);

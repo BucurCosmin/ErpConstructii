@@ -1,4 +1,4 @@
-import { DownloadOutlined, StopOutlined } from '@ant-design/icons'
+import { DownloadOutlined, SearchOutlined, StopOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, DatePicker, Form, Input, Modal, Select, Space, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import type { Dayjs } from 'dayjs'
 import { useState } from 'react'
@@ -79,10 +79,11 @@ export function Facturi() {
                     layout="inline"
                     style={{ marginBottom: 16, rowGap: 8 }}
                     initialValues={{ stare: 'Inregistrata' }}
-                    onFinish={(v: { proiectId?: string; cauta?: string; perioada?: [Dayjs, Dayjs]; stare?: FacturaPrimita['stare'] }) =>
+                    onFinish={(v: { proiectId?: string; cauta?: string; material?: string; perioada?: [Dayjs, Dayjs]; stare?: FacturaPrimita['stare'] }) =>
                       setFiltre({
                         proiectId: v.proiectId,
                         cauta: v.cauta?.trim() || undefined,
+                        material: v.material?.trim() || undefined,
                         dataDe: v.perioada?.[0]?.format('YYYY-MM-DD'),
                         dataPanaLa: v.perioada?.[1]?.format('YYYY-MM-DD'),
                         stare: v.stare,
@@ -94,7 +95,10 @@ export function Facturi() {
                         options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
                     </Form.Item>
                     <Form.Item name="cauta">
-                      <Input allowClear placeholder="Furnizor, CUI, număr sau material" style={{ width: 280 }} />
+                      <Input allowClear placeholder="Furnizor, CUI sau număr" style={{ width: 220 }} />
+                    </Form.Item>
+                    <Form.Item name="material">
+                      <Input allowClear prefix={<SearchOutlined />} placeholder="Material din factură (ex. vestă)" style={{ width: 240 }} />
                     </Form.Item>
                     <Form.Item name="perioada">
                       <DatePicker.RangePicker format="DD.MM.YYYY" />

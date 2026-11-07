@@ -46,8 +46,10 @@ export interface FacturaPrimita {
 export interface FiltreFacturi {
   proiectId?: string
   furnizor?: string
-  /** Text liber: furnizor, CUI, numărul facturii sau un material din linii. */
+  /** Text liber: furnizor, CUI sau numărul facturii. */
   cauta?: string
+  /** Un material din liniile facturii (fără diacritice / majuscule). */
+  material?: string
   dataDe?: string
   dataPanaLa?: string
   stare?: FacturaPrimita['stare']

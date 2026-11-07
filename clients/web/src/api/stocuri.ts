@@ -54,6 +54,8 @@ export interface FacturaDeReceptionat {
   /** Liniile încă de recepționat (parțial sau deloc). */
   liniiDeschise: number
   receptionataPartial: boolean
+  /** Materialele care au potrivit filtrul „material”. */
+  materialeGasite?: string[] | null
 }
 
 export interface PropunereReceptie {
@@ -106,6 +108,22 @@ export interface Nir {
   observatii: string | null
   storno: { data: string; motiv: string; stornatDe: string } | null
   facturaAnulata: boolean
+  /** Materialele care au potrivit filtrul „material”. */
+  materialeGasite?: string[] | null
+}
+
+/** Filtrele listelor de recepție: factura / furnizorul și materialul. */
+export interface FiltreReceptii {
+  cauta?: string
+  material?: string
+}
+
+const parametri = (f: FiltreReceptii) => {
+  const p = new URLSearchParams()
+  if (f.cauta) p.set('cauta', f.cauta)
+  if (f.material) p.set('material', f.material)
+  const q = p.toString()
+  return q ? `?${q}` : ''
 }
 
 export interface TransferStoc {
@@ -150,15 +168,16 @@ export const useFisaMagazie = (gestiuneId?: string, articolId?: string) =>
     queryFn: () => api.get<MiscareStoc[]>(`/api/stocuri/gestiuni/${gestiuneId}/articole/${articolId}/miscari`),
     enabled: !!gestiuneId && !!articolId,
   })
-export const useFacturiDeReceptionat = () =>
-  useQuery({ queryKey: chei.deReceptionat, queryFn: () => api.get<FacturaDeReceptionat[]>('/api/stocuri/receptii/de-facut') })
+export const useFacturiDeReceptionat = (filtre: FiltreReceptii = {}) =>
+  useQuery({ queryKey: [...chei.deReceptionat, filtre], queryFn: () => api.get<FacturaDeReceptionat[]>(`/api/stocuri/receptii/de-facut${parametri(filtre)}`) })
 export const usePropunereReceptie = (facturaId?: string) =>
   useQuery({
     queryKey: ['stocuri', 'propunere', facturaId],
     queryFn: () => api.get<PropunereReceptie>(`/api/stocuri/receptii/de-facut/${facturaId}`),
     enabled: !!facturaId,
   })
-export const useNir = () => useQuery({ queryKey: chei.nir, queryFn: () => api.get<Nir[]>('/api/stocuri/nir') })
+export const useNir = (filtre: FiltreReceptii = {}) =>
+  useQuery({ queryKey: [...chei.nir, filtre], queryFn: () => api.get<Nir[]>(`/api/stocuri/nir${parametri(filtre)}`) })
 export const useTransferuri = () => useQuery({ queryKey: chei.transferuri, queryFn: () => api.get<TransferStoc[]>('/api/stocuri/transferuri') })
 
 /** După orice operație de stoc se reîncarcă tot modulul (solduri, liste, propuneri). */
