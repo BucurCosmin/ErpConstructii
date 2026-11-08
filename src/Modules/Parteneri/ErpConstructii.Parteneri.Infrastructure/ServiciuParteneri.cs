@@ -5,6 +5,15 @@ namespace ErpConstructii.Parteneri.Infrastructure;
 
 internal sealed class ServiciuParteneri(ParteneriDbContext db) : IServiciuParteneri
 {
+    public async Task<PartenerRezumat?> CautaDupaIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var p = await db.Parteneri.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        return p is null ? null : Rezumat(p);
+    }
+
+    public async Task<IReadOnlyList<PartenerRezumat>> ActiviAsync(CancellationToken ct = default) =>
+        (await db.Parteneri.AsNoTracking().Where(x => x.Activ).OrderBy(x => x.Denumire).ToListAsync(ct)).Select(Rezumat).ToList();
+
     public async Task<PartenerRezumat?> CautaDupaCuiAsync(string cui, CancellationToken ct = default)
     {
         var normalizat = ValidareFiscala.NormalizeazaCui(cui);
@@ -87,5 +96,5 @@ internal sealed class ServiciuParteneri(ParteneriDbContext db) : IServiciuParten
         return gasit is null ? null : await q.FirstAsync(x => x.Id == gasit.Id, ct);
     }
 
-    private static PartenerRezumat Rezumat(Partener p) => new(p.Id, p.Denumire, p.Cui, p.PlatitorTva, p.EsteFurnizor, p.Activ);
+    private static PartenerRezumat Rezumat(Partener p) => new(p.Id, p.Denumire, p.Cui, p.PlatitorTva, p.EsteFurnizor, p.Activ, p.EsteSubantreprenor);
 }

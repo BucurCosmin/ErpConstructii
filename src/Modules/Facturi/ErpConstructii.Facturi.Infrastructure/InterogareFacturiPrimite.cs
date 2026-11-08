@@ -1,7 +1,23 @@
 using ErpConstructii.Aprovizionare;
+using ErpConstructii.Contracte;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpConstructii.Facturi.Infrastructure;
+
+/// <summary>Facturile neanulate legate de contracte (situația contractului, D-41).</summary>
+internal sealed class InterogareFacturiContract(FacturiDbContext db) : IInterogareFacturiContract
+{
+    public async Task<IReadOnlyDictionary<Guid, IReadOnlyList<FacturaPeContract>>> PeContracteAsync(IReadOnlyCollection<Guid> contracte, CancellationToken ct = default)
+    {
+        var ids = contracte.Select(c => (Guid?)c).ToList();
+        var facturi = await db.FacturiPrimite.AsNoTracking()
+            .Where(f => ids.Contains(f.ContractId) && !db.Anulari.Any(a => a.FacturaId == f.Id))
+            .Select(f => new { ContractId = f.ContractId!.Value, f.Id, f.Numar, f.DataEmitere, f.TotalFaraTva, f.Moneda })
+            .ToListAsync(ct);
+        return facturi.GroupBy(f => f.ContractId).ToDictionary(g => g.Key,
+            g => (IReadOnlyList<FacturaPeContract>)g.Select(f => new FacturaPeContract(f.Id, f.Numar, f.DataEmitere, f.TotalFaraTva, f.Moneda)).ToList());
+    }
+}
 
 /// <summary>Facturile legate de o notă de comandă (pentru ștergerea avizului și a notei generate din el, D-40).</summary>
 internal sealed class InterogareFacturiNotaComanda(FacturiDbContext db) : IInterogareFacturiNotaComanda

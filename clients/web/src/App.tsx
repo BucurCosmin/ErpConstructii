@@ -23,6 +23,7 @@ import { Furnizori } from './pagini/furnizori/Furnizori'
 import { Formulare } from './pagini/formulare/Formulare'
 import { Aprovizionare } from './pagini/aprovizionare/Aprovizionare'
 import { Stocuri } from './pagini/stocuri/Stocuri'
+import { Contracte } from './pagini/contracte/ListaContracte'
 import { CentruImport } from './pagini/import/CentruImport'
 import { tema } from './tema'
 
@@ -52,6 +53,7 @@ const router = createBrowserRouter([
       { path: 'formulare', element: <Formulare /> },
       { path: 'aprovizionare', element: <Aprovizionare /> },
       { path: 'stocuri', element: <Stocuri /> },
+      { path: 'contracte', element: <Contracte /> },
       { path: 'import', element: <CentruImport /> },
       { path: 'facturi', element: <Facturi /> },
       { path: 'jurnal', element: <JurnalModificari /> },

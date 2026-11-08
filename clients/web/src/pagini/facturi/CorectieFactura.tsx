@@ -3,7 +3,7 @@ import { Alert, App, Button, Checkbox, Col, DatePicker, Flex, Form, Input, Modal
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { useCorecteazaFactura, useNoteComandaFactura, useStareCorectie } from '../../api/facturi'
+import { useContracteFactura, useCorecteazaFactura, useNoteComandaFactura, useStareCorectie } from '../../api/facturi'
 import type { FacturaPrimita } from '../../api/facturi'
 import { useProiecte } from '../../api/interogari'
 import { NumarRo } from '../../componente/NumarRo'
@@ -32,6 +32,7 @@ interface Valori {
   referinta?: string
   observatii?: string
   notaComandaId?: string
+  contractId?: string
   linii: LinieValori[]
   totalFaraTva: number | null
   totalTva: number | null
@@ -72,6 +73,7 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
       referinta: factura.referinta ?? undefined,
       observatii: factura.observatii ?? undefined,
       notaComandaId: factura.notaComandaId ?? undefined,
+      contractId: factura.contractId ?? undefined,
       linii: factura.linii.map((l) => ({
         denumire: l.denumire, unitateMasura: l.unitateMasura, cantitate: l.cantitate, pretUnitar: l.pretUnitar,
         valoareFaraTva: l.valoareFaraTva, cota: Math.round(l.cotaTva * 10000) / 100, intraInStoc: l.intraInStoc ?? true,
@@ -95,6 +97,7 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
 
   const proiectAles = Form.useWatch('proiectId', form) as string | undefined
   const note = useNoteComandaFactura(proiectAles ?? factura?.proiectId, factura?.furnizorId, factura?.furnizorDenumire)
+  const contracte = useContracteFactura(proiectAles ?? factura?.proiectId, factura?.furnizorId, factura?.furnizorDenumire)
 
   const salveaza = async (v: Valori) => {
     if (!factura) return
@@ -120,6 +123,7 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
           observatii: v.observatii?.trim() || null,
           motiv: v.motiv.trim(),
           notaComandaId: v.notaComandaId ?? null,
+          contractId: v.contractId ?? null,
         },
       })
       message.success(`Factura ${v.numar} a fost corectată.`)
@@ -189,6 +193,18 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
                       value: n.id,
                       label: `${n.acelasiFurnizor ? '★ ' : ''}${n.numar}${n.numarExtern ? ` (nr. ${n.numarExtern})` : ''} · ${n.furnizorDenumire} · ${dayjs(n.data).format('DD.MM.YYYY')}${n.avize > 0 ? ` · ${n.avize} aviz(e)` : ''}`,
                     }))} />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="contractId" label="Contractul cu partenerul (servicii)" extra="Facturile de servicii se leagă de contract: intră în situația lui (facturat, rest, garanție).">
+                  <Select allowClear={false} showSearch={{ optionFilterProp: 'label' }} placeholder="Fără contract" loading={contracte.isLoading}
+                    options={[
+                      ...(factura?.contractId && !contracte.data?.some((c) => c.id === factura.contractId) ? [{ value: factura.contractId, label: factura.contractNumar ?? '' }] : []),
+                      ...(contracte.data ?? []).map((c) => ({
+                        value: c.id,
+                        label: `${c.acelasiPartener ? '★ ' : ''}${c.numar}${c.numarExtern ? ` (nr. ${c.numarExtern})` : ''} · ${c.partenerDenumire} · ${c.obiect}`,
+                      })),
+                    ]} />
                 </Form.Item>
               </Col>
             </Row>

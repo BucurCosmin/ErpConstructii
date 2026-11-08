@@ -11,6 +11,7 @@ import { ImportDeviz } from '../devize/ImportDeviz'
 import { useArhiveazaProiect, useReactiveazaProiect } from '../../api/proiecte'
 import { EditareProiect } from './EditareProiect'
 import { SantiereProiect } from './SantiereProiect'
+import { ListaContracte } from '../contracte/ListaContracte'
 
 export function DetaliiProiect() {
   const { proiectId = '' } = useParams()
@@ -188,7 +189,12 @@ export function DetaliiProiect() {
                 />
               ),
             },
-            ...['Contracte', 'Buget', 'Grafic', 'Situații', 'Documente'].map((t) => ({
+            {
+              key: 'contracte',
+              label: 'Contracte',
+              children: <ListaContracte proiectId={proiectId} />,
+            },
+            ...['Buget', 'Grafic', 'Situații', 'Documente'].map((t) => ({
               key: t.toLowerCase(),
               label: t,
               children: <Empty description={`Modulul „${t}” va fi disponibil într-o fază ulterioară.`} />,

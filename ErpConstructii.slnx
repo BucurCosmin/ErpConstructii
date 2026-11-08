@@ -39,6 +39,7 @@
   </Folder>
   <Folder Name="/Modules/Contracte/">
     <Project Path="src/Modules/Contracte/ErpConstructii.Contracte/ErpConstructii.Contracte.csproj" />
+    <Project Path="src/Modules/Contracte/ErpConstructii.Contracte.Infrastructure/ErpConstructii.Contracte.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/Modules/Grafic/">
     <Project Path="src/Modules/Grafic/ErpConstructii.Grafic/ErpConstructii.Grafic.csproj" />

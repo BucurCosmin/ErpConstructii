@@ -4,6 +4,7 @@ using ErpConstructii.Api.Autentificare;
 using ErpConstructii.Api.Dezvoltare;
 using ErpConstructii.Aprovizionare.Infrastructure;
 using ErpConstructii.Audit.Infrastructure;
+using ErpConstructii.Contracte.Infrastructure;
 using ErpConstructii.Devize.Import.WinDoc;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Facturi.Infrastructure;
@@ -39,6 +40,7 @@ IModul[] module =
     new ModulAprovizionare(),
     new ModulFacturi(),
     new ModulStocuri(),
+    new ModulContracte(),
     new ModulAudit(),
 ];
 

@@ -46,7 +46,9 @@ public sealed record DateFacturaPrimita(
     string? Referinta,
     string? Observatii,
     Guid? NotaComandaId = null,
-    string? NotaComandaNumar = null);
+    string? NotaComandaNumar = null,
+    Guid? ContractId = null,
+    string? ContractNumar = null);
 
 /// <summary>
 /// Factură primită de la un furnizor (REQ-FCT-07/08): sursa documentelor de cost, înaintea intrării în stoc (NIR)
@@ -90,6 +92,14 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
     public Guid? NotaComandaId { get; private set; }
 
     public string? NotaComandaNumar { get; private set; }
+
+    /// <summary>
+    /// Contractul cu partenerul (subantreprenor, prestator), D-41: obligatoriu la facturile doar de servicii înregistrate de
+    /// acum înainte. Prin el se urmărește cât s-a facturat din contract și garanția de bună execuție reținută.
+    /// </summary>
+    public Guid? ContractId { get; private set; }
+
+    public string? ContractNumar { get; private set; }
 
     public string? Observatii { get; private set; }
     public SursaFactura Sursa { get; private set; }
@@ -148,6 +158,8 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
             Observatii = string.IsNullOrWhiteSpace(date.Observatii) ? null : date.Observatii.Trim(),
             NotaComandaId = date.NotaComandaId,
             NotaComandaNumar = date.NotaComandaId is null ? null : date.NotaComandaNumar?.Trim(),
+            ContractId = date.ContractId,
+            ContractNumar = date.ContractId is null ? null : date.ContractNumar?.Trim(),
             Sursa = sursa,
             DocumentXmlId = documentXmlId,
             DocumentPdfId = documentPdfId,
@@ -159,7 +171,7 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
     /// <summary>Datele curente ale facturii (pentru corectură și istoric).</summary>
     public DateFacturaPrimita Date() => new(
         Numar, DataEmitere, DataScadenta, Moneda, FurnizorId, FurnizorDenumire, FurnizorCui, ProiectId, ProiectCod, Linii,
-        TotalFaraTva, TotalTva, TotalDePlata, Referinta, Observatii, NotaComandaId, NotaComandaNumar);
+        TotalFaraTva, TotalTva, TotalDePlata, Referinta, Observatii, NotaComandaId, NotaComandaNumar, ContractId, ContractNumar);
 
     /// <summary>
     /// Corectează datele facturii (citite / introduse greșit) și întoarce corectura, care se salvează împreună cu factura.
@@ -203,6 +215,7 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
         _linii = null;
         (TotalFaraTva, TotalTva, TotalDePlata, Referinta, Observatii) = (nou.TotalFaraTva, nou.TotalTva, nou.TotalDePlata, nou.Referinta, nou.Observatii);
         (NotaComandaId, NotaComandaNumar) = (nou.NotaComandaId, nou.NotaComandaId is null ? null : nou.NotaComandaNumar);
+        (ContractId, ContractNumar) = (nou.ContractId, nou.ContractId is null ? null : nou.ContractNumar);
         return Rezultat.Ok(CorectieFacturaPrimita.Creeaza(Id, motiv, jsonVechi, jsonNou, rezumat, utilizatorId, utilizatorNume, moment));
     }
 
@@ -267,6 +280,7 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
         Camp("Referința", vechi.Referinta, nou.Referinta);
         Camp("Observații", vechi.Observatii, nou.Observatii);
         if (vechi.NotaComandaId != nou.NotaComandaId) p.Add($"Nota de comandă: {vechi.NotaComandaNumar ?? "—"} → {nou.NotaComandaNumar ?? "—"}");
+        if (vechi.ContractId != nou.ContractId) p.Add($"Contractul: {vechi.ContractNumar ?? "—"} → {nou.ContractNumar ?? "—"}");
         for (var i = 0; i < Math.Max(vechi.Linii.Count, nou.Linii.Count); i++)
         {
             if (i >= nou.Linii.Count) { p.Add($"linia {i + 1} ștearsă („{vechi.Linii[i].Denumire}”)"); continue; }

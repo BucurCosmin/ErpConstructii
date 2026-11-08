@@ -235,6 +235,15 @@ namespace ErpConstructii.Facturi.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("ContractNumar")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("contract_numar");
+
                     b.Property<Guid?>("CreatDe")
                         .HasColumnType("uuid")
                         .HasColumnName("creat_de");
@@ -366,6 +375,9 @@ namespace ErpConstructii.Facturi.Infrastructure.Migrari
 
                     b.HasKey("Id")
                         .HasName("pk_facturi_primite");
+
+                    b.HasIndex("FirmaId", "ContractId")
+                        .HasDatabaseName("ix_facturi_primite_firma_id_contract_id");
 
                     b.HasIndex("FirmaId", "NotaComandaId")
                         .HasDatabaseName("ix_facturi_primite_firma_id_nota_comanda_id");

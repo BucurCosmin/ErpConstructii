@@ -76,9 +76,9 @@ export const module: ModulAplicatie[] = [
     icon: <FileDoneOutlined />,
     grup: 'proiect',
     permisiune: 'contracte.vizualizare',
-    faza: 'Faza 1',
+    implementat: true,
     descriere:
-      'Contracte cu beneficiarul și cu subantreprenorii: valoare, termene, avans, garanție de bună execuție, penalități, acte adiționale și formule de ajustare a prețului pe indici INS.',
+      'Contracte cu subantreprenorii și partenerii: valoare, termene, avans, garanție de bună execuție, acte adiționale, facturile legate. Urmează contractul cu beneficiarul și ajustarea prețurilor.',
     cerinte: ['REQ-CTR-01', 'REQ-CTR-02', 'REQ-CTR-03', 'REQ-CTR-04'],
   },
   {

@@ -28,7 +28,8 @@ public sealed record CorecteazaFacturaCerere(
     string? Referinta,
     string? Observatii,
     string Motiv,
-    Guid? NotaComandaId = null);
+    Guid? NotaComandaId = null,
+    Guid? ContractId = null);
 
 public sealed record CorectieFacturaDto(Guid Id, DateTimeOffset CorectatLa, string CorectatDe, string Motiv, string Rezumat);
 
@@ -70,7 +71,7 @@ internal static class EndpointuriCorectieFacturi
     private static async Task<IResult> Corecteaza(
         Guid id, CorecteazaFacturaCerere cerere, FacturiDbContext db, IEnumerable<IInterogareReceptiiFactura> receptii, IInterogareProiecte proiecte,
         IServiciuParteneri parteneri, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, ICeas ceas,
-        IEnumerable<IInterogareNoteComanda> noteComanda, CancellationToken ct)
+        IEnumerable<IInterogareNoteComanda> noteComanda, IEnumerable<ErpConstructii.Contracte.IInterogareContracte> contracte, CancellationToken ct)
     {
         if (utilizator.UtilizatorId is not { } uid || string.IsNullOrWhiteSpace(utilizator.Nume) || firma.FirmaId is not { } fid)
             return Results.Unauthorized();
@@ -103,7 +104,7 @@ internal static class EndpointuriCorectieFacturi
             cerere.FurnizorDenumire ?? string.Empty, cerere.FurnizorCui, proiect.Id, proiect.Cod,
             (cerere.Linii ?? []).Select(l => new LinieFactura(l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.PretUnitar,
                 l.ValoareFaraTva, l.CotaTva, VerificareTotaluriFactura.TvaLinie(l.ValoareFaraTva, l.CotaTva), l.IntraInStoc)).ToList(),
-            cerere.TotalFaraTva, cerere.TotalTva, cerere.TotalDePlata, cerere.Referinta, cerere.Observatii, vechi.NotaComandaId, vechi.NotaComandaNumar);
+            cerere.TotalFaraTva, cerere.TotalTva, cerere.TotalDePlata, cerere.Referinta, cerere.Observatii, vechi.NotaComandaId, vechi.NotaComandaNumar, vechi.ContractId, vechi.ContractNumar);
 
         // Nota de comandă (D-40): se poate lega sau schimba la corectură (facturile înregistrate înaintea legării obligatorii).
         if (cerere.NotaComandaId is { } notaId && notaId != vechi.NotaComandaId)
@@ -112,6 +113,17 @@ internal static class EndpointuriCorectieFacturi
             if (nota is null)
                 return Results.BadRequest(new { mesaj = "Nota de comandă aleasă nu există." });
             date = date with { NotaComandaId = nota.Id, NotaComandaNumar = nota.Numar };
+        }
+
+        // Contractul (D-41): se poate lega sau schimba la corectură (facturile de servicii înregistrate înainte).
+        if (cerere.ContractId is { } contractId && contractId != vechi.ContractId)
+        {
+            var c = contracte.FirstOrDefault() is { } qc ? await qc.CautaAsync(contractId, ct) : null;
+            if (c is null)
+                return Results.BadRequest(new { mesaj = "Contractul ales nu există." });
+            if (c.ProiectId != date.ProiectId)
+                return Results.BadRequest(new { mesaj = $"Contractul {c.Numar} e pe proiectul {c.ProiectCod}." });
+            date = date with { ContractId = c.Id, ContractNumar = c.Numar };
         }
 
         var receptionate = await ReceptionateAsync(id, receptii, ct);

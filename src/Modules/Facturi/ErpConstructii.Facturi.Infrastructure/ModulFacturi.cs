@@ -1,3 +1,4 @@
+using ErpConstructii.Contracte;
 using ErpConstructii.Aprovizionare;
 using System.IO.Compression;
 using System.Text.Json;
@@ -82,7 +83,14 @@ public sealed record ConfirmaFacturaCerere(
     decimal TotalDePlata,
     string? Referinta,
     string? Observatii,
-    Guid? NotaComandaId = null);
+    Guid? NotaComandaId = null,
+    Guid? ContractId = null);
+
+/// <summary>Contractul propus pentru o factură de servicii (D-41); <paramref name="AcelasiPartener"/> = cu furnizorul facturii.</summary>
+/// <param name="Rest">Cât mai e de facturat din contract înaintea acestei facturi.</param>
+public sealed record ContractFacturaDto(
+    Guid Id, string Numar, string? NumarExtern, DateOnly DataSemnarii, string PartenerDenumire, string Tip, string Obiect, string Moneda,
+    decimal ValoareActualizata, decimal Facturat, decimal Rest, decimal ProcentGarantie, bool TaxareInversa, bool AcelasiPartener);
 
 /// <summary>Nota de comandă propusă pentru factură (D-40); <paramref name="AcelasiFurnizor"/> = de la furnizorul facturii.</summary>
 public sealed record NotaComandaFacturaDto(
@@ -118,7 +126,9 @@ public sealed record FacturaPrimitaDto(
     bool LiniiConcordante = true,
     int Corectii = 0,
     Guid? NotaComandaId = null,
-    string? NotaComandaNumar = null);
+    string? NotaComandaNumar = null,
+    Guid? ContractId = null,
+    string? ContractNumar = null);
 
 public sealed record AnuleazaFacturaCerere(string Motiv);
 
@@ -139,6 +149,7 @@ public sealed class ModulFacturi : IModul
         servicii.AdaugaDbContextModul<FacturiDbContext>(configurare, Nume);
         servicii.AddScoped<IInterogareFacturiPrimite, InterogareFacturiPrimite>();
         servicii.AddScoped<IInterogareFacturiNotaComanda, InterogareFacturiNotaComanda>();
+        servicii.AddScoped<IInterogareFacturiContract, InterogareFacturiContract>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
@@ -162,6 +173,10 @@ public sealed class ModulFacturi : IModul
         g.MapGet("/note-comanda", NoteComandaPentruFactura).WithName("NoteComandaPentruFactura")
             .WithSummary("Notele de comandă emise ale proiectului, cele ale furnizorului facturii primele (legarea facturii, D-40)")
             .Produces<IReadOnlyList<NotaComandaFacturaDto>>().CerePermisiune(creare);
+
+        g.MapGet("/contracte", ContractePentruFactura).WithName("ContractePentruFactura")
+            .WithSummary("Contractele deschise ale proiectului, cele cu furnizorul facturii primele (facturile de servicii, D-41)")
+            .Produces<IReadOnlyList<ContractFacturaDto>>().CerePermisiune(creare);
 
         g.MapPost("/primite/import/interpretare", Interpreteaza)
             .DisableAntiforgery()
@@ -300,6 +315,61 @@ public sealed class ModulFacturi : IModul
             .ToList());
     }
 
+    private static async Task<IResult> ContractePentruFactura(
+        Guid proiectId, Guid? furnizorId, string? furnizor, FacturiDbContext db, IEnumerable<IInterogareContracte> contracte, CancellationToken ct)
+    {
+        if (contracte.FirstOrDefault() is not { } interogare)
+            return Results.Ok(Array.Empty<ContractFacturaDto>());
+        var lista = await interogare.DeschiseAsync(proiectId, ct);
+        var ids = lista.Select(c => (Guid?)c.Id).ToList();
+        var facturat = await db.FacturiPrimite.AsNoTracking().Where(f => ids.Contains(f.ContractId) && !db.Anulari.Any(a => a.FacturaId == f.Id))
+            .GroupBy(f => new { f.ContractId, f.Moneda }).Select(g => new { g.Key.ContractId, g.Key.Moneda, Total = g.Sum(f => f.TotalFaraTva) }).ToListAsync(ct);
+        return Results.Ok(lista
+            .Select(c => (Contract: c, Acelasi: AcelasiPartener(c, furnizorId, furnizor),
+                Facturat: facturat.Where(x => x.ContractId == c.Id && string.Equals(x.Moneda, c.Moneda, StringComparison.OrdinalIgnoreCase)).Sum(x => x.Total)))
+            .OrderByDescending(x => x.Acelasi).ThenByDescending(x => x.Contract.DataSemnarii)
+            .Select(x => new ContractFacturaDto(x.Contract.Id, x.Contract.Numar, x.Contract.NumarExtern, x.Contract.DataSemnarii, x.Contract.PartenerDenumire,
+                x.Contract.Tip.ToString(), x.Contract.Obiect, x.Contract.Moneda, x.Contract.ValoareActualizata, x.Facturat, x.Contract.ValoareActualizata - x.Facturat,
+                x.Contract.ProcentGarantie, x.Contract.TaxareInversa, x.Acelasi))
+            .ToList());
+    }
+
+    private static bool AcelasiPartener(ContractPentruFactura c, Guid? furnizorId, string? furnizor) =>
+        (furnizorId is not null && c.PartenerId == furnizorId) ||
+        (!string.IsNullOrWhiteSpace(furnizor) && DenumireFirma.Cheie(c.PartenerDenumire) == DenumireFirma.Cheie(furnizor));
+
+    /// <summary>
+    /// Contractul facturii (D-41): cel ales (deschis, cu același partener) sau, dacă nu s-a ales, singurul contract deschis al
+    /// proiectului cu furnizorul facturii. Obligatoriu la facturile doar de servicii (fără linii de stoc; nu la storno).
+    /// </summary>
+    private static async Task<(ContractPentruFactura? Contract, string? Eroare)> ContractAsync(
+        Guid? ales, DateFacturaPrimita date, Guid? furnizorId, IEnumerable<IInterogareContracte> contracte, CancellationToken ct)
+    {
+        if (contracte.FirstOrDefault() is not { } interogare)
+            return (null, null);
+        if (ales is { } id)
+        {
+            var c = await interogare.CautaAsync(id, ct);
+            if (c is null)
+                return (null, "Contractul ales nu există.");
+            if (!c.Deschis)
+                return (null, $"Contractul {c.Numar} nu e activ (e ciornă, finalizat sau reziliat): nu se mai leagă facturi de el.");
+            if (!AcelasiPartener(c, furnizorId, date.FurnizorDenumire))
+                return (null, $"Contractul {c.Numar} e cu {c.PartenerDenumire}, iar factura e de la {date.FurnizorDenumire}.");
+            return (c, null);
+        }
+
+        var doarServicii = date.TotalDePlata > 0 && date.Linii.Count > 0 && date.Linii.All(l => !l.IntraInStoc);
+        if (!doarServicii)
+            return (null, null);
+        var aleFurnizorului = (await interogare.DeschiseAsync(date.ProiectId, ct)).Where(c => AcelasiPartener(c, furnizorId, date.FurnizorDenumire)).ToList();
+        return aleFurnizorului.Count == 1
+            ? (aleFurnizorului[0], null)
+            : (null, aleFurnizorului.Count == 0
+                ? $"Factura e de servicii: leag-o de contractul cu {date.FurnizorDenumire}. Proiectul {date.ProiectCod} nu are un contract activ cu acest partener; adaugă-l (Proiect → Contracte) și reîncearcă."
+                : $"Factura e de servicii: alege contractul ({aleFurnizorului.Count} contracte active cu {date.FurnizorDenumire} pe proiect).");
+    }
+
     private static bool AcelasiFurnizor(NotaComandaPentruFactura n, Guid? furnizorId, string? furnizor) =>
         (furnizorId is not null && n.FurnizorId == furnizorId) ||
         (!string.IsNullOrWhiteSpace(furnizor) && DenumireFirma.Cheie(n.FurnizorDenumire) == DenumireFirma.Cheie(furnizor));
@@ -409,6 +479,7 @@ public sealed class ModulFacturi : IModul
         FacturiDbContext db,
         IUtilizatorCurent utilizator,
         IEnumerable<IInterogareNoteComanda> noteComanda,
+        IEnumerable<IInterogareContracte> contracte,
         CancellationToken ct)
     {
         ConfirmaFacturaCerere? cerere;
@@ -509,12 +580,18 @@ public sealed class ModulFacturi : IModul
             return Results.BadRequest(new { mesaj = eroareNota });
         }
 
+        var (contract, eroareContract) = await ContractAsync(cerere.ContractId, dateFactura, furnizorId, contracte, ct);
+        if (eroareContract is not null)
+        {
+            return Results.BadRequest(new { mesaj = eroareContract });
+        }
+
         // Originalul unei facturi anulate (reînregistrată, ex. pe proiectul corect) se refolosește: arhiva păstrează un singur exemplar.
         var documentExistent = await db.Documente.AsNoTracking().Where(d => d.HashSha256 == hash).Select(d => (Guid?)d.Id).FirstOrDefaultAsync(ct);
         var document = documentExistent is null ? new DocumentFactura(sursa.NumeFisier, TipContinut(sursa.Extensie), sursa.Continut) : null;
         var documentId = documentExistent ?? document!.Id;
         var rezultat = FacturaPrimita.Inregistreaza(
-            dateFactura with { FurnizorId = furnizorId, NotaComandaId = nota?.Id, NotaComandaNumar = nota?.Numar },
+            dateFactura with { FurnizorId = furnizorId, NotaComandaId = nota?.Id, NotaComandaNumar = nota?.Numar, ContractId = contract?.Id, ContractNumar = contract?.Numar },
             esteXml ? SursaFactura.EFactura : SursaFactura.Pdf,
             esteXml ? documentId : null,
             esteXml ? null : documentId,
@@ -696,5 +773,6 @@ public sealed class ModulFacturi : IModul
         anulare is null ? "Inregistrata" : "Anulata", f.EsteStorno,
         f.DocumentXmlId is not null, f.DocumentPdfId is not null, f.InregistrataDeNume, f.CreatLa,
         anulare is null ? null : $"{anulare.Motiv} ({anulare.AnulataDeNume}, {anulare.AnulataLa:dd.MM.yyyy})", f.Linii,
-        LiniiConcordante: RaportFacturi.LiniiConcordante(f), NotaComandaId: f.NotaComandaId, NotaComandaNumar: f.NotaComandaNumar);
+        LiniiConcordante: RaportFacturi.LiniiConcordante(f), NotaComandaId: f.NotaComandaId, NotaComandaNumar: f.NotaComandaNumar,
+        ContractId: f.ContractId, ContractNumar: f.ContractNumar);
 }

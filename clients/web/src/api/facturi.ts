@@ -48,7 +48,41 @@ export interface FacturaPrimita {
   /** Nota de comandă a achiziției (D-40). */
   notaComandaId: string | null
   notaComandaNumar: string | null
+  /** Contractul cu partenerul, la facturile de servicii (D-41). */
+  contractId: string | null
+  contractNumar: string | null
 }
+
+/** Contractul propus pentru o factură de servicii (D-41); cele cu furnizorul facturii sunt primele. */
+export interface ContractFactura {
+  id: string
+  numar: string
+  numarExtern: string | null
+  dataSemnarii: string
+  partenerDenumire: string
+  tip: string
+  obiect: string
+  moneda: string
+  valoareActualizata: number
+  facturat: number
+  /** Cât mai e de facturat, înaintea acestei facturi. */
+  rest: number
+  procentGarantie: number
+  taxareInversa: boolean
+  acelasiPartener: boolean
+}
+
+export const useContracteFactura = (proiectId?: string, furnizorId?: string | null, furnizor?: string) =>
+  useQuery({
+    queryKey: ['facturi', 'contracte', proiectId, furnizorId, furnizor],
+    queryFn: () => {
+      const p = new URLSearchParams({ proiectId: proiectId! })
+      if (furnizorId) p.set('furnizorId', furnizorId)
+      if (furnizor) p.set('furnizor', furnizor)
+      return api.get<ContractFactura[]>(`/api/facturi/contracte?${p.toString()}`)
+    },
+    enabled: !!proiectId,
+  })
 
 /** Nota de comandă propusă pentru factură (D-40); cele de la furnizorul facturii sunt primele. */
 export interface NotaComandaFactura {
@@ -153,6 +187,8 @@ export interface ConfirmaFactura {
   observatii: string | null
   /** Obligatorie la facturile cu materiale de stoc (D-40); lipsă = singura notă a furnizorului pe proiect, dacă există. */
   notaComandaId: string | null
+  /** Obligatoriu la facturile doar de servicii (D-41); lipsă = singurul contract activ cu furnizorul pe proiect, dacă există. */
+  contractId: string | null
 }
 
 export const cheiFacturi = { primite: ['facturi', 'primite'] as const }
@@ -217,6 +253,8 @@ export interface CorectieFacturaCerere {
   motiv: string
   /** Nota de comandă (D-40); null = rămâne cea actuală. */
   notaComandaId?: string | null
+  /** Contractul (D-41); null = rămâne cel actual. */
+  contractId?: string | null
 }
 
 export interface StareCorectieFactura {

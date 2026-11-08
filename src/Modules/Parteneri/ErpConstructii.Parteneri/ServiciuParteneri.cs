@@ -5,7 +5,7 @@ using ErpConstructii.SharedKernel;
 namespace ErpConstructii.Parteneri;
 
 /// <summary>Ce au nevoie alte module despre un partener (ex. facturile primite: furnizorul după CUI).</summary>
-public sealed record PartenerRezumat(Guid Id, string Denumire, string? Cui, bool PlatitorTva, bool EsteFurnizor, bool Activ);
+public sealed record PartenerRezumat(Guid Id, string Denumire, string? Cui, bool PlatitorTva, bool EsteFurnizor, bool Activ, bool EsteSubantreprenor = false);
 
 /// <summary>
 /// Contractul public al modulului Parteneri pentru celelalte module (regula 1: fără referință la infrastructura lui).
@@ -13,6 +13,12 @@ public sealed record PartenerRezumat(Guid Id, string Denumire, string? Cui, bool
 /// </summary>
 public interface IServiciuParteneri
 {
+    /// <summary>Partenerul cu Id-ul dat (ex. partenerul ales pe un contract), dacă există.</summary>
+    Task<PartenerRezumat?> CautaDupaIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Partenerii activi ai firmei (furnizori, subantreprenori, clienți), în ordinea denumirii.</summary>
+    Task<IReadOnlyList<PartenerRezumat>> ActiviAsync(CancellationToken ct = default);
+
     /// <summary>Partenerul cu CUI-ul dat (cu sau fără „RO”), dacă există în nomenclatorul firmei.</summary>
     Task<PartenerRezumat?> CautaDupaCuiAsync(string cui, CancellationToken ct = default);
 

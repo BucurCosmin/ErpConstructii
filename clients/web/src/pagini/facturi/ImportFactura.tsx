@@ -26,7 +26,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
 import type { CampCitit, Certitudine } from '../../api/aprovizionare'
-import { useImportaFactura, useInterpreteazaFactura, useNoteComandaFactura } from '../../api/facturi'
+import { useContracteFactura, useImportaFactura, useInterpreteazaFactura, useNoteComandaFactura } from '../../api/facturi'
 import type { FacturaPrimita, InterpretareFactura, PaginaDocument, TipPagina } from '../../api/facturi'
 import { ImportNecesarExtern } from '../aprovizionare/ImportNecesarExtern'
 import { ImportNotaComanda } from '../aprovizionare/ImportNotaComanda'
@@ -61,6 +61,8 @@ interface ValoriFormular {
   observatii?: string
   /** Nota de comandă a achiziției (D-40). */
   notaComandaId?: string
+  /** Contractul cu partenerul, la facturile de servicii (D-41). */
+  contractId?: string
   linii: LinieFormular[]
   totalFaraTva?: number | null
   totalTva?: number | null
@@ -107,6 +109,18 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
     valori?.furnizorDenumire ?? rezultat?.furnizorDenumire.valoare ?? undefined)
   const cuMateriale = (valori?.linii ?? []).some((l) => l?.intraInStoc !== false) && Number(valori?.totalDePlata ?? rezultat?.totalDePlata.valoare ?? 0) > 0
   const notaAleasa = noteComanda.data?.find((n) => n.id === valori?.notaComandaId)
+  // Contractul (D-41): obligatoriu când factura are doar servicii (nicio linie de stoc).
+  const contracte = useContracteFactura(valori?.proiectId, rezultat?.furnizorInNomenclator?.id,
+    valori?.furnizorDenumire ?? rezultat?.furnizorDenumire.valoare ?? undefined)
+  const doarServicii = (valori?.linii ?? []).length > 0 && (valori?.linii ?? []).every((l) => l?.intraInStoc === false)
+    && Number(valori?.totalDePlata ?? rezultat?.totalDePlata.valoare ?? 0) > 0
+  const contractAles = contracte.data?.find((c) => c.id === valori?.contractId)
+  const totalFactura = Number(valori?.totalFaraTva ?? rezultat?.totalFaraTva.valoare ?? 0)
+  useEffect(() => {
+    if (!contracte.data || form.getFieldValue('contractId')) return
+    const aleFurnizorului = contracte.data.filter((c) => c.acelasiPartener)
+    if (aleFurnizorului.length === 1) form.setFieldValue('contractId', aleFurnizorului[0].id)
+  }, [contracte.data, form])
   useEffect(() => {
     if (!noteComanda.data || form.getFieldValue('notaComandaId')) return
     const aleFurnizorului = noteComanda.data.filter((n) => n.acelasiFurnizor)
@@ -220,12 +234,13 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
           referinta: v.referinta?.trim() || null,
           observatii: v.observatii?.trim() || null,
           notaComandaId: v.notaComandaId ?? null,
+          contractId: v.contractId ?? null,
         },
       })
       setCreata(f)
       onImportat?.(`Factura ${f.numar}`)
       message.success(`Factura ${f.numar} de la ${f.furnizorDenumire} a fost înregistrată pe ${f.proiectCod}` +
-        `${f.notaComandaNumar ? `, pe nota de comandă ${f.notaComandaNumar}` : ''}.` +
+        `${f.notaComandaNumar ? `, pe nota de comandă ${f.notaComandaNumar}` : ''}${f.contractNumar ? `, pe contractul ${f.contractNumar}` : ''}.` +
         `${notaAleasa && notaAleasa.avize > 0 ? ' Marfa a venit cu aviz: leag-o de recepțiile pe aviz în Stocuri → Recepții („Leagă de avize”).' : ''}`, 8)
     } catch (e) {
       message.error((e as Error).message)
@@ -370,7 +385,7 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                   disabled={!poateCrea}
                   loading={proiecte.isLoading}
                   options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
-                  onChange={() => form.setFieldValue('notaComandaId', undefined)}
+                  onChange={() => form.setFieldsValue({ notaComandaId: undefined, contractId: undefined })}
                 />
               </Form.Item>
               <Form.Item
@@ -391,6 +406,30 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                   options={noteComanda.data?.map((n) => ({
                     value: n.id,
                     label: `${n.acelasiFurnizor ? '★ ' : ''}${n.numar}${n.numarExtern ? ` (nr. ${n.numarExtern})` : ''} · ${n.furnizorDenumire} · ${dayjs(n.data).format('DD.MM.YYYY')}${n.avize > 0 ? ` · ${n.avize} aviz(e)` : ''} · ${n.materiale}`,
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
+                name="contractId"
+                label="Contractul cu partenerul (servicii, subantreprenoriat)"
+                style={{ marginTop: 12, marginBottom: 0 }}
+                rules={[{ required: doarServicii, message: 'Factura e doar de servicii: alege contractul cu partenerul (adaugă-l în Proiect → Contracte dacă lipsește).' }]}
+                {...(contractAles && totalFactura > contractAles.rest
+                  ? { validateStatus: 'warning' as const, help: `Factura (${formatLei(totalFactura)}) depășește restul de facturat din contract (${formatLei(contractAles.rest)} ${contractAles.moneda}): e nevoie de un act adițional.` }
+                  : {})}
+                extra={contractAles
+                  ? `Rest de facturat: ${formatLei(contractAles.rest)} ${contractAles.moneda} din ${formatLei(contractAles.valoareActualizata)}${contractAles.procentGarantie > 0 ? ` · garanție reținută ${formatLei(Math.round(totalFactura * contractAles.procentGarantie * 100) / 100)} (${(contractAles.procentGarantie * 100).toLocaleString('ro-RO')}%)` : ''}${contractAles.taxareInversa ? ' · taxare inversă' : ''}`
+                  : !doarServicii ? 'Opțional: factura are și materiale de stoc.' : undefined}
+              >
+                <Select
+                  allowClear
+                  showSearch={{ optionFilterProp: 'label' }}
+                  placeholder={valori?.proiectId ? (contracte.data?.length ? 'Alege contractul' : 'Proiectul nu are contracte active') : 'Alege întâi proiectul'}
+                  disabled={!poateCrea || !valori?.proiectId}
+                  loading={contracte.isLoading}
+                  options={contracte.data?.map((c) => ({
+                    value: c.id,
+                    label: `${c.acelasiPartener ? '★ ' : ''}${c.numar}${c.numarExtern ? ` (nr. ${c.numarExtern})` : ''} · ${c.partenerDenumire} · ${c.obiect} · rest ${formatLei(c.rest)} ${c.moneda}`,
                   }))}
                 />
               </Form.Item>

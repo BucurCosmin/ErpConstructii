@@ -58,7 +58,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-CTR-01 | Contract cu beneficiarul: valoare, termene, avans, garanție de bună execuție (reținere sau scrisoare), penalități. | 1 | ⬜ |
 | REQ-CTR-02 | Acte adiționale cu deviz propriu (lucrări suplimentare / renunțări). | 1 | ⬜ |
 | REQ-CTR-03 | Formulă de ajustare a prețului pe indici INS, per contract (parte fixă + ponderi); înghețată după aprobare. | 1 | ✅ (calcul) |
-| REQ-CTR-04 | Contracte cu subantreprenorii, legate de categoriile subcontractate. | 2 | ⬜ |
+| REQ-CTR-04 | Contracte cu subantreprenorii, legate de categoriile subcontractate. | 2 | 🟡 (contracte, acte adiționale, facturi legate; fără legătura cu devizul) |
 | REQ-SIT-01 | Situație lunară: cantități pe articole, cumulat, rest de executat; atașamente și PV de lucrări ascunse. | 1 | ⬜ |
 | REQ-SIT-02 | Aprobarea dirigintelui / beneficiarului în afara sistemului (PDF semnat), înregistrată de managerul de proiect cu documentul atașat. | 1 | ⬜ |
 | REQ-SIT-03 | Calcul: valoare, ajustare, recuperare avans, reținere garanție, TVA sau taxare inversă, de încasat. | 1 | ✅ (calcul) |

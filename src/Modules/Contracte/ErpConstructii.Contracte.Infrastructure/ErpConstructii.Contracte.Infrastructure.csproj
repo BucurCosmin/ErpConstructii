@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
+    <ProjectReference Include="..\ErpConstructii.Contracte\ErpConstructii.Contracte.csproj" />
+    <!-- Contractele publice ale altor module (regula 1); NU infrastructura lor. -->
+    <ProjectReference Include="..\..\Identitate\ErpConstructii.Identitate\ErpConstructii.Identitate.csproj" />
+    <ProjectReference Include="..\..\Proiecte\ErpConstructii.Proiecte\ErpConstructii.Proiecte.csproj" />
+    <ProjectReference Include="..\..\Parteneri\ErpConstructii.Parteneri\ErpConstructii.Parteneri.csproj" />
+  </ItemGroup>
+</Project>
