@@ -82,7 +82,7 @@ export function RegistruNir({ poateAnula, poateEdita }: { poateAnula: boolean; p
     if (p) parti.push(`proiectul ${p.cod}`)
     if (filtre.cauta) parti.push(`„${filtre.cauta}”`)
     if (filtre.material) parti.push(`materialul „${filtre.material}”`)
-    if (filtre.stare) parti.push({ Activ: 'doar active', Stornat: 'doar stornate', CuDiferente: 'cu diferențe', Corectat: 'corectate' }[filtre.stare])
+    if (filtre.stare) parti.push({ Activ: 'doar active', Stornat: 'doar stornate', CuDiferente: 'cu diferențe', Corectat: 'corectate', FaraFactura: 'pe aviz, fără factură' }[filtre.stare])
     if (filtre.facturaId && lista[0]) parti.push(`factura ${lista[0].facturaNumar}`)
     return parti.join(', ')
   }
@@ -143,7 +143,8 @@ export function RegistruNir({ poateAnula, poateEdita }: { poateAnula: boolean; p
           </Form.Item>
           <Form.Item name="stare">
             <Select allowClear placeholder="Orice stare" style={{ width: 150 }}
-              options={[{ value: 'Activ', label: 'Active' }, { value: 'Stornat', label: 'Stornate' }, { value: 'CuDiferente', label: 'Cu diferențe' }, { value: 'Corectat', label: 'Corectate' }]} />
+              options={[{ value: 'Activ', label: 'Active' }, { value: 'Stornat', label: 'Stornate' }, { value: 'CuDiferente', label: 'Cu diferențe' }, { value: 'Corectat', label: 'Corectate' },
+                { value: 'FaraFactura', label: 'Pe aviz, fără factură' }]} />
           </Form.Item>
           <Button type="primary" htmlType="submit">Filtrează</Button>
         </Form>
@@ -214,7 +215,19 @@ export function RegistruNir({ poateAnula, poateEdita }: { poateAnula: boolean; p
           columns={[
             { title: 'Număr', dataIndex: 'numar', width: 120, sorter: (a, b) => a.numar.localeCompare(b.numar) },
             { title: 'Data', dataIndex: 'data', width: 95, render: data, sorter: (a, b) => a.data.localeCompare(b.data) },
-            { title: 'Factura', dataIndex: 'facturaNumar', width: 140, ellipsis: { showTitle: true }, render: (_, n) => <LinkFactura id={n.facturaId} numar={n.facturaNumar} /> },
+            {
+              title: 'Aviz / factura', dataIndex: 'facturaNumar', width: 190, ellipsis: { showTitle: true },
+              render: (_, n) => (
+                <>
+                  {n.avizNumar && (
+                    <Tooltip title={n.asteaptaFactura ? 'Recepție pe aviz: valoarea e provizorie până vine factura (legată de aceeași notă de comandă).' : 'Marfa a venit cu aviz; factura i-a dat prețurile.'}>
+                      <Tag color={n.asteaptaFactura ? 'orange' : 'cyan'}>aviz {n.avizNumar}</Tag>
+                    </Tooltip>
+                  )}
+                  {n.facturaNumar ? <LinkFactura id={n.facturaId} numar={n.facturaNumar} /> : n.avizNumar && <Typography.Text type="warning">fără factură</Typography.Text>}
+                </>
+              ),
+            },
             {
               title: 'Furnizor', width: 230, sorter: (a, b) => a.furnizorDenumire.localeCompare(b.furnizorDenumire),
               render: (_, n) => (
@@ -261,7 +274,7 @@ export function RegistruNir({ poateAnula, poateEdita }: { poateAnula: boolean; p
 
       <CorectieNir nir={deCorectat} onInchide={() => setDeCorectat(undefined)} />
 
-      <Modal open={!!deStornat} title={deStornat && `Stornează ${deStornat.numar} (factura ${deStornat.facturaNumar})`} okText="Stornează" okButtonProps={{ danger: true }}
+      <Modal open={!!deStornat} title={deStornat && `Stornează ${deStornat.numar} (${deStornat.facturaNumar ? `factura ${deStornat.facturaNumar}` : `avizul ${deStornat.avizNumar}`})`} okText="Stornează" okButtonProps={{ danger: true }}
         cancelText="Renunță" onCancel={() => setDeStornat(undefined)} onOk={() => formStorno.submit()} confirmLoading={storneaza.isPending} destroyOnHidden>
         <Alert type="warning" showIcon style={{ marginBottom: 12 }}
           title="Materialele recepționate ies din depozit la valoarea cu care au intrat. Dacă factura nu e anulată, va putea fi recepționată din nou." />

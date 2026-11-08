@@ -26,7 +26,8 @@ public sealed record DocumentCitit(
     List<LinieCitita>? Linii = null,
     string? Gestiune = null,
     string? Primitor = null,
-    int? Zona = null)
+    int? Zona = null,
+    string? Comanda = null)
 {
     /// <summary>Câmpurile marcate „de verificat” / „de completat” de interpretor (doar în raport).</summary>
     [System.Text.Json.Serialization.JsonIgnore]
@@ -159,6 +160,24 @@ public sealed class Citire(string radacina, string folderCache, bool faraCache, 
                     Certitudini = Certitudini(("numar", b.Numar.Certitudine), ("data", b.Data.Certitudine), ("lucrare", b.Lucrare.Certitudine),
                         ("totalFaraTva", b.Total.Certitudine)),
                     Probleme = b.Probleme.Select(p => p.Mesaj).ToList(),
+                };
+            }
+
+            case TipDocumentImport.Aviz:
+            {
+                var a = InterpretorAviz.Interpreteaza(doc, cuiFirma);
+                return baza with
+                {
+                    Numar = a.NumarExtern.Valoare,
+                    Data = Data(a.Data),
+                    Furnizor = a.FurnizorDenumire.Valoare,
+                    FurnizorCui = a.FurnizorCui.Valoare,
+                    Lucrare = a.Lucrare.Valoare,
+                    Comanda = a.ReferintaComanda,
+                    Linii = a.Linii.Select(l => new LinieCitita(l.Denumire.Valoare, l.UnitateMasura.Valoare, Suma(l.Cantitate), null, null, null)).ToList(),
+                    Certitudini = Certitudini(("numar", a.NumarExtern.Certitudine), ("data", a.Data.Certitudine),
+                        ("furnizor", a.FurnizorDenumire.Certitudine), ("furnizorCui", a.FurnizorCui.Certitudine), ("lucrare", a.Lucrare.Certitudine)),
+                    Probleme = a.Probleme.Select(p => p.Mesaj).ToList(),
                 };
             }
 

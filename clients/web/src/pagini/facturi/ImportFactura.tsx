@@ -26,7 +26,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
 import type { CampCitit, Certitudine } from '../../api/aprovizionare'
-import { useImportaFactura, useInterpreteazaFactura } from '../../api/facturi'
+import { useImportaFactura, useInterpreteazaFactura, useNoteComandaFactura } from '../../api/facturi'
 import type { FacturaPrimita, InterpretareFactura, PaginaDocument, TipPagina } from '../../api/facturi'
 import { ImportNecesarExtern } from '../aprovizionare/ImportNecesarExtern'
 import { ImportNotaComanda } from '../aprovizionare/ImportNotaComanda'
@@ -59,6 +59,8 @@ interface ValoriFormular {
   adaugaFurnizor: boolean
   referinta?: string
   observatii?: string
+  /** Nota de comandă a achiziției (D-40). */
+  notaComandaId?: string
   linii: LinieFormular[]
   totalFaraTva?: number | null
   totalTva?: number | null
@@ -100,6 +102,16 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
   const [creata, setCreata] = useState<FacturaPrimita>()
   const urlCurent = useRef<string | undefined>(undefined)
   const valori = Form.useWatch([], form) as ValoriFormular | undefined
+  // Nota de comandă (D-40): obligatorie când factura are materiale de stoc; propusă dintre notele proiectului, ale furnizorului întâi.
+  const noteComanda = useNoteComandaFactura(valori?.proiectId, rezultat?.furnizorInNomenclator?.id,
+    valori?.furnizorDenumire ?? rezultat?.furnizorDenumire.valoare ?? undefined)
+  const cuMateriale = (valori?.linii ?? []).some((l) => l?.intraInStoc !== false) && Number(valori?.totalDePlata ?? rezultat?.totalDePlata.valoare ?? 0) > 0
+  const notaAleasa = noteComanda.data?.find((n) => n.id === valori?.notaComandaId)
+  useEffect(() => {
+    if (!noteComanda.data || form.getFieldValue('notaComandaId')) return
+    const aleFurnizorului = noteComanda.data.filter((n) => n.acelasiFurnizor)
+    if (aleFurnizorului.length === 1) form.setFieldValue('notaComandaId', aleFurnizorului[0].id)
+  }, [noteComanda.data, form])
   const [pagina, setPagina] = useState<number>()
   const [importDinDosar, setImportDinDosar] = useState<'NotaComanda' | 'NecesarMateriale'>()
   const citit = useRef<File | undefined>(undefined)
@@ -207,11 +219,14 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
           totalDePlata: Number(v.totalDePlata ?? 0),
           referinta: v.referinta?.trim() || null,
           observatii: v.observatii?.trim() || null,
+          notaComandaId: v.notaComandaId ?? null,
         },
       })
       setCreata(f)
       onImportat?.(`Factura ${f.numar}`)
-      message.success(`Factura ${f.numar} de la ${f.furnizorDenumire} a fost înregistrată pe ${f.proiectCod}.`)
+      message.success(`Factura ${f.numar} de la ${f.furnizorDenumire} a fost înregistrată pe ${f.proiectCod}` +
+        `${f.notaComandaNumar ? `, pe nota de comandă ${f.notaComandaNumar}` : ''}.` +
+        `${notaAleasa && notaAleasa.avize > 0 ? ' Marfa a venit cu aviz: leag-o de recepțiile pe aviz în Stocuri → Recepții („Leagă de avize”).' : ''}`, 8)
     } catch (e) {
       message.error((e as Error).message)
     }
@@ -355,6 +370,28 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                   disabled={!poateCrea}
                   loading={proiecte.isLoading}
                   options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                  onChange={() => form.setFieldValue('notaComandaId', undefined)}
+                />
+              </Form.Item>
+              <Form.Item
+                name="notaComandaId"
+                label="Nota de comandă a achiziției"
+                style={{ marginTop: 12, marginBottom: 0 }}
+                rules={[{ required: cuMateriale, message: 'Factura are materiale de stoc: alege nota de comandă (sau emite-o / importă avizul întâi).' }]}
+                extra={notaAleasa && notaAleasa.avize > 0
+                  ? `Nota are ${notaAleasa.avize} aviz(e): marfa a fost deja livrată; după înregistrare leagă factura de recepțiile pe aviz (Stocuri → Recepții).`
+                  : !cuMateriale ? 'Opțională: factura nu are materiale de stoc.' : undefined}
+              >
+                <Select
+                  allowClear
+                  showSearch={{ optionFilterProp: 'label' }}
+                  placeholder={valori?.proiectId ? (noteComanda.data?.length ? 'Alege nota de comandă' : 'Proiectul nu are note de comandă emise') : 'Alege întâi proiectul'}
+                  disabled={!poateCrea || !valori?.proiectId}
+                  loading={noteComanda.isLoading}
+                  options={noteComanda.data?.map((n) => ({
+                    value: n.id,
+                    label: `${n.acelasiFurnizor ? '★ ' : ''}${n.numar}${n.numarExtern ? ` (nr. ${n.numarExtern})` : ''} · ${n.furnizorDenumire} · ${dayjs(n.data).format('DD.MM.YYYY')}${n.avize > 0 ? ` · ${n.avize} aviz(e)` : ''} · ${n.materiale}`,
+                  }))}
                 />
               </Form.Item>
             </Card>

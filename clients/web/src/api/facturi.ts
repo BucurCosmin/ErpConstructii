@@ -45,7 +45,37 @@ export interface FacturaPrimita {
   liniiConcordante: boolean
   /** Câte corecturi are factura (istoric). */
   corectii: number
+  /** Nota de comandă a achiziției (D-40). */
+  notaComandaId: string | null
+  notaComandaNumar: string | null
 }
+
+/** Nota de comandă propusă pentru factură (D-40); cele de la furnizorul facturii sunt primele. */
+export interface NotaComandaFactura {
+  id: string
+  numar: string
+  numarExtern: string | null
+  data: string
+  proiectId: string
+  proiectCod: string
+  furnizorDenumire: string
+  /** Avize cu marfă venită înaintea facturii. */
+  avize: number
+  materiale: string
+  acelasiFurnizor: boolean
+}
+
+export const useNoteComandaFactura = (proiectId?: string, furnizorId?: string | null, furnizor?: string) =>
+  useQuery({
+    queryKey: ['facturi', 'note-comanda', proiectId, furnizorId, furnizor],
+    queryFn: () => {
+      const p = new URLSearchParams({ proiectId: proiectId! })
+      if (furnizorId) p.set('furnizorId', furnizorId)
+      if (furnizor) p.set('furnizor', furnizor)
+      return api.get<NotaComandaFactura[]>(`/api/facturi/note-comanda?${p.toString()}`)
+    },
+    enabled: !!proiectId,
+  })
 
 export interface FiltreFacturi {
   proiectId?: string
@@ -121,6 +151,8 @@ export interface ConfirmaFactura {
   totalDePlata: number
   referinta: string | null
   observatii: string | null
+  /** Obligatorie la facturile cu materiale de stoc (D-40); lipsă = singura notă a furnizorului pe proiect, dacă există. */
+  notaComandaId: string | null
 }
 
 export const cheiFacturi = { primite: ['facturi', 'primite'] as const }
@@ -183,6 +215,8 @@ export interface CorectieFacturaCerere {
   referinta: string | null
   observatii: string | null
   motiv: string
+  /** Nota de comandă (D-40); null = rămâne cea actuală. */
+  notaComandaId?: string | null
 }
 
 export interface StareCorectieFactura {

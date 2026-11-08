@@ -1,3 +1,4 @@
+using ErpConstructii.Aprovizionare;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure.Autorizare;
 using ErpConstructii.Parteneri;
@@ -26,7 +27,8 @@ public sealed record CorecteazaFacturaCerere(
     decimal TotalDePlata,
     string? Referinta,
     string? Observatii,
-    string Motiv);
+    string Motiv,
+    Guid? NotaComandaId = null);
 
 public sealed record CorectieFacturaDto(Guid Id, DateTimeOffset CorectatLa, string CorectatDe, string Motiv, string Rezumat);
 
@@ -67,7 +69,8 @@ internal static class EndpointuriCorectieFacturi
 
     private static async Task<IResult> Corecteaza(
         Guid id, CorecteazaFacturaCerere cerere, FacturiDbContext db, IEnumerable<IInterogareReceptiiFactura> receptii, IInterogareProiecte proiecte,
-        IServiciuParteneri parteneri, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, ICeas ceas, CancellationToken ct)
+        IServiciuParteneri parteneri, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, ICeas ceas,
+        IEnumerable<IInterogareNoteComanda> noteComanda, CancellationToken ct)
     {
         if (utilizator.UtilizatorId is not { } uid || string.IsNullOrWhiteSpace(utilizator.Nume) || firma.FirmaId is not { } fid)
             return Results.Unauthorized();
@@ -100,7 +103,16 @@ internal static class EndpointuriCorectieFacturi
             cerere.FurnizorDenumire ?? string.Empty, cerere.FurnizorCui, proiect.Id, proiect.Cod,
             (cerere.Linii ?? []).Select(l => new LinieFactura(l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.PretUnitar,
                 l.ValoareFaraTva, l.CotaTva, VerificareTotaluriFactura.TvaLinie(l.ValoareFaraTva, l.CotaTva), l.IntraInStoc)).ToList(),
-            cerere.TotalFaraTva, cerere.TotalTva, cerere.TotalDePlata, cerere.Referinta, cerere.Observatii);
+            cerere.TotalFaraTva, cerere.TotalTva, cerere.TotalDePlata, cerere.Referinta, cerere.Observatii, vechi.NotaComandaId, vechi.NotaComandaNumar);
+
+        // Nota de comandă (D-40): se poate lega sau schimba la corectură (facturile înregistrate înaintea legării obligatorii).
+        if (cerere.NotaComandaId is { } notaId && notaId != vechi.NotaComandaId)
+        {
+            var nota = noteComanda.FirstOrDefault() is { } q ? await q.CautaAsync(notaId, ct) : null;
+            if (nota is null)
+                return Results.BadRequest(new { mesaj = "Nota de comandă aleasă nu există." });
+            date = date with { NotaComandaId = nota.Id, NotaComandaNumar = nota.Numar };
+        }
 
         var receptionate = await ReceptionateAsync(id, receptii, ct);
         var r = f.Corecteaza(date, cerere.Motiv ?? string.Empty, receptionate, uid, utilizator.Nume, ceas.Acum);

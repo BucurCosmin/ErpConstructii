@@ -1,4 +1,4 @@
-import { DownloadOutlined, EditOutlined, EyeOutlined, FilePdfOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { DownloadOutlined, EditOutlined, EyeOutlined, FilePdfOutlined, LinkOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Drawer, Flex, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
@@ -20,7 +20,8 @@ import { deschidePdf } from '../../util/pdf'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei } from '../../util/format'
 import { LinkFactura } from '../../componente/LinkFactura'
-import { PrevizualizareFactura } from './PrevizualizareFactura'
+import { FacturareAviz } from './FacturareAviz'
+import { PrevizualizareAviz, PrevizualizareFactura } from './PrevizualizareFactura'
 import { exportaCsv, ProvenientaStoc } from './ProvenientaStoc'
 import { RegistruNir } from './RegistruNir'
 import { ReceptieFactura, type ModReceptie } from './ReceptieFactura'
@@ -52,10 +53,17 @@ function TabelLoturi({ loturi }: { loturi: LotStoc[] }) {
       locale={{ emptyText: 'Fără proveniență (material intrat fără NIR).' }}
       columns={[
         {
-          title: 'Factura', width: 210,
-          render: (_, l) => l.facturaNumar
-            ? <><LinkFactura id={l.facturaId} numar={l.facturaNumar} /> <Typography.Text type="secondary">din {dayjs(l.facturaData).format('DD.MM.YYYY')}</Typography.Text></>
-            : <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag>,
+          title: 'Aviz / factura', width: 260,
+          render: (_, l) => (
+            <>
+              {l.avizNumar && <Tag color="cyan">aviz {l.avizNumar}</Tag>}
+              {l.facturaNumar
+                ? <><LinkFactura id={l.facturaId} numar={l.facturaNumar} /> <Typography.Text type="secondary">din {dayjs(l.facturaData).format('DD.MM.YYYY')}</Typography.Text></>
+                : l.avizNumar
+                ? <Tag color="orange">fără factură</Tag>
+                : <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag>}
+            </>
+          ),
         },
         { title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: { showTitle: true } },
         { title: 'NIR / intrat la', width: 200, render: (_, l) => <>{l.documentNumar} <Typography.Text type="secondary">din {dayjs(l.dataIntrare).format('DD.MM.YYYY')}</Typography.Text></> },
@@ -136,10 +144,10 @@ function TabelSold({ randuri, incarcare, cuGestiune, filtre }: {
             render: (_, r) => {
               const l = peMaterial.get(cheie(r)) ?? []
               if (loturi.isLoading) return <Typography.Text type="secondary">…</Typography.Text>
-              const facturi = [...new Set(l.map((x) => x.facturaNumar ?? (x.origine === 'Inventar' ? 'plus inventar' : 'transfer')))]
+              const facturi = [...new Set(l.map((x) => x.facturaNumar ?? (x.avizNumar ? `aviz ${x.avizNumar}` : x.origine === 'Inventar' ? 'plus inventar' : 'transfer')))]
               if (facturi.length === 0) return null
               return (
-                <Tooltip title={l.map((x, i) => <div key={i}>{formatCantitate(x.cantitate)} {x.unitateMasura}: {x.facturaNumar ?? '—'} → {x.documentNumar}</div>)}>
+                <Tooltip title={l.map((x, i) => <div key={i}>{formatCantitate(x.cantitate)} {x.unitateMasura}: {x.avizNumar ? `aviz ${x.avizNumar}${x.facturaNumar ? ' + ' : ' (fără factură)'}` : ''}{x.facturaNumar ?? (x.avizNumar ? '' : '—')} → {x.documentNumar}</div>)}>
                   <span>{facturi[0]} → {l[0].documentNumar}{facturi.length > 1 && <Typography.Text type="secondary"> +{facturi.length - 1}</Typography.Text>}</span>
                 </Tooltip>
               )
@@ -239,13 +247,13 @@ function MaterialeInSantier() {
 }
 
 /** Liniile de stoc ale facturii, cu ce s-a primit deja și ce mai e de primit. */
-function LiniiFacturaDeReceptionat({ facturaId }: { facturaId: string }) {
-  const p = usePropunereReceptie(facturaId)
+function LiniiFacturaDeReceptionat({ facturaId, tip = 'Factura' }: { facturaId: string; tip?: 'Factura' | 'Aviz' }) {
+  const p = usePropunereReceptie(facturaId, tip)
   return (
     <Table size="small" pagination={false} loading={p.isLoading} rowKey="indexFactura" dataSource={p.data?.linii}
       columns={[
-        { title: 'Material pe factură', dataIndex: 'denumire' },
-        { title: 'Facturat', width: 120, align: 'right', render: (_, l) => `${formatCantitate(l.cantitate)} ${l.unitateMasura}` },
+        { title: tip === 'Aviz' ? 'Material pe aviz' : 'Material pe factură', dataIndex: 'denumire' },
+        { title: tip === 'Aviz' ? 'Pe aviz' : 'Facturat', width: 120, align: 'right', render: (_, l) => `${formatCantitate(l.cantitate)} ${l.unitateMasura}` },
         { title: 'Preț', dataIndex: 'pretUnitar', width: 110, align: 'right', render: bani },
         { title: 'Recepționat', width: 120, align: 'right', render: (_, l) => (l.receptionat > 0 ? formatCantitate(l.receptionat) : '—') },
         {
@@ -277,6 +285,12 @@ function Receptii({ poateCrea, poateAnula, poateEdita }: { poateCrea: boolean; p
   )
 }
 
+/** Originalul documentului de recepționat: factura sau avizul. */
+function PrevizualizareDocument({ id, tip }: { id: string; tip: 'Factura' | 'Aviz' }) {
+  const p = usePropunereReceptie(id, tip)
+  return tip === 'Aviz' ? <PrevizualizareAviz proiectId={p.data?.proiectId} avizId={id} inaltime="70vh" /> : <PrevizualizareFactura facturaId={id} inaltime="70vh" />
+}
+
 function DeReceptionat({ poateCrea }: { poateCrea: boolean }) {
   const [filtre, setFiltre] = useState<FiltreReceptii>({})
   const deFacut = useFacturiDeReceptionat(filtre)
@@ -289,7 +303,10 @@ function DeReceptionat({ poateCrea }: { poateCrea: boolean }) {
   )
   const [facturaId, setFacturaId] = useState<string>()
   const [mod, setMod] = useState<ModReceptie>('tot')
-  const deschide = (id: string, m: ModReceptie) => { setMod(m); setFacturaId(id) }
+  const [tip, setTip] = useState<'Factura' | 'Aviz'>('Factura')
+  const deschide = (id: string, m: ModReceptie, t: 'Factura' | 'Aviz' = 'Factura') => { setMod(m); setTip(t); setFacturaId(id) }
+  /** Factura de legat de recepțiile pe aviz (D-40). */
+  const [deFacturat, setDeFacturat] = useState<string>()
   const [deVazut, setDeVazut] = useState<FacturaDeReceptionat>()
   return (
     <Space orientation="vertical" style={{ width: '100%' }} size="middle">
@@ -299,21 +316,29 @@ function DeReceptionat({ poateCrea }: { poateCrea: boolean }) {
           <Input allowClear prefix={<SearchOutlined />} placeholder="Material (denumire sau cod)" style={{ width: 260 }} />
         </Form.Item>
         <Form.Item name="cauta">
-          <Input allowClear placeholder="Factura sau furnizorul" style={{ width: 220 }} />
+          <Input allowClear placeholder="Factura / avizul, furnizorul sau nota de comandă" style={{ width: 320 }} />
         </Form.Item>
         <Button type="primary" htmlType="submit">Filtrează</Button>
       </Form>
-      <Card title={`Facturi de recepționat${deFacut.data ? ` (${deFacut.data.length})` : ''}`}>
+      <Card title={`Facturi și avize de recepționat${deFacut.data ? ` (${deFacut.data.length})` : ''}`}>
         <Table<FacturaDeReceptionat>
-          rowKey="facturaId"
+          rowKey={(f) => `${f.tip}-${f.facturaId}`}
           size="small"
           loading={deFacut.isLoading}
           dataSource={deFacut.data}
-          locale={{ emptyText: filtrat ? 'Nicio factură de recepționat nu corespunde filtrului.' : 'Toate facturile cu materiale au fost recepționate.' }}
-          expandable={{ expandedRowRender: (f) => <LiniiFacturaDeReceptionat facturaId={f.facturaId} />, expandRowByClick: true }}
+          locale={{ emptyText: filtrat ? 'Niciun document de recepționat nu corespunde filtrului.' : 'Toate facturile și avizele cu materiale au fost recepționate.' }}
+          expandable={{ expandedRowRender: (f) => <LiniiFacturaDeReceptionat facturaId={f.facturaId} tip={f.tip} />, expandRowByClick: true }}
           pagination={{ pageSize: 15, hideOnSinglePage: true }}
           columns={[
-            { title: 'Factura', dataIndex: 'numar', width: 150 },
+            {
+              title: 'Document', width: 230,
+              render: (_, f) => (
+                <Space orientation="vertical" size={0}>
+                  <span>{f.tip === 'Aviz' ? <Tag color="cyan">aviz</Tag> : <Tag color="blue">factură</Tag>}{f.numar}</span>
+                  {f.notaComanda && <Typography.Text type="secondary" style={{ fontSize: 12 }}>nota de comandă {f.notaComanda}</Typography.Text>}
+                </Space>
+              ),
+            },
             { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
             { title: 'Furnizor', render: (_, f) => <>{f.furnizorDenumire}{gasite(f.materialeGasite)}</> },
             { title: 'Proiect', dataIndex: 'proiectCod', width: 130 },
@@ -326,15 +351,21 @@ function DeReceptionat({ poateCrea }: { poateCrea: boolean }) {
             { title: 'Valoare', dataIndex: 'valoare', width: 130, align: 'right', render: bani },
             {
               title: '',
-              width: 330,
+              width: 340,
               render: (_, f) => (
-                <Space size={4} onClick={(e) => e.stopPropagation()}>
-                  <Button size="small" icon={<EyeOutlined />} onClick={() => setDeVazut(f)}>Factura</Button>
-                  <Tooltip title="Toate liniile, cu cantitățile din factură">
-                    <Button type="primary" size="small" disabled={!poateCrea} onClick={() => deschide(f.facturaId, 'tot')}>Recepționează tot</Button>
-                  </Tooltip>
+                <Space size={4} wrap onClick={(e) => e.stopPropagation()}>
+                  <Button size="small" icon={<EyeOutlined />} onClick={() => setDeVazut(f)}>{f.tip === 'Aviz' ? 'Avizul' : 'Factura'}</Button>
+                  {f.avizeDeFacturat > 0 ? (
+                    <Tooltip title={`Marfa a venit deja cu aviz: ${f.avizeDeFacturat} NIR-uri pe avizele notei ${f.notaComanda ?? ''} așteaptă această factură (prețurile ei).`}>
+                      <Button type="primary" size="small" icon={<LinkOutlined />} disabled={!poateCrea} onClick={() => setDeFacturat(f.facturaId)}>Leagă de avize</Button>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title={f.tip === 'Aviz' ? 'Toate liniile avizului; valoarea vine cu factura' : 'Toate liniile, cu cantitățile din factură'}>
+                      <Button type="primary" size="small" disabled={!poateCrea} onClick={() => deschide(f.facturaId, 'tot', f.tip)}>Recepționează tot</Button>
+                    </Tooltip>
+                  )}
                   <Tooltip title="Alegi liniile sosite și cantitățile; restul rămâne de recepționat">
-                    <Button size="small" disabled={!poateCrea} onClick={() => deschide(f.facturaId, 'partial')}>Parțial</Button>
+                    <Button size="small" disabled={!poateCrea} onClick={() => deschide(f.facturaId, 'partial', f.tip)}>Parțial</Button>
                   </Tooltip>
                 </Space>
               ),
@@ -342,19 +373,24 @@ function DeReceptionat({ poateCrea }: { poateCrea: boolean }) {
           ]}
         />
       </Card>
-      <ReceptieFactura facturaId={facturaId} mod={mod} onInchide={() => setFacturaId(undefined)} />
+      <ReceptieFactura facturaId={facturaId} mod={mod} tip={tip} onInchide={() => setFacturaId(undefined)} onLeagaAvize={setDeFacturat} />
+      <FacturareAviz facturaId={deFacturat} onInchide={() => setDeFacturat(undefined)} />
       <Drawer open={!!deVazut} onClose={() => setDeVazut(undefined)} size={1100} destroyOnHidden
-        title={deVazut && `Factura ${deVazut.numar} din ${dayjs(deVazut.data).format('DD.MM.YYYY')} — ${deVazut.furnizorDenumire}`}
+        title={deVazut && `${deVazut.tip === 'Aviz' ? 'Avizul' : 'Factura'} ${deVazut.numar} din ${dayjs(deVazut.data).format('DD.MM.YYYY')} — ${deVazut.furnizorDenumire}`}
         extra={deVazut && (
           <Space>
-            <Button type="primary" disabled={!poateCrea} onClick={() => { deschide(deVazut.facturaId, 'tot'); setDeVazut(undefined) }}>Recepționează tot</Button>
-            <Button disabled={!poateCrea} onClick={() => { deschide(deVazut.facturaId, 'partial'); setDeVazut(undefined) }}>Parțial</Button>
+            {deVazut.avizeDeFacturat > 0 && (
+              <Button type="primary" icon={<LinkOutlined />} disabled={!poateCrea} onClick={() => { setDeFacturat(deVazut.facturaId); setDeVazut(undefined) }}>Leagă de avize</Button>
+            )}
+            <Button type={deVazut.avizeDeFacturat > 0 ? 'default' : 'primary'} disabled={!poateCrea}
+              onClick={() => { deschide(deVazut.facturaId, 'tot', deVazut.tip); setDeVazut(undefined) }}>Recepționează tot</Button>
+            <Button disabled={!poateCrea} onClick={() => { deschide(deVazut.facturaId, 'partial', deVazut.tip); setDeVazut(undefined) }}>Parțial</Button>
           </Space>
         )}>
         {deVazut && (
           <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-            <LiniiFacturaDeReceptionat facturaId={deVazut.facturaId} />
-            <PrevizualizareFactura facturaId={deVazut.facturaId} inaltime="70vh" />
+            <LiniiFacturaDeReceptionat facturaId={deVazut.facturaId} tip={deVazut.tip} />
+            <PrevizualizareDocument id={deVazut.facturaId} tip={deVazut.tip} />
           </Space>
         )}
       </Drawer>

@@ -17,6 +17,19 @@ public sealed record StareLinieReceptie(int Index, decimal Cantitate, decimal Re
 /// </summary>
 public static class StareReceptie
 {
+    /// <summary>
+    /// Starea liniilor unui aviz (D-40): recepțiile lui se compară pe poziția din aviz (<see cref="LinieNir.IndexAviz"/>).
+    /// </summary>
+    public static IReadOnlyList<StareLinieReceptie> CalculeazaAviz(IEnumerable<(int Index, decimal Cantitate)> liniiAviz, IEnumerable<LinieNir> receptii) =>
+        Calculeaza(liniiAviz, receptii.Where(l => l.IndexAviz is not null).Select(l => l with { IndexFactura = l.IndexAviz!.Value }));
+
+    /// <summary>
+    /// Ce acoperă dintr-o factură NIR-urile ei: cele pe factură închid liniile ca de obicei; cele pe aviz, facturate cu ea
+    /// (D-40), contează doar cu cantitatea (restul liniei facturii, dacă e, rămâne de recepționat).
+    /// </summary>
+    public static IReadOnlyList<StareLinieReceptie> CalculeazaFactura(IEnumerable<(int Index, decimal Cantitate)> liniiFactura, IEnumerable<Nir> receptii) =>
+        Calculeaza(liniiFactura, receptii.SelectMany(n => n.AvizId is null ? n.Linii : n.Linii.Select(l => l with { Partiala = true })));
+
     public static IReadOnlyList<StareLinieReceptie> Calculeaza(IEnumerable<(int Index, decimal Cantitate)> liniiFactura, IEnumerable<LinieNir> receptii)
     {
         var dupaIndex = receptii.GroupBy(l => l.IndexFactura).ToDictionary(g => g.Key, g => g.ToList());

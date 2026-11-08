@@ -119,6 +119,7 @@ public static class Raport
         Rand(h, "Lucrare", "lucrare", d, d.Lucrare, c?.Lucrare);
         Rand(h, "Gestiune", "gestiune", d, d.Gestiune, c?.Gestiune);
         Rand(h, "Primitor", "primitor", d, d.Primitor, c?.Primitor);
+        Rand(h, "Comanda", "comanda", d, d.Comanda, c?.Comanda);
         Rand(h, "Total fără TVA", "totalFaraTva", d, Bani(d.TotalFaraTva), Bani(c?.TotalFaraTva));
         Rand(h, "TVA", "totalTva", d, Bani(d.TotalTva), Bani(c?.TotalTva));
         Rand(h, "Total de plată", "totalDePlata", d, Bani(d.TotalDePlata), Bani(c?.TotalDePlata));

@@ -18,7 +18,7 @@ public sealed class StornoNir : EntitateFirma, IDocumentCuStare
 
     public Guid NirId { get; private set; }
     public string NirNumar { get; private set; } = string.Empty;
-    public Guid FacturaId { get; private set; }
+    public Guid? FacturaId { get; private set; }
     public DateOnly Data { get; private set; }
     public string Motiv { get; private set; } = string.Empty;
     public string LiniiJson { get; private set; } = "[]";

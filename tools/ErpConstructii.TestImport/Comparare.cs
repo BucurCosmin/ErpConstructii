@@ -38,6 +38,7 @@ public static class Comparare
             Camp(d, doc, "lucrare", c.Lucrare, a.Lucrare);
             Camp(d, doc, "gestiune", c.Gestiune, a.Gestiune);
             Camp(d, doc, "primitor", c.Primitor, a.Primitor);
+            Camp(d, doc, "comanda", c.Comanda, a.Comanda);
             Camp(d, doc, "total fără TVA", c.TotalFaraTva, a.TotalFaraTva);
             Camp(d, doc, "TVA", c.TotalTva, a.TotalTva);
             Camp(d, doc, "total de plată", c.TotalDePlata, a.TotalDePlata);

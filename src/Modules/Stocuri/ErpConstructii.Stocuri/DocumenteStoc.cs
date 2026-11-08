@@ -3,12 +3,13 @@ using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Stocuri;
 
-/// <param name="IndexFactura">Poziția liniei în factură.</param>
+/// <param name="IndexFactura">Poziția liniei în factură (-1 la NIR-ul pe aviz încă nefacturat).</param>
 /// <param name="CantitateFactura">Cât era de recepționat din linie la emiterea NIR-ului (cantitatea de pe factură, minus
 /// recepțiile anterioare ale aceleiași linii).</param>
 /// <param name="CantitateReceptionata">Ce a primit efectiv gestionarul (diferența = lipsă la recepție).</param>
 /// <param name="PretUnitar">Prețul fără TVA de pe factură.</param>
 /// <param name="Valoare">Cantitatea recepționată × prețul, rotunjită la ban: valoarea intrată în stoc.</param>
+/// <param name="IndexAviz">Poziția liniei pe aviz, la recepția pe aviz (D-40); null la recepția pe factură.</param>
 public sealed record LinieNir(
     int IndexFactura,
     Guid ArticolId,
@@ -20,11 +21,18 @@ public sealed record LinieNir(
     decimal PretUnitar,
     decimal Valoare,
     string? Observatii,
-    bool Partiala = false)
+    bool Partiala = false,
+    int? IndexAviz = null)
 {
     /// <summary>Diferența față de factură: doar la liniile închise (lipsă definitivă sau surplus); restul unei recepții parțiale nu e diferență.</summary>
     public decimal Diferenta => Partiala ? 0 : CantitateReceptionata - CantitateFactura;
+
+    /// <summary>Cheia liniei în NIR: poziția pe aviz (recepția pe aviz) sau în factură.</summary>
+    public int Cheie => IndexAviz ?? IndexFactura;
 }
+
+/// <summary>La facturarea avizului: linia de aviz din NIR, linia facturii care o acoperă și prețul facturii.</summary>
+public sealed record LinieFacturareAviz(int IndexAviz, int IndexFactura, decimal PretUnitar);
 
 /// <param name="Partiala">Restul liniei vine mai târziu (altă recepție); fără, linia se închide cu ce s-a primit acum.</param>
 public sealed record LinieNirCerere(int IndexFactura, Guid ArticolId, string ArticolCod, string Denumire, string UnitateMasura,
@@ -34,6 +42,8 @@ public sealed record LinieNirCerere(int IndexFactura, Guid ArticolId, string Art
 /// Nota de intrare-recepție: gestionarul confirmă ce a primit din factura unui furnizor, în depozitul ales.
 /// La emitere, materialele intră în stoc la prețul facturii. Imuabilă (regula 6). O factură se poate recepționa în mai multe
 /// NIR-uri, pe linii și cantități (<see cref="StareReceptie"/>).
+/// Marfa venită doar cu aviz (D-40) se recepționează pe aviz (<see cref="EmiteDinAviz"/>), fără valoare sau la prețul comenzii;
+/// când vine factura, NIR-ul primește factura și prețurile ei (<see cref="Factureaza"/>, cu o corectură în istoric).
 /// </summary>
 public sealed class Nir : EntitateFirma, IDocumentCuStare
 {
@@ -47,9 +57,25 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
     public DateOnly Data { get; private set; }
     public Guid GestiuneId { get; private set; }
     public string GestiuneDenumire { get; private set; } = string.Empty;
-    public Guid FacturaId { get; private set; }
-    public string FacturaNumar { get; private set; } = string.Empty;
-    public DateOnly FacturaData { get; private set; }
+    /// <summary>Factura recepționată; la NIR-ul pe aviz, factura care l-a acoperit (null până vine).</summary>
+    public Guid? FacturaId { get; private set; }
+
+    public string? FacturaNumar { get; private set; }
+    public DateOnly? FacturaData { get; private set; }
+
+    /// <summary>Avizul pe care s-a recepționat marfa (D-40); null la recepția pe factură.</summary>
+    public Guid? AvizId { get; private set; }
+
+    public string? AvizNumar { get; private set; }
+    public DateOnly? AvizData { get; private set; }
+
+    /// <summary>NIR pe aviz pentru care încă nu a venit factura (stocul are valoare provizorie).</summary>
+    public bool AsteaptaFactura => AvizId is not null && FacturaId is null;
+
+    /// <summary>„Factura X” / „Aviz Y + factura X” / „Aviz Y (fără factură)”.</summary>
+    public string Document => AvizId is null
+        ? FacturaNumar ?? string.Empty
+        : FacturaId is null ? $"aviz {AvizNumar} (fără factură)" : $"aviz {AvizNumar} + factura {FacturaNumar}";
     public Guid? FurnizorId { get; private set; }
     public string FurnizorDenumire { get; private set; } = string.Empty;
 
@@ -70,11 +96,42 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
         Guid facturaId, string facturaNumar, DateOnly facturaData, Guid? furnizorId, string furnizorDenumire, Guid proiectId, string proiectCod,
         IReadOnlyList<LinieNirCerere> linii, string? observatii, Guid utilizatorId, string utilizatorNume)
     {
+        if (facturaId == Guid.Empty || string.IsNullOrWhiteSpace(facturaNumar))
+            return Rezultat.Esuat<Nir>(Eroare.Validare("Factura este obligatorie."));
+        var r = Construieste(an, numar, data, gestiune, facturaData, "factură", furnizorId, furnizorDenumire, proiectId, proiectCod, linii, observatii,
+            utilizatorId, utilizatorNume, aviz: false);
+        if (r.Succes)
+            (r.Valoare.FacturaId, r.Valoare.FacturaNumar, r.Valoare.FacturaData) = (facturaId, facturaNumar.Trim(), facturaData);
+        return r;
+    }
+
+    /// <summary>
+    /// Recepția mărfii venite doar cu aviz (D-40). <see cref="LinieNirCerere.IndexFactura"/> e aici poziția pe aviz, iar prețul e cel
+    /// din nota de comandă (sau 0): valoarea definitivă vine cu factura (<see cref="Factureaza"/>).
+    /// </summary>
+    public static Rezultat<Nir> EmiteDinAviz(
+        int an, int numar, DateOnly data, Gestiune gestiune,
+        Guid avizId, string avizNumar, DateOnly avizData, Guid? furnizorId, string furnizorDenumire, Guid proiectId, string proiectCod,
+        IReadOnlyList<LinieNirCerere> linii, string? observatii, Guid utilizatorId, string utilizatorNume)
+    {
+        if (avizId == Guid.Empty || string.IsNullOrWhiteSpace(avizNumar))
+            return Rezultat.Esuat<Nir>(Eroare.Validare("Avizul este obligatoriu."));
+        var r = Construieste(an, numar, data, gestiune, avizData, "aviz", furnizorId, furnizorDenumire, proiectId, proiectCod, linii, observatii,
+            utilizatorId, utilizatorNume, aviz: true);
+        if (r.Succes)
+            (r.Valoare.AvizId, r.Valoare.AvizNumar, r.Valoare.AvizData) = (avizId, avizNumar.Trim(), avizData);
+        return r;
+    }
+
+    private static Rezultat<Nir> Construieste(
+        int an, int numar, DateOnly data, Gestiune gestiune, DateOnly dataDocument, string document,
+        Guid? furnizorId, string furnizorDenumire, Guid proiectId, string proiectCod,
+        IReadOnlyList<LinieNirCerere> linii, string? observatii, Guid utilizatorId, string utilizatorNume, bool aviz)
+    {
         var probleme = new List<string>();
         if (an < 2000 || numar < 1) probleme.Add("Numărul NIR nu este valid.");
         if (gestiune.Tip != TipGestiune.Depozit || !gestiune.Activa) probleme.Add("Recepția se face într-un depozit activ.");
-        if (data < facturaData) probleme.Add("Data recepției nu poate fi înaintea datei facturii.");
-        if (facturaId == Guid.Empty || string.IsNullOrWhiteSpace(facturaNumar)) probleme.Add("Factura este obligatorie.");
+        if (data < dataDocument) probleme.Add(aviz ? "Data recepției nu poate fi înaintea datei avizului." : "Data recepției nu poate fi înaintea datei facturii.");
         if (linii.Count == 0) probleme.Add("Recepția trebuie să conțină cel puțin un material.");
         if (linii.Any(l => l.ArticolId == Guid.Empty)) probleme.Add("Fiecare linie trebuie legată de un articol de stoc.");
         if (linii.Any(l => l.CantitateReceptionata < 0 || l.CantitateFactura <= 0 || l.PretUnitar < 0)) probleme.Add("Cantitățile și prețurile nu pot fi negative.");
@@ -83,16 +140,16 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
         if (linii.All(l => l.CantitateReceptionata == 0 && l.Partiala)) probleme.Add("Nu s-a recepționat nimic; verifică cantitățile.");
         if (linii.Any(l => l.Partiala && l.CantitateReceptionata == 0)) probleme.Add("O linie fără cantitate recepționată se lasă în afara recepției.");
         if (linii.Any(l => !l.Partiala && l.CantitateReceptionata != l.CantitateFactura && string.IsNullOrWhiteSpace(l.Observatii)))
-            probleme.Add("La liniile închise cu diferențe față de factură (lipsă definitivă sau surplus), completează observația.");
-        if (linii.GroupBy(l => l.IndexFactura).Any(g => g.Count() > 1)) probleme.Add("O linie de factură apare de două ori.");
+            probleme.Add($"La liniile închise cu diferențe față de {document} (lipsă definitivă sau surplus), completează observația.");
+        if (linii.GroupBy(l => l.IndexFactura).Any(g => g.Count() > 1)) probleme.Add($"O linie de {document} apare de două ori.");
         if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume)) probleme.Add("Gestionarul este obligatoriu.");
         if (probleme.Count > 0)
             return Rezultat.Esuat<Nir>(Eroare.Validare(string.Join(" ", probleme)));
 
         var liniiNir = linii.Select(l => new LinieNir(
-            l.IndexFactura, l.ArticolId, l.ArticolCod, l.Denumire.Trim(), l.UnitateMasura.Trim(), l.CantitateFactura, l.CantitateReceptionata,
+            aviz ? -1 : l.IndexFactura, l.ArticolId, l.ArticolCod, l.Denumire.Trim(), l.UnitateMasura.Trim(), l.CantitateFactura, l.CantitateReceptionata,
             l.PretUnitar, Rotunjire.Lei.Aplica(l.CantitateReceptionata * l.PretUnitar), string.IsNullOrWhiteSpace(l.Observatii) ? null : l.Observatii.Trim(),
-            l.Partiala)).ToList();
+            l.Partiala, aviz ? l.IndexFactura : null)).ToList();
 
         return Rezultat.Ok(new Nir
         {
@@ -101,9 +158,6 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
             Data = data,
             GestiuneId = gestiune.Id,
             GestiuneDenumire = gestiune.Denumire,
-            FacturaId = facturaId,
-            FacturaNumar = facturaNumar.Trim(),
-            FacturaData = facturaData,
             FurnizorId = furnizorId,
             FurnizorDenumire = furnizorDenumire.Trim(),
             ProiectId = proiectId,
@@ -127,7 +181,7 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
         if (string.IsNullOrWhiteSpace(motiv) || motiv.Trim().Length > 1000) probleme.Add("Motivul corecturii este obligatoriu (cel mult 1000 de caractere).");
         if (data < Data) probleme.Add("Corectura nu poate avea data înaintea NIR-ului.");
         if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume)) probleme.Add("Utilizatorul este obligatoriu.");
-        var existente = Linii.ToDictionary(l => l.IndexFactura);
+        var existente = Linii.ToDictionary(l => l.Cheie);
         if (linii.GroupBy(l => l.IndexFactura).Any(g => g.Count() > 1)) probleme.Add("O linie apare de două ori.");
         if (linii.Any(l => !existente.ContainsKey(l.IndexFactura))) probleme.Add("Corectura conține o linie care nu e pe NIR.");
         if (linii.Any(l => l.CantitateReceptionata < 0 || l.CantitateFactura <= 0 || l.PretUnitar < 0)) probleme.Add("Cantitățile și prețurile nu pot fi negative.");
@@ -139,7 +193,7 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
         var corectate = linii.ToDictionary(l => l.IndexFactura);
         foreach (var v in Linii)
         {
-            if (!corectate.TryGetValue(v.IndexFactura, out var c))
+            if (!corectate.TryGetValue(v.Cheie, out var c))
             {
                 noi.Add(v);
                 continue;
@@ -160,7 +214,7 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
                 return Rezultat.Esuat<CorectieNir>(Eroare.Validare($"„{v.Denumire}”: diferența față de factură cere o observație."));
             noi.Add(n);
             if (n != v)
-                schimbate.Add(new LinieCorectieNir(v.IndexFactura, v.ArticolId, v.ArticolCod, v.Denumire, v.UnitateMasura,
+                schimbate.Add(new LinieCorectieNir(v.Cheie, v.ArticolId, v.ArticolCod, v.Denumire, v.UnitateMasura,
                     v.CantitateFactura, n.CantitateFactura, v.CantitateReceptionata, n.CantitateReceptionata, v.PretUnitar, n.PretUnitar, v.Valoare, n.Valoare));
         }
 
@@ -173,6 +227,55 @@ public sealed class Nir : EntitateFirma, IDocumentCuStare
         _linii = null;
         Valoare = noi.Sum(l => l.Valoare);
         return Rezultat.Ok(CorectieNir.Creeaza(this, data, motiv, schimbate, utilizatorId, utilizatorNume));
+    }
+
+    /// <summary>
+    /// Factura a venit pentru marfa recepționată pe aviz (D-40): fiecare linie a NIR-ului primește linia facturii care o acoperă
+    /// și prețul ei, iar NIR-ul primește factura. Întoarce corectura cu liniile al căror preț s-a schimbat (null dacă prețurile
+    /// erau deja cele din factură), de salvat împreună cu NIR-ul; stocul primește diferențele de valoare.
+    /// </summary>
+    public Rezultat<CorectieNir?> Factureaza(
+        Guid facturaId, string facturaNumar, DateOnly facturaData, IReadOnlyList<LinieFacturareAviz> linii, DateOnly data, Guid utilizatorId, string utilizatorNume)
+    {
+        var probleme = new List<string>();
+        if (AvizId is null) probleme.Add($"{NumarAfisat} e o recepție pe factură, nu pe aviz.");
+        if (FacturaId is not null) probleme.Add($"{NumarAfisat} are deja factura {FacturaNumar}.");
+        if (facturaId == Guid.Empty || string.IsNullOrWhiteSpace(facturaNumar)) probleme.Add("Factura este obligatorie.");
+        if (data < Data) probleme.Add("Facturarea nu poate avea data înaintea NIR-ului.");
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume)) probleme.Add("Utilizatorul este obligatoriu.");
+        if (linii.GroupBy(l => l.IndexAviz).Any(g => g.Count() > 1)) probleme.Add("O linie a avizului apare de două ori.");
+        if (linii.Any(l => l.IndexFactura < 0 || l.PretUnitar < 0)) probleme.Add("Linia facturii și prețul trebuie să fie valide.");
+        var dupaAviz = linii.ToLookup(l => l.IndexAviz);
+        var lipsa = Linii.Where(l => l.CantitateReceptionata > 0 && !dupaAviz.Contains(l.Cheie)).Select(l => $"„{l.Denumire}”").ToList();
+        if (lipsa.Count > 0) probleme.Add($"Alege linia facturii pentru: {string.Join(", ", lipsa)}.");
+        if (linii.Any(l => Linii.All(x => x.Cheie != l.IndexAviz))) probleme.Add("O linie aleasă nu e pe NIR.");
+        if (probleme.Count > 0)
+            return Rezultat.Esuat<CorectieNir?>(Eroare.Validare(string.Join(" ", probleme)));
+
+        var noi = new List<LinieNir>();
+        var schimbate = new List<LinieCorectieNir>();
+        foreach (var v in Linii)
+        {
+            if (dupaAviz[v.Cheie].FirstOrDefault() is not { } f)
+            {
+                noi.Add(v); // linie neprimită (cantitate 0): rămâne fără factură
+                continue;
+            }
+
+            var n = v with { IndexFactura = f.IndexFactura, PretUnitar = f.PretUnitar, Valoare = Rotunjire.Lei.Aplica(v.CantitateReceptionata * f.PretUnitar) };
+            noi.Add(n);
+            if (n.Valoare != v.Valoare || n.PretUnitar != v.PretUnitar)
+                schimbate.Add(new LinieCorectieNir(v.Cheie, v.ArticolId, v.ArticolCod, v.Denumire, v.UnitateMasura,
+                    v.CantitateFactura, n.CantitateFactura, v.CantitateReceptionata, n.CantitateReceptionata, v.PretUnitar, n.PretUnitar, v.Valoare, n.Valoare));
+        }
+
+        LiniiJson = JsonSerializer.Serialize(noi);
+        _linii = null;
+        Valoare = noi.Sum(l => l.Valoare);
+        (FacturaId, FacturaNumar, FacturaData) = (facturaId, facturaNumar.Trim(), facturaData);
+        return Rezultat.Ok(schimbate.Count == 0
+            ? null
+            : CorectieNir.Creeaza(this, data, $"Prețurile din factura {FacturaNumar} (marfa recepționată pe avizul {AvizNumar})", schimbate, utilizatorId, utilizatorNume));
     }
 }
 

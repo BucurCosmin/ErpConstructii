@@ -1,3 +1,4 @@
+using ErpConstructii.Aprovizionare;
 using ErpConstructii.Facturi;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure;
@@ -30,9 +31,12 @@ public sealed record SoldDto(Guid GestiuneId, string GestiuneDenumire, string Ge
 
 public sealed record MiscareDto(Guid Id, DateOnly Data, string Tip, string DocumentNumar, Guid DocumentId, decimal Cantitate, decimal? Valoare);
 
+/// <param name="FacturaId">Documentul de recepționat: factura sau, la <paramref name="Tip"/> „Aviz”, avizul (D-40).</param>
 /// <param name="Linii">Liniile de stoc ale facturii; <paramref name="LiniiDeschise"/> = cele încă de recepționat (parțial sau deloc).</param>
+/// <param name="AvizeDeFacturat">La factură: NIR-urile pe avizele notei ei de comandă care încă n-au factura (de legat, nu de recepționat din nou).</param>
 public sealed record FacturaDeReceptionatDto(Guid FacturaId, string Numar, DateOnly Data, string FurnizorDenumire, string ProiectCod, int Linii, decimal? Valoare,
-    int LiniiDeschise = 0, bool ReceptionataPartial = false, IReadOnlyList<string>? MaterialeGasite = null);
+    int LiniiDeschise = 0, bool ReceptionataPartial = false, IReadOnlyList<string>? MaterialeGasite = null, string Tip = "Factura",
+    string? NotaComanda = null, int AvizeDeFacturat = 0);
 
 public sealed record ArticolPropusDto(Guid Id, string Cod, string Denumire, string UnitateMasura, string Sursa);
 
@@ -40,20 +44,24 @@ public sealed record ArticolPropusDto(Guid Id, string Cod, string Denumire, stri
 public sealed record LiniePropunereDto(int IndexFactura, string Denumire, string UnitateMasura, decimal Cantitate, decimal? PretUnitar, decimal? Valoare, ArticolPropusDto? Articol,
     decimal Receptionat = 0, decimal Ramas = 0, bool Inchisa = false);
 
-public sealed record PropunereReceptieDto(Guid FacturaId, string Numar, DateOnly Data, Guid? FurnizorId, string FurnizorDenumire, string ProiectCod, IReadOnlyList<LiniePropunereDto> Linii);
+public sealed record PropunereReceptieDto(Guid FacturaId, string Numar, DateOnly Data, Guid? FurnizorId, string FurnizorDenumire, string ProiectCod, IReadOnlyList<LiniePropunereDto> Linii,
+    string Tip = "Factura", string? NotaComanda = null, int AvizeDeFacturat = 0, Guid? ProiectId = null);
 
 /// <param name="ArticolId">Articolul ales; dacă lipsește, se creează unul nou din <paramref name="ArticolNouDenumire"/> / <paramref name="ArticolNouUm"/>.</param>
 /// <param name="RestulVine">Se primește doar o parte acum, restul liniei rămâne de recepționat; fără, linia se închide.</param>
 public sealed record LinieReceptieCerere(int IndexFactura, Guid? ArticolId, string? ArticolNouDenumire, string? ArticolNouUm, decimal CantitateReceptionata, string? Observatii,
     bool RestulVine = false);
 
-public sealed record ReceptieCerere(Guid FacturaId, Guid GestiuneId, DateOnly Data, IReadOnlyList<LinieReceptieCerere> Linii, string? Observatii);
+/// <param name="AvizId">Recepția pe aviz (D-40): <paramref name="FacturaId"/> se ignoră, iar IndexFactura din linii e poziția pe aviz.</param>
+public sealed record ReceptieCerere(Guid FacturaId, Guid GestiuneId, DateOnly Data, IReadOnlyList<LinieReceptieCerere> Linii, string? Observatii, Guid? AvizId = null);
 
 public sealed record LinieNirDto(string ArticolCod, string Denumire, string UnitateMasura, decimal CantitateFactura, decimal CantitateReceptionata, decimal? PretUnitar, decimal? Valoare, string? Observatii);
 
-public sealed record NirDto(Guid Id, string Numar, DateOnly Data, string Gestiune, Guid FacturaId, string FacturaNumar, string FurnizorDenumire, string ProiectCod,
+/// <param name="FacturaId">Factura recepționată; la NIR-ul pe aviz (<paramref name="AvizId"/>), factura care l-a acoperit, null până vine.</param>
+public sealed record NirDto(Guid Id, string Numar, DateOnly Data, string Gestiune, Guid? FacturaId, string? FacturaNumar, string FurnizorDenumire, string ProiectCod,
     IReadOnlyList<LinieNirDto> Linii, decimal? Valoare, bool AreDiferente, string ReceptionatDe, string? Observatii,
-    StornoDto? Storno = null, bool FacturaAnulata = false, IReadOnlyList<string>? MaterialeGasite = null, int Corectii = 0);
+    StornoDto? Storno = null, bool FacturaAnulata = false, IReadOnlyList<string>? MaterialeGasite = null, int Corectii = 0,
+    Guid? AvizId = null, string? AvizNumar = null, bool AsteaptaFactura = false);
 
 public sealed record StornoDto(DateOnly Data, string Motiv, string StornatDe);
 
@@ -87,6 +95,7 @@ public sealed class ModulStocuri : IModul
     {
         servicii.AdaugaDbContextModul<StocuriDbContext>(configurare, Nume);
         servicii.AddScoped<IInterogareReceptiiFactura, InterogareReceptiiFactura>();
+        servicii.AddScoped<IInterogareReceptiiAviz, InterogareReceptiiAviz>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
@@ -116,6 +125,9 @@ public sealed class ModulStocuri : IModul
             .Produces<NirDto>(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound)
             .Produces(StatusCodes.Status409Conflict).CerePermisiune(creare);
         g.MapGet("/nir", ListaNir).WithName("ListaNir").WithSummary("NIR-urile emise").Produces<IReadOnlyList<NirDto>>().CerePermisiune(vizualizare);
+
+        // Marfa recepționată pe aviz primește factura (prețurile ei), D-40.
+        EndpointuriFacturareAviz.Mapeaza(g);
 
         g.MapPost("/proiecte/{proiectId:guid}/transferuri", Transfera).WithName("TransferInSantier")
             .WithSummary("Bon de transfer: materiale din depozit în „Materiale în șantier” ale proiectului, la CMP")
@@ -227,72 +239,131 @@ public sealed class ModulStocuri : IModul
     /// <param name="cauta">Numărul facturii sau furnizorul.</param>
     /// <param name="material">Un material din liniile de stoc ale facturii (fără diacritice / majuscule).</param>
     private static async Task<IResult> FacturiDeReceptionat(
-        string? cauta, string? material, StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
+        string? cauta, string? material, StocuriDbContext db, IInterogareFacturiPrimite facturi, IEnumerable<IInterogareAvize> avize,
+        IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
     {
         var preturi = await VedePreturiAsync(permisiuni, utilizator, firma, ct);
-        var receptii = await ReceptiiActiveAsync(db, null, ct);
+        var active = await db.Nir.AsNoTracking().Where(n => !db.StornariNir.Any(s => s.NirId == n.Id)).ToListAsync(ct);
+        var peFactura = active.Where(n => n.FacturaId != null).GroupBy(n => n.FacturaId!.Value).ToDictionary(g => g.Key, g => g.ToList());
+        var peAviz = active.Where(n => n.AvizId != null).GroupBy(n => n.AvizId!.Value).ToDictionary(g => g.Key, g => g.ToList());
         var lista = await facturi.CuMaterialeDeStocAsync(ct);
+        var listaAvize = avize.FirstOrDefault() is { } qa ? await qa.ToateAsync(ct) : [];
         var text = string.IsNullOrWhiteSpace(cauta) ? null : FaraDiacritice(cauta.Trim());
         var termen = string.IsNullOrWhiteSpace(material) ? null : FaraDiacritice(material.Trim());
-        return Results.Ok(lista
-            .Where(f => text is null || FaraDiacritice(f.Numar).Contains(text, StringComparison.Ordinal) || FaraDiacritice(f.FurnizorDenumire).Contains(text, StringComparison.Ordinal))
-            .Select(f => (Factura: f, Stare: StareReceptie.Calculeaza(f.Linii.Select(l => (l.Index, l.Cantitate)), receptii.GetValueOrDefault(f.Id) ?? []),
-                Gasite: termen is null ? null : f.Linii.Select(l => l.Denumire).Where(d => FaraDiacritice(d).Contains(termen, StringComparison.Ordinal)).Distinct().ToList()))
+        bool Potriveste(params string?[] campuri) => text is null || campuri.Any(c => c is not null && FaraDiacritice(c).Contains(text, StringComparison.Ordinal));
+        List<string>? Gasite(IEnumerable<string> denumiri) =>
+            termen is null ? null : denumiri.Where(d => FaraDiacritice(d).Contains(termen, StringComparison.Ordinal)).Distinct().ToList();
+
+        // NIR-urile pe aviz încă fără factură, pe nota de comandă a avizului: factura aceleiași note le acoperă.
+        var avizeNefacturate = listaAvize
+            .Where(a => peAviz.TryGetValue(a.Id, out var n) && n.Any(x => x.FacturaId is null))
+            .GroupBy(a => a.NotaComandaId).ToDictionary(g => g.Key, g => g.Sum(a => peAviz[a.Id].Count(x => x.FacturaId is null)));
+
+        var deFacturi = lista
+            .Where(f => Potriveste(f.Numar, f.FurnizorDenumire, f.NotaComandaNumar))
+            .Select(f => (Factura: f, Stare: StareReceptie.CalculeazaFactura(f.Linii.Select(l => (l.Index, l.Cantitate)), peFactura.GetValueOrDefault(f.Id) ?? []),
+                Gasite: Gasite(f.Linii.Select(l => l.Denumire))))
             .Where(x => x.Stare.Any(s => s.Deschisa) && (x.Gasite is null || x.Gasite.Count > 0))
             .Select(x => new FacturaDeReceptionatDto(x.Factura.Id, x.Factura.Numar, x.Factura.DataEmitere, x.Factura.FurnizorDenumire, x.Factura.ProiectCod,
                 x.Factura.Linii.Count, preturi ? x.Factura.Linii.Sum(l => l.ValoareFaraTva) : null,
-                x.Stare.Count(s => s.Deschisa), x.Stare.Any(s => s.Receptionat > 0 || s.Inchisa), x.Gasite))
-            .ToList());
+                x.Stare.Count(s => s.Deschisa), x.Stare.Any(s => s.Receptionat > 0 || s.Inchisa), x.Gasite, "Factura", x.Factura.NotaComandaNumar,
+                x.Factura.NotaComandaId is { } nc ? avizeNefacturate.GetValueOrDefault(nc) : 0));
+        var deAvize = listaAvize
+            .Where(a => Potriveste(a.NumarExtern, a.Numar, a.FurnizorDenumire, a.NotaComandaNumar))
+            .Select(a => (Aviz: a, Stare: StareReceptie.CalculeazaAviz(a.Linii.Select(l => (l.Index, l.Cantitate)), (peAviz.GetValueOrDefault(a.Id) ?? []).SelectMany(n => n.Linii)),
+                Gasite: Gasite(a.Linii.Select(l => l.Denumire))))
+            .Where(x => x.Stare.Any(s => s.Deschisa) && (x.Gasite is null || x.Gasite.Count > 0))
+            .Select(x => new FacturaDeReceptionatDto(x.Aviz.Id, x.Aviz.Descriere, x.Aviz.Data, x.Aviz.FurnizorDenumire, x.Aviz.ProiectCod, x.Aviz.Linii.Count,
+                null, x.Stare.Count(s => s.Deschisa), x.Stare.Any(s => s.Receptionat > 0 || s.Inchisa), x.Gasite, "Aviz", x.Aviz.NotaComandaNumar));
+        return Results.Ok(deFacturi.Concat(deAvize).OrderByDescending(d => d.Data).ToList());
     }
 
-    /// <summary>Liniile NIR-urilor nestornate, pe factură (o factură poate avea mai multe recepții).</summary>
-    private static async Task<Dictionary<Guid, List<LinieNir>>> ReceptiiActiveAsync(StocuriDbContext db, Guid? facturaId, CancellationToken ct)
+    /// <summary>NIR-urile nestornate ale unei facturi (inclusiv cele pe aviz, facturate cu ea).</summary>
+    private static Task<List<Nir>> ReceptiiFacturaAsync(StocuriDbContext db, Guid facturaId, CancellationToken ct) =>
+        db.Nir.AsNoTracking().Where(n => n.FacturaId == facturaId && !db.StornariNir.Any(s => s.NirId == n.Id)).ToListAsync(ct);
+
+    /// <summary>NIR-urile nestornate ale unui aviz.</summary>
+    private static Task<List<Nir>> ReceptiiAvizAsync(StocuriDbContext db, Guid avizId, CancellationToken ct) =>
+        db.Nir.AsNoTracking().Where(n => n.AvizId == avizId && !db.StornariNir.Any(s => s.NirId == n.Id)).ToListAsync(ct);
+
+    /// <summary>Documentul de recepționat, la fel pentru factură și aviz: liniile, cu prețul (la aviz: din comandă, altfel 0).</summary>
+    private sealed record DocumentReceptie(
+        Guid Id, bool EsteAviz, string Numar, DateOnly Data, Guid? FurnizorId, string FurnizorDenumire, Guid ProiectId, string ProiectCod,
+        IReadOnlyList<(int Index, string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal? Valoare)> Linii,
+        string? NotaComanda, Guid? NotaComandaId);
+
+    private static async Task<DocumentReceptie?> DocumentAsync(
+        Guid id, bool aviz, IInterogareFacturiPrimite facturi, IEnumerable<IInterogareAvize> avize, CancellationToken ct)
     {
-        var q = db.Nir.AsNoTracking().Where(n => !db.StornariNir.Any(s => s.NirId == n.Id));
-        if (facturaId is { } id)
-            q = q.Where(n => n.FacturaId == id);
-        return (await q.ToListAsync(ct)).GroupBy(n => n.FacturaId).ToDictionary(g => g.Key, g => g.SelectMany(n => n.Linii).ToList());
+        if (aviz)
+        {
+            var a = avize.FirstOrDefault() is { } q ? await q.PentruReceptieAsync(id, ct) : null;
+            return a is null ? null : new DocumentReceptie(a.Id, true, a.NumarExtern, a.Data, a.FurnizorId, a.FurnizorDenumire, a.ProiectId, a.ProiectCod,
+                a.Linii.Select(l => (l.Index, l.Denumire, l.UnitateMasura, l.Cantitate, l.PretUnitar ?? 0m, (decimal?)null)).ToList(), a.NotaComandaNumar, a.NotaComandaId);
+        }
+
+        var f = await facturi.PentruReceptieAsync(id, ct);
+        return f is null ? null : new DocumentReceptie(f.Id, false, f.Numar, f.DataEmitere, f.FurnizorId, f.FurnizorDenumire, f.ProiectId, f.ProiectCod,
+            f.Linii.Select(l => (l.Index, l.Denumire, l.UnitateMasura, l.Cantitate, l.PretUnitar, (decimal?)l.ValoareFaraTva)).ToList(), f.NotaComandaNumar, f.NotaComandaId);
     }
 
+    private static IReadOnlyList<StareLinieReceptie> Stare(DocumentReceptie d, IReadOnlyList<Nir> receptii) => d.EsteAviz
+        ? StareReceptie.CalculeazaAviz(d.Linii.Select(l => (l.Index, l.Cantitate)), receptii.SelectMany(n => n.Linii))
+        : StareReceptie.CalculeazaFactura(d.Linii.Select(l => (l.Index, l.Cantitate)), receptii);
+
+    /// <summary>Câte NIR-uri pe avizele notei de comandă a facturii așteaptă factura.</summary>
+    private static async Task<int> AvizeDeFacturatAsync(StocuriDbContext db, Guid? notaComandaId, IEnumerable<IInterogareAvize> avize, CancellationToken ct)
+    {
+        if (notaComandaId is not { } nc || avize.FirstOrDefault() is not { } q)
+            return 0;
+        var ids = (await q.AleNotelorAsync([nc], ct)).Select(a => (Guid?)a.Id).ToList();
+        return ids.Count == 0 ? 0 : await db.Nir.CountAsync(n => ids.Contains(n.AvizId) && n.FacturaId == null && !db.StornariNir.Any(s => s.NirId == n.Id), ct);
+    }
+
+    /// <param name="tip">„Aviz” pentru recepția pe aviz (D-40); altfel factura.</param>
     private static async Task<IResult> PropunereReceptie(
-        Guid facturaId, StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma,
-        CancellationToken ct)
+        Guid facturaId, string? tip, StocuriDbContext db, IInterogareFacturiPrimite facturi, IEnumerable<IInterogareAvize> avize, IServiciuPermisiuni permisiuni,
+        IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct)
     {
-        var f = await facturi.PentruReceptieAsync(facturaId, ct);
-        if (f is null)
-            return Results.NotFound(new { mesaj = "Factura nu există, a fost anulată sau nu are materiale de stoc." });
+        var aviz = string.Equals(tip, "Aviz", StringComparison.OrdinalIgnoreCase);
+        var d = await DocumentAsync(facturaId, aviz, facturi, avize, ct);
+        if (d is null)
+            return Results.NotFound(new { mesaj = aviz ? "Avizul nu există." : "Factura nu există, a fost anulată sau nu are materiale de stoc." });
 
         var preturi = await VedePreturiAsync(permisiuni, utilizator, firma, ct);
         var (aliasuri, articole) = await CandidatiAsync(db, ct);
-        var receptii = (await ReceptiiActiveAsync(db, f.Id, ct)).GetValueOrDefault(f.Id) ?? [];
-        var stare = StareReceptie.Calculeaza(f.Linii.Select(l => (l.Index, l.Cantitate)), receptii).ToDictionary(s => s.Index);
-        return Results.Ok(new PropunereReceptieDto(f.Id, f.Numar, f.DataEmitere, f.FurnizorId, f.FurnizorDenumire, f.ProiectCod,
-            f.Linii.Select(l =>
+        var receptii = aviz ? await ReceptiiAvizAsync(db, d.Id, ct) : await ReceptiiFacturaAsync(db, d.Id, ct);
+        var liniiNir = receptii.SelectMany(n => n.Linii).ToList();
+        var stare = Stare(d, receptii).ToDictionary(s => s.Index);
+        return Results.Ok(new PropunereReceptieDto(d.Id, d.Numar, d.Data, d.FurnizorId, d.FurnizorDenumire, d.ProiectCod,
+            d.Linii.Select(l =>
             {
                 // Materialul ales la recepția anterioară a aceleiași linii are prioritate.
-                var anterior = receptii.LastOrDefault(r => r.IndexFactura == l.Index);
+                var anterior = liniiNir.LastOrDefault(r => (aviz ? r.IndexAviz : r.IndexFactura) == l.Index);
                 var p = anterior is not null && articole.FirstOrDefault(a => a.Id == anterior.ArticolId) is { } a0
                     ? new ArticolPotrivit(a0, SursaPotrivire.AliasFurnizor)
-                    : PotrivireArticol.Propune(l.Denumire, f.FurnizorId, aliasuri, articole);
+                    : PotrivireArticol.Propune(l.Denumire, d.FurnizorId, aliasuri, articole);
                 var s = stare[l.Index];
-                return new LiniePropunereDto(l.Index, l.Denumire, l.UnitateMasura, l.Cantitate, preturi ? l.PretUnitar : null, preturi ? l.ValoareFaraTva : null,
+                return new LiniePropunereDto(l.Index, l.Denumire, l.UnitateMasura, l.Cantitate, preturi ? l.PretUnitar : null, preturi ? l.Valoare : null,
                     p is null ? null : new ArticolPropusDto(p.Articol.Id, p.Articol.Cod, p.Articol.Denumire, p.Articol.UnitateMasura, p.Sursa.ToString()),
                     s.Receptionat, s.Ramas, s.Inchisa);
-            }).ToList()));
+            }).ToList(),
+            aviz ? "Aviz" : "Factura", d.NotaComanda, aviz ? 0 : await AvizeDeFacturatAsync(db, d.NotaComandaId, avize, ct), d.ProiectId));
     }
 
     private static async Task<IResult> Receptioneaza(
-        ReceptieCerere cerere, StocuriDbContext db, IInterogareFacturiPrimite facturi, IServiciuPermisiuni permisiuni, IFirmaCurenta firma, IUtilizatorCurent utilizator,
-        ICeas ceas, CancellationToken ct)
+        ReceptieCerere cerere, StocuriDbContext db, IInterogareFacturiPrimite facturi, IEnumerable<IInterogareAvize> avize, IServiciuPermisiuni permisiuni,
+        IFirmaCurenta firma, IUtilizatorCurent utilizator, ICeas ceas, CancellationToken ct)
     {
         if (firma.FirmaId is not { } fid || utilizator.UtilizatorId is not { } uid || string.IsNullOrWhiteSpace(utilizator.Nume))
             return Results.Unauthorized();
         if (cerere.Data > ceas.Azi)
             return Results.BadRequest(new { mesaj = "Data recepției nu poate fi în viitor." });
 
-        var f = await facturi.PentruReceptieAsync(cerere.FacturaId, ct);
+        var aviz = cerere.AvizId is not null;
+        var f = await DocumentAsync(cerere.AvizId ?? cerere.FacturaId, aviz, facturi, avize, ct);
         if (f is null)
-            return Results.NotFound(new { mesaj = "Factura nu există, a fost anulată sau nu are materiale de stoc." });
+            return Results.NotFound(new { mesaj = aviz ? "Avizul nu există." : "Factura nu există, a fost anulată sau nu are materiale de stoc." });
 
         // Recepție parțială: doar liniile alese, fiecare încă deschisă (ce nu s-a primit rămâne pentru o recepție următoare).
         var liniiCerere = cerere.Linii ?? [];
@@ -300,13 +371,12 @@ public sealed class ModulStocuri : IModul
         if (liniiCerere.Count == 0)
             return Results.BadRequest(new { mesaj = "Alege cel puțin o linie de recepționat." });
         if (liniiCerere.Any(l => !dupaIndex.ContainsKey(l.IndexFactura)))
-            return Results.BadRequest(new { mesaj = "O linie aleasă nu e o linie de stoc a facturii." });
+            return Results.BadRequest(new { mesaj = aviz ? "O linie aleasă nu e pe aviz." : "O linie aleasă nu e o linie de stoc a facturii." });
 
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await BlocheazaStoculAsync(db, tranzactie, fid, ct);
 
-        var stare = StareReceptie.Calculeaza(f.Linii.Select(l => (l.Index, l.Cantitate)), (await ReceptiiActiveAsync(db, f.Id, ct)).GetValueOrDefault(f.Id) ?? [])
-            .ToDictionary(s => s.Index);
+        var stare = Stare(f, aviz ? await ReceptiiAvizAsync(db, f.Id, ct) : await ReceptiiFacturaAsync(db, f.Id, ct)).ToDictionary(s => s.Index);
         if (liniiCerere.FirstOrDefault(l => !stare[l.IndexFactura].Deschisa) is { } inchisa)
             return Results.Conflict(new { mesaj = $"Linia „{dupaIndex[inchisa.IndexFactura].Denumire}” a fost deja recepționată complet." });
         var gestiune = await db.Gestiuni.FirstOrDefaultAsync(x => x.Id == cerere.GestiuneId, ct);
@@ -354,8 +424,11 @@ public sealed class ModulStocuri : IModul
 
         var an = cerere.Data.Year;
         var numar = (await db.Nir.Where(n => n.An == an).MaxAsync(n => (int?)n.Numar, ct) ?? 0) + 1;
-        var r = Nir.Emite(an, numar, cerere.Data, gestiune, f.Id, f.Numar, f.DataEmitere, f.FurnizorId, f.FurnizorDenumire, f.ProiectId, f.ProiectCod,
-            liniiNir, cerere.Observatii, uid, utilizator.Nume);
+        var r = aviz
+            ? Nir.EmiteDinAviz(an, numar, cerere.Data, gestiune, f.Id, f.Numar, f.Data, f.FurnizorId, f.FurnizorDenumire, f.ProiectId, f.ProiectCod,
+                liniiNir, cerere.Observatii, uid, utilizator.Nume)
+            : Nir.Emite(an, numar, cerere.Data, gestiune, f.Id, f.Numar, f.Data, f.FurnizorId, f.FurnizorDenumire, f.ProiectId, f.ProiectCod,
+                liniiNir, cerere.Observatii, uid, utilizator.Nume);
         if (r.Esec)
             return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
         var nir = r.Valoare;
@@ -390,7 +463,8 @@ public sealed class ModulStocuri : IModul
             var t = $"%{cauta.Trim()}%";
             // „NIR/2026/0003”, „0003” sau „3” găsesc NIR-ul după număr.
             var numar = int.TryParse(cauta.Trim().Split('/')[^1], out var nr) ? nr : (int?)null;
-            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar, t) || EF.Functions.ILike(n.FurnizorDenumire, t) || (numar != null && n.Numar == numar));
+            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar!, t) || EF.Functions.ILike(n.AvizNumar!, t) || EF.Functions.ILike(n.FurnizorDenumire, t) ||
+                             (numar != null && n.Numar == numar));
         }
 
         if (filtre.DataDe is { } d1) q = q.Where(n => n.Data >= d1);
@@ -401,6 +475,9 @@ public sealed class ModulStocuri : IModul
         if (string.Equals(filtre.Stare, "Corectat", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => db.CorectiiNir.Any(c => c.NirId == n.Id));
         if (string.Equals(filtre.Stare, "Stornat", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => db.StornariNir.Any(s => s.NirId == n.Id));
         if (string.Equals(filtre.Stare, "Activ", StringComparison.OrdinalIgnoreCase)) q = q.Where(n => !db.StornariNir.Any(s => s.NirId == n.Id));
+        // Marfa pe aviz pentru care încă n-a venit factura (stoc cu valoare provizorie), D-40.
+        if (string.Equals(filtre.Stare, "FaraFactura", StringComparison.OrdinalIgnoreCase))
+            q = q.Where(n => n.AvizId != null && n.FacturaId == null && !db.StornariNir.Any(s => s.NirId == n.Id));
 
         string? termen = null;
         if (!string.IsNullOrWhiteSpace(material))
@@ -425,7 +502,7 @@ public sealed class ModulStocuri : IModul
         {
             Corectii = corectii.GetValueOrDefault(n.Id),
             Storno = stornari.TryGetValue(n.Id, out var s) ? new StornoDto(s.Data, s.Motiv, s.StornatDeNume) : null,
-            FacturaAnulata = anulate.Contains(n.FacturaId),
+            FacturaAnulata = n.FacturaId is { } fa && anulate.Contains(fa),
             MaterialeGasite = termen is null ? null
                 : n.Linii.Where(l => FaraDiacritice(l.Denumire).Contains(termen, StringComparison.Ordinal) || l.ArticolCod.Contains(termen, StringComparison.OrdinalIgnoreCase))
                     .Select(l => l.Denumire).Distinct().ToList(),
@@ -598,7 +675,8 @@ public sealed class ModulStocuri : IModul
     internal static NirDto Dto(Nir n, bool preturi) => new(n.Id, n.NumarAfisat, n.Data, n.GestiuneDenumire, n.FacturaId, n.FacturaNumar, n.FurnizorDenumire, n.ProiectCod,
         n.Linii.Select(l => new LinieNirDto(l.ArticolCod, l.Denumire, l.UnitateMasura, l.CantitateFactura, l.CantitateReceptionata,
             preturi ? l.PretUnitar : null, preturi ? l.Valoare : null, l.Observatii)).ToList(),
-        preturi ? n.Valoare : null, n.AreDiferente, n.ReceptionatDeNume, n.Observatii);
+        preturi ? n.Valoare : null, n.AreDiferente, n.ReceptionatDeNume, n.Observatii,
+        AvizId: n.AvizId, AvizNumar: n.AvizNumar, AsteaptaFactura: n.AsteaptaFactura);
 
     internal static TransferDto Dto(TransferStoc t, bool preturi) => new(t.Id, t.NumarAfisat, t.Directie.ToString(), t.Data, t.GestiuneSursaDenumire, t.GestiuneDestinatieDenumire, t.ProiectId, t.ProiectCod,
         t.Linii.Select(l => new LinieTransferDto(l.ArticolCod, l.Denumire, l.UnitateMasura, l.Cantitate, preturi ? l.PretUnitar : null, preturi ? l.Valoare : null)).ToList(),

@@ -22,9 +22,14 @@ interface GrupMaterial {
   loturi: LotStoc[]
 }
 
+/** Cum a venit marfa (D-40): cu aviz și factură, doar cu factură, cu aviz încă nefacturat, sau altfel (inventar). */
+export const venitCu = (l: LotStoc) =>
+  l.origine !== 'NIR' ? (l.origine === 'Inventar' ? 'plus inventar' : 'transfer')
+    : l.avizNumar ? (l.facturaNumar ? 'aviz + factură' : 'aviz, fără factură') : 'factură'
+
 /** Raportul pentru Excel: o linie pe lot, separator „;” și BOM (Excel în română îl deschide direct). */
 export function exportaCsv(loturi: LotStoc[]) {
-  const cap = ['Gestiune', 'Cod material', 'Material', 'UM', 'Cantitate', 'Intrat la', 'Document intrare', 'Factura', 'Data facturii', 'Furnizor',
+  const cap = ['Gestiune', 'Cod material', 'Material', 'UM', 'Cantitate', 'Intrat la', 'Document intrare', 'Venit cu', 'Aviz', 'Factura', 'Data facturii', 'Furnizor',
     'Proiect factură', 'Preț intrare', 'Valoare']
   const camp = (v: string | number | null) => {
     if (v === null) return ''
@@ -32,7 +37,7 @@ export function exportaCsv(loturi: LotStoc[]) {
     return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const randuri = loturi.map((l) => [l.gestiune, l.articolCod, l.denumire, l.unitateMasura, l.cantitate, data(l.dataIntrare), l.documentNumar,
-    l.facturaNumar, data(l.facturaData), l.furnizorDenumire, l.facturaProiectCod, l.pretIntrare, l.valoare].map(camp).join(';'))
+    venitCu(l), l.avizNumar, l.facturaNumar, data(l.facturaData), l.furnizorDenumire, l.facturaProiectCod, l.pretIntrare, l.valoare].map(camp).join(';'))
   const blob = new Blob(['﻿' + [cap.join(';'), ...randuri].join('\r\n')], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -98,7 +103,7 @@ export function ProvenientaStoc() {
           <Input allowClear prefix={<SearchOutlined />} placeholder="Material (denumire sau cod)" style={{ width: 240 }} />
         </Form.Item>
         <Form.Item name="cauta">
-          <Input allowClear placeholder="Factura, NIR sau furnizor" style={{ width: 220 }} />
+          <Input allowClear placeholder="Factura, avizul, NIR sau furnizor" style={{ width: 260 }} />
         </Form.Item>
         <Button type="primary" htmlType="submit">Afișează</Button>
       </Form>
@@ -131,6 +136,16 @@ export function ProvenientaStoc() {
                   render: (_, l) => l.origine === 'NIR' ? l.documentNumar
                     : <>{l.documentNumar} <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag></>,
                 },
+                {
+                  title: 'Venit cu', width: 150,
+                  filters: [{ text: 'aviz + factură', value: 'aviz + factură' }, { text: 'doar factură', value: 'factură' }, { text: 'aviz, fără factură', value: 'aviz, fără factură' }],
+                  onFilter: (v, l) => venitCu(l) === v,
+                  render: (_, l) => {
+                    const v = venitCu(l)
+                    return <Tag color={v === 'factură' ? 'blue' : v === 'aviz + factură' ? 'cyan' : v === 'aviz, fără factură' ? 'orange' : 'default'}>{v}</Tag>
+                  },
+                },
+                { title: 'Aviz', dataIndex: 'avizNumar', width: 140, render: (v: string | null) => v ?? '' },
                 { title: 'Factura', width: 170, render: (_, l) => l.facturaNumar && <><LinkFactura id={l.facturaId} numar={l.facturaNumar} /><div><Typography.Text type="secondary">{data(l.facturaData)}</Typography.Text></div></> },
                 { title: 'Furnizor', dataIndex: 'furnizorDenumire' },
                 { title: 'Proiect factură', dataIndex: 'facturaProiectCod', width: 130 },

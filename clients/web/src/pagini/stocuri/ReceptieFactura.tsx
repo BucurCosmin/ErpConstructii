@@ -3,7 +3,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useArticoleStoc, useGestiuni, usePropunereReceptie, useReceptioneaza } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
-import { PrevizualizareFactura } from './PrevizualizareFactura'
+import { PrevizualizareAviz, PrevizualizareFactura } from './PrevizualizareFactura'
 import { NumarRo } from '../../componente/NumarRo'
 
 const NOU = '__nou__'
@@ -42,9 +42,16 @@ const sursaPropunere: Record<string, string> = {
 /** „tot” = toate liniile deschise bifate, cu tot ce a rămas; „partial” = nicio linie bifată, gestionarul le alege. */
 export type ModReceptie = 'tot' | 'partial'
 
-export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { facturaId?: string; mod?: ModReceptie; onInchide: () => void }) {
+/**
+ * `tip` = „Aviz”: recepția mărfii venite doar cu aviz (D-40), fără valoare (sau la prețul comenzii) până vine factura;
+ * `facturaId` e atunci Id-ul avizului.
+ */
+export function ReceptieFactura({ facturaId, mod = 'tot', tip = 'Factura', onInchide, onLeagaAvize }: {
+  facturaId?: string; mod?: ModReceptie; tip?: 'Factura' | 'Aviz'; onInchide: () => void; onLeagaAvize?: (facturaId: string) => void
+}) {
   const { message } = App.useApp()
-  const propunere = usePropunereReceptie(facturaId)
+  const propunere = usePropunereReceptie(facturaId, tip)
+  const eAviz = tip === 'Aviz'
   const gestiuni = useGestiuni()
   const articole = useArticoleStoc()
   const receptioneaza = useReceptioneaza()
@@ -99,6 +106,7 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
     try {
       const nir = await receptioneaza.mutateAsync({
         facturaId: p.facturaId,
+        avizId: eAviz ? p.facturaId : null,
         gestiuneId: v.gestiuneId,
         data: v.data.format('YYYY-MM-DD'),
         observatii: v.observatii?.trim() || null,
@@ -113,7 +121,8 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
         })),
       })
       const ramase = deschise - alese.filter(({ l, linie }) => !(Number(l.cantitateReceptionata ?? 0) < linie.ramas && l.restulVine)).length
-      message.success(`${nir.numar} emis: materialele au intrat în ${nir.gestiune}.${ramase > 0 ? ` Mai sunt ${ramase} linii de recepționat din factură.` : ''}`)
+      message.success(`${nir.numar} emis: materialele au intrat în ${nir.gestiune}${eAviz ? ' (fără valoare definitivă până la factură)' : ''}.` +
+        `${ramase > 0 ? ` Mai sunt ${ramase} linii de recepționat din ${eAviz ? 'aviz' : 'factură'}.` : ''}`)
       onInchide()
     } catch (e) {
       message.error((e as Error).message)
@@ -121,7 +130,7 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
   }
 
   const optiuniArticole = [
-    { value: NOU, label: '➕ Material nou (din textul facturii)' },
+    { value: NOU, label: `➕ Material nou (din textul ${eAviz ? 'avizului' : 'facturii'})` },
     ...(articole.data ?? []).filter((a) => a.activ).map((a) => ({ value: a.id, label: `${a.cod} — ${a.denumire} (${a.unitateMasura})` })),
   ]
 
@@ -131,7 +140,7 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
       onCancel={onInchide}
       width={arataFactura ? '98vw' : 'min(1450px, 96vw)'}
       style={{ top: 16 }}
-      title={p ? `Recepție factura ${p.numar} din ${dayjs(p.data).format('DD.MM.YYYY')} — ${p.furnizorDenumire}` : 'Recepție'}
+      title={p ? `Recepție ${eAviz ? 'pe avizul' : 'factura'} ${p.numar} din ${dayjs(p.data).format('DD.MM.YYYY')} — ${p.furnizorDenumire}` : 'Recepție'}
       okText="Emite NIR-ul"
       cancelText="Renunță"
       onOk={() => form.submit()}
@@ -144,16 +153,35 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
         <Flex gap={16} align="start">
           <div style={{ flex: 1, minWidth: 0 }}>
             <Form<Valori> form={form} name="receptie" layout="vertical" onFinish={trimite} requiredMark="optional">
+              {p.avizeDeFacturat > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  title={`Marfa acestei facturi a venit deja cu aviz: ${p.avizeDeFacturat} NIR-uri pe avizele notei de comandă ${p.notaComanda ?? ''} așteaptă factura.`}
+                  description="Nu o recepționa a doua oară: leagă factura de recepțiile pe aviz (primesc prețurile ei). Recepționează aici doar ce nu a venit cu aviz."
+                  action={onLeagaAvize && <Button size="small" type="primary" onClick={() => { onInchide(); onLeagaAvize(p.facturaId) }}>Leagă de avize</Button>}
+                />
+              )}
+              {eAviz && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 12 }}
+                  title={`Recepție pe aviz (nota de comandă ${p.notaComanda ?? '—'}): marfa intră în stoc fără valoare definitivă.`}
+                  description="Prețul e cel din nota de comandă, dacă îl are, altfel 0. Când vine factura (legată de aceeași notă de comandă), NIR-ul primește prețurile ei."
+                />
+              )}
               <Alert
                 type="info"
                 showIcon
                 style={{ marginBottom: 16 }}
                 title={partial
-                  ? `Factura a fost deja recepționată parțial: mai sunt ${deschise} linii de primit.`
+                  ? `${eAviz ? 'Avizul' : 'Factura'} a fost deja recepționat${eAviz ? '' : 'ă'} parțial: mai sunt ${deschise} linii de primit.`
                   : mod === 'partial'
                   ? 'Recepție parțială: bifează liniile sosite și scrie cantitatea primită; restul rămâne de recepționat (alt NIR).'
-                  : 'Toate liniile sunt bifate cu cantitatea din factură. Debifează ce nu a sosit sau micșorează cantitatea.'}
-                description="Cantitatea recepționată intră în stoc la prețul facturii. Dacă restul unei linii nu mai vine, debifează „restul vine” și scrie motivul."
+                  : `Toate liniile sunt bifate cu cantitatea din ${eAviz ? 'aviz' : 'factură'}. Debifează ce nu a sosit sau micșorează cantitatea.`}
+                description={`${eAviz ? '' : 'Cantitatea recepționată intră în stoc la prețul facturii. '}Dacă restul unei linii nu mai vine, debifează „restul vine” și scrie motivul.`}
               />
               <Space size="large" wrap align="end">
                 <Form.Item name="gestiuneId" label="Depozit" rules={[{ required: true }]} style={{ minWidth: 260 }}>
@@ -169,7 +197,8 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
                   <Space>
                     <Button type="primary" ghost onClick={() => selecteazaTot(true)}>Recepționează tot</Button>
                     <Button onClick={() => selecteazaTot(false)}>Nicio linie</Button>
-                    <Switch checked={arataFactura} onChange={setArataFactura} checkedChildren="Factura afișată" unCheckedChildren="Arată factura" />
+                    <Switch checked={arataFactura} onChange={setArataFactura}
+                      checkedChildren={eAviz ? 'Avizul afișat' : 'Factura afișată'} unCheckedChildren={eAviz ? 'Arată avizul' : 'Arată factura'} />
                   </Space>
                 </Form.Item>
               </Space>
@@ -193,14 +222,14 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
                         ),
                       },
                       {
-                        title: 'Pe factură',
+                        title: eAviz ? 'Pe aviz' : 'Pe factură',
                         render: (_, c) => {
                           const l = p.linii[c.name]
                           return (
                             <Space orientation="vertical" size={0}>
                               <Typography.Text>{l.denumire}</Typography.Text>
                               <Typography.Text type="secondary">
-                                {formatCantitate(l.cantitate)} {l.unitateMasura}{l.pretUnitar !== null && ` × ${formatLei(l.pretUnitar)}`}
+                                {formatCantitate(l.cantitate)} {l.unitateMasura}{l.pretUnitar !== null && !(eAviz && l.pretUnitar === 0) && ` × ${formatLei(l.pretUnitar)}`}
                               </Typography.Text>
                               {l.inchisa ? (
                                 <Tag color="green" style={{ marginTop: 2 }}>recepționată ({formatCantitate(l.receptionat)} {l.unitateMasura})</Tag>
@@ -293,7 +322,7 @@ export function ReceptieFactura({ facturaId, mod = 'tot', onInchide }: { factura
           </div>
           {arataFactura && (
             <div style={{ width: '40%', flexShrink: 0, position: 'sticky', top: 0 }}>
-              <PrevizualizareFactura facturaId={facturaId} />
+              {eAviz ? <PrevizualizareAviz proiectId={p.proiectId} avizId={facturaId} /> : <PrevizualizareFactura facturaId={facturaId} />}
             </div>
           )}
         </Flex>

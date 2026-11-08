@@ -53,7 +53,7 @@ internal static class EndpointuriCorectieNir
         if (nir is null)
             return Results.NotFound();
         var preturi = await ModulStocuri.VedePreturiAsync(permisiuni, utilizator, firma, ct);
-        var factura = await facturi.PentruReceptieAsync(nir.FacturaId, ct);
+        var factura = nir.FacturaId is { } facturaId ? await facturi.PentruReceptieAsync(facturaId, ct) : null;
         var liniiFactura = factura?.Linii.ToDictionary(l => l.Index) ?? [];
         var corectii = await db.CorectiiNir.AsNoTracking().Where(c => c.NirId == id).OrderByDescending(c => c.CreatLa).ToListAsync(ct);
         return Results.Ok(new StareCorectieNirDto(
@@ -61,7 +61,7 @@ internal static class EndpointuriCorectieNir
             nir.Linii.Select(l =>
             {
                 var f = liniiFactura.GetValueOrDefault(l.IndexFactura);
-                return new LinieStareCorectieNirDto(l.IndexFactura, l.ArticolCod, l.Denumire, l.UnitateMasura, l.CantitateFactura, l.CantitateReceptionata,
+                return new LinieStareCorectieNirDto(l.Cheie, l.ArticolCod, l.Denumire, l.UnitateMasura, l.CantitateFactura, l.CantitateReceptionata,
                     preturi ? l.PretUnitar : null, preturi ? l.Valoare : null, l.Observatii, l.Partiala,
                     f?.Denumire, f?.Cantitate, preturi ? f?.PretUnitar : null);
             }).ToList(),
@@ -91,7 +91,7 @@ internal static class EndpointuriCorectieNir
         if (await ModulStocuri.InventarDeschisAsync(db, ct, nir.GestiuneId) is { } blocat)
             return Results.Conflict(new { mesaj = blocat });
 
-        var vechi = nir.Linii.ToDictionary(l => l.IndexFactura);
+        var vechi = nir.Linii.ToDictionary(l => l.Cheie);
         var linii = cerere.Linii.Select(l => new LinieNirCorectata(
             l.IndexFactura, l.CantitateFactura, l.CantitateReceptionata,
             preturi && l.PretUnitar is { } p ? p : vechi.TryGetValue(l.IndexFactura, out var v) ? v.PretUnitar : 0m,

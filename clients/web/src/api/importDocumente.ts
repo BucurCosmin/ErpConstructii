@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { api } from './client'
 import type { TipPagina } from './facturi'
 
-export type TipDocumentImport = 'Factura' | 'NotaComanda' | 'NecesarMateriale' | 'BonConsum' | 'Anexe'
+export type TipDocumentImport = 'Factura' | 'NotaComanda' | 'Aviz' | 'NecesarMateriale' | 'BonConsum' | 'Anexe'
 
 export interface PaginaImport {
   pagina: number

@@ -15,7 +15,7 @@ public sealed record LotStocDto(
     Guid GestiuneId, string Gestiune, string GestiuneTip, Guid ArticolId, string ArticolCod, string Denumire, string UnitateMasura, decimal Cantitate,
     string Origine, Guid DocumentId, string DocumentNumar, DateOnly DataIntrare,
     Guid? FacturaId, string? FacturaNumar, DateOnly? FacturaData, string? FurnizorDenumire, string? FacturaProiectCod,
-    decimal? PretIntrare, decimal? Valoare);
+    decimal? PretIntrare, decimal? Valoare, string? AvizNumar = null);
 
 /// <summary>
 /// Trasabilitatea stocului: pe ce NIR (deci pe ce factură, de la ce furnizor) a intrat fiecare cantitate aflată acum
@@ -85,7 +85,7 @@ internal static class EndpointuriTrasabilitate
             .Where(x => gestiuneId is null || x.Gestiune.Id == gestiuneId)
             .Where(x => !Enum.TryParse<TipGestiune>(tip, true, out var t) || x.Gestiune.Tip == t)
             .Where(x => x.Gestiune.ProiectId is null || accesibile is null || accesibile.Contains(x.Gestiune.ProiectId.Value))
-            .Where(x => string.IsNullOrWhiteSpace(cauta) || Potriveste(cauta, x.Lot.DocumentOrigineNumar, x.Nir?.FacturaNumar, x.Nir?.FurnizorDenumire))
+            .Where(x => string.IsNullOrWhiteSpace(cauta) || Potriveste(cauta, x.Lot.DocumentOrigineNumar, x.Nir?.FacturaNumar, x.Nir?.AvizNumar, x.Nir?.FurnizorDenumire))
             .OrderBy(x => x.Gestiune.Tip).ThenBy(x => x.Gestiune.Cod).ThenBy(x => x.Articol.Denumire).ThenBy(x => x.Lot.DataIntrare)
             .Select(x => new LotStocDto(
                 x.Gestiune.Id, x.Gestiune.Denumire, x.Gestiune.Tip.ToString(), x.Articol.Id, x.Articol.Cod, x.Articol.Denumire, x.Articol.UnitateMasura,
@@ -93,7 +93,7 @@ internal static class EndpointuriTrasabilitate
                 x.Lot.TipOrigine switch { TipMiscare.IntrareNir => "NIR", TipMiscare.PlusInventar => "Inventar", _ => "Transfer" },
                 x.Lot.DocumentOrigineId, x.Lot.DocumentOrigineNumar, x.Lot.DataIntrare,
                 x.Nir?.FacturaId, x.Nir?.FacturaNumar, x.Nir?.FacturaData, x.Nir?.FurnizorDenumire, x.Nir?.ProiectCod,
-                preturi ? x.Lot.PretUnitar : null, preturi ? Rotunjire.Lei.Aplica(x.Lot.Cantitate * x.Lot.PretUnitar) : null))
+                preturi ? x.Lot.PretUnitar : null, preturi ? Rotunjire.Lei.Aplica(x.Lot.Cantitate * x.Lot.PretUnitar) : null, x.Nir?.AvizNumar))
             .ToList();
         return rezultat;
     }

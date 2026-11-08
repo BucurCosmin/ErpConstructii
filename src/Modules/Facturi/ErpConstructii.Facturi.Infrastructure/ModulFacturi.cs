@@ -1,3 +1,4 @@
+using ErpConstructii.Aprovizionare;
 using System.IO.Compression;
 using System.Text.Json;
 using ErpConstructii.Facturi.Import;
@@ -80,7 +81,13 @@ public sealed record ConfirmaFacturaCerere(
     decimal TotalTva,
     decimal TotalDePlata,
     string? Referinta,
-    string? Observatii);
+    string? Observatii,
+    Guid? NotaComandaId = null);
+
+/// <summary>Nota de comandă propusă pentru factură (D-40); <paramref name="AcelasiFurnizor"/> = de la furnizorul facturii.</summary>
+public sealed record NotaComandaFacturaDto(
+    Guid Id, string Numar, string? NumarExtern, DateOnly Data, Guid ProiectId, string ProiectCod, string FurnizorDenumire, int Avize, string Materiale,
+    bool AcelasiFurnizor);
 
 public sealed record FacturaPrimitaDto(
     Guid Id,
@@ -109,7 +116,9 @@ public sealed record FacturaPrimitaDto(
     IReadOnlyList<LinieFactura> Linii,
     IReadOnlyList<string>? MaterialeGasite = null,
     bool LiniiConcordante = true,
-    int Corectii = 0);
+    int Corectii = 0,
+    Guid? NotaComandaId = null,
+    string? NotaComandaNumar = null);
 
 public sealed record AnuleazaFacturaCerere(string Motiv);
 
@@ -129,6 +138,7 @@ public sealed class ModulFacturi : IModul
     {
         servicii.AdaugaDbContextModul<FacturiDbContext>(configurare, Nume);
         servicii.AddScoped<IInterogareFacturiPrimite, InterogareFacturiPrimite>();
+        servicii.AddScoped<IInterogareFacturiNotaComanda, InterogareFacturiNotaComanda>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
@@ -148,6 +158,10 @@ public sealed class ModulFacturi : IModul
         EndpointuriRapoarteFacturi.Mapeaza(g);
         // Corectura facturilor înregistrate cu date greșite (istoric păstrat).
         EndpointuriCorectieFacturi.Mapeaza(g);
+
+        g.MapGet("/note-comanda", NoteComandaPentruFactura).WithName("NoteComandaPentruFactura")
+            .WithSummary("Notele de comandă emise ale proiectului, cele ale furnizorului facturii primele (legarea facturii, D-40)")
+            .Produces<IReadOnlyList<NotaComandaFacturaDto>>().CerePermisiune(creare);
 
         g.MapPost("/primite/import/interpretare", Interpreteaza)
             .DisableAntiforgery()
@@ -272,6 +286,51 @@ public sealed class ModulFacturi : IModul
 
     // ---------------------------------------------------------------- import
 
+    private static async Task<IResult> NoteComandaPentruFactura(
+        Guid proiectId, Guid? furnizorId, string? furnizor, IEnumerable<IInterogareNoteComanda> note, CancellationToken ct)
+    {
+        if (note.FirstOrDefault() is not { } interogare)
+            return Results.Ok(Array.Empty<NotaComandaFacturaDto>());
+        var lista = await interogare.EmiseAsync(proiectId, ct);
+        return Results.Ok(lista
+            .Select(n => (Nota: n, Acelasi: AcelasiFurnizor(n, furnizorId, furnizor)))
+            .OrderByDescending(x => x.Acelasi).ThenByDescending(x => x.Nota.Data)
+            .Select(x => new NotaComandaFacturaDto(x.Nota.Id, x.Nota.Numar, x.Nota.NumarExtern, x.Nota.Data, x.Nota.ProiectId, x.Nota.ProiectCod,
+                x.Nota.FurnizorDenumire, x.Nota.Avize, x.Nota.Materiale, x.Acelasi))
+            .ToList());
+    }
+
+    private static bool AcelasiFurnizor(NotaComandaPentruFactura n, Guid? furnizorId, string? furnizor) =>
+        (furnizorId is not null && n.FurnizorId == furnizorId) ||
+        (!string.IsNullOrWhiteSpace(furnizor) && DenumireFirma.Cheie(n.FurnizorDenumire) == DenumireFirma.Cheie(furnizor));
+
+    /// <summary>
+    /// Nota de comandă a facturii (D-40): cea aleasă (verificată) sau, dacă nu s-a ales, singura notă emisă a proiectului de la
+    /// același furnizor. Obligatorie la facturile cu materiale de stoc (nu la storno și nici la servicii).
+    /// </summary>
+    private static async Task<(NotaComandaPentruFactura? Nota, string? Eroare)> NotaComandaAsync(
+        Guid? aleasa, DateFacturaPrimita date, Guid? furnizorId, IEnumerable<IInterogareNoteComanda> note, CancellationToken ct)
+    {
+        if (note.FirstOrDefault() is not { } interogare)
+            return (null, null);
+        if (aleasa is { } id)
+        {
+            var nota = await interogare.CautaAsync(id, ct);
+            return nota is null ? (null, "Nota de comandă aleasă nu există.") : (nota, null);
+        }
+
+        var cuMateriale = date.TotalDePlata > 0 && date.Linii.Any(l => l.IntraInStoc && l.Cantitate > 0);
+        if (!cuMateriale)
+            return (null, null);
+        var aleFurnizorului = (await interogare.EmiseAsync(date.ProiectId, ct))
+            .Where(n => AcelasiFurnizor(n, furnizorId, date.FurnizorDenumire)).ToList();
+        return aleFurnizorului.Count == 1
+            ? (aleFurnizorului[0], null)
+            : (null, aleFurnizorului.Count == 0
+                ? $"Factura are materiale de stoc: leag-o de nota de comandă a achiziției. Proiectul {date.ProiectCod} nu are o notă de comandă emisă către {date.FurnizorDenumire}; emite-o (sau importă avizul) și reîncearcă."
+                : $"Factura are materiale de stoc: alege nota de comandă a achiziției (proiectul are {aleFurnizorului.Count} note de comandă către {date.FurnizorDenumire}).");
+    }
+
     private static async Task<IResult> Interpreteaza(
         IFormFile fisier,
         IEnumerable<IExtractorText> extractori,
@@ -349,6 +408,7 @@ public sealed class ModulFacturi : IModul
         IInterogareProiecte proiecte,
         FacturiDbContext db,
         IUtilizatorCurent utilizator,
+        IEnumerable<IInterogareNoteComanda> noteComanda,
         CancellationToken ct)
     {
         ConfirmaFacturaCerere? cerere;
@@ -443,12 +503,18 @@ public sealed class ModulFacturi : IModul
             furnizorId = r.Valoare.Id;
         }
 
+        var (nota, eroareNota) = await NotaComandaAsync(cerere.NotaComandaId, dateFactura, furnizorId, noteComanda, ct);
+        if (eroareNota is not null)
+        {
+            return Results.BadRequest(new { mesaj = eroareNota });
+        }
+
         // Originalul unei facturi anulate (reînregistrată, ex. pe proiectul corect) se refolosește: arhiva păstrează un singur exemplar.
         var documentExistent = await db.Documente.AsNoTracking().Where(d => d.HashSha256 == hash).Select(d => (Guid?)d.Id).FirstOrDefaultAsync(ct);
         var document = documentExistent is null ? new DocumentFactura(sursa.NumeFisier, TipContinut(sursa.Extensie), sursa.Continut) : null;
         var documentId = documentExistent ?? document!.Id;
         var rezultat = FacturaPrimita.Inregistreaza(
-            dateFactura with { FurnizorId = furnizorId },
+            dateFactura with { FurnizorId = furnizorId, NotaComandaId = nota?.Id, NotaComandaNumar = nota?.Numar },
             esteXml ? SursaFactura.EFactura : SursaFactura.Pdf,
             esteXml ? documentId : null,
             esteXml ? null : documentId,
@@ -630,5 +696,5 @@ public sealed class ModulFacturi : IModul
         anulare is null ? "Inregistrata" : "Anulata", f.EsteStorno,
         f.DocumentXmlId is not null, f.DocumentPdfId is not null, f.InregistrataDeNume, f.CreatLa,
         anulare is null ? null : $"{anulare.Motiv} ({anulare.AnulataDeNume}, {anulare.AnulataLa:dd.MM.yyyy})", f.Linii,
-        LiniiConcordante: RaportFacturi.LiniiConcordante(f));
+        LiniiConcordante: RaportFacturi.LiniiConcordante(f), NotaComandaId: f.NotaComandaId, NotaComandaNumar: f.NotaComandaNumar);
 }

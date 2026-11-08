@@ -61,6 +61,8 @@ internal sealed class ConfigurareFacturaPrimita : IEntityTypeConfiguration<Factu
         b.Property(x => x.TotalTva).HasPrecision(18, 2);
         b.Property(x => x.TotalDePlata).HasPrecision(18, 2);
         b.Property(x => x.Referinta).HasMaxLength(200);
+        b.Property(x => x.NotaComandaNumar).HasMaxLength(30);
+        b.HasIndex(x => new { x.FirmaId, x.NotaComandaId });
         b.Property(x => x.Observatii).HasMaxLength(2000);
         b.Property(x => x.Sursa).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.InregistrataDeNume).HasMaxLength(200).IsRequired();

@@ -92,7 +92,7 @@ internal static class DocumenteStocPdf
         campuri["observatii"] = string.IsNullOrWhiteSpace(cerere.Filtre) ? string.Empty : $"Filtre: {cerere.Filtre.Trim()}";
         var linii = lista.Select((n, i) => Rand(
             ("numar_crt", (i + 1).ToString(Ro)), ("numar", n.NumarAfisat), ("data", Data(n.Data)), ("furnizor", n.FurnizorDenumire),
-            ("factura", $"{n.FacturaNumar} / {Data(n.FacturaData)}"), ("gestiune", n.GestiuneDenumire), ("proiect", n.ProiectCod),
+            ("factura", DocumentNir(n)), ("gestiune", n.GestiuneDenumire), ("proiect", n.ProiectCod),
             ("linii", n.Linii.Count.ToString(Ro)), ("valoare", preturi ? Lei(n.Valoare) : string.Empty),
             ("stare", stornari.TryGetValue(n.Id, out var s) ? $"stornat {Data(s.Data)}" : n.AreDiferente ? "cu diferențe" : string.Empty))).ToList();
 
@@ -154,7 +154,8 @@ internal static class DocumenteStocPdf
             linii = loturi.Select((l, i) => Rand(
                 ("numar_crt", (i + 1).ToString(Ro)), ("gestiune", l.Gestiune), ("cod", l.ArticolCod), ("denumire", l.Denumire), ("um", l.UnitateMasura),
                 ("cantitate", Cant(l.Cantitate)),
-                ("factura", l.FacturaNumar is null ? string.Empty : $"{l.FacturaNumar} / {(l.FacturaData is { } fd ? Data(fd) : string.Empty)}"),
+                ("factura", (l.AvizNumar is null ? string.Empty : $"aviz {l.AvizNumar}{(l.FacturaNumar is null ? " (fără factură)" : " + ")}") +
+                    (l.FacturaNumar is null ? string.Empty : $"{l.FacturaNumar} / {(l.FacturaData is { } fd ? Data(fd) : string.Empty)}")),
                 ("furnizor", l.FurnizorDenumire ?? string.Empty),
                 ("nir", $"{l.DocumentNumar} / {Data(l.DataIntrare)}"),
                 ("pret", l.PretIntrare is { } pi ? Pret(pi) : string.Empty), ("valoare", l.Valoare is { } v ? Lei(v) : string.Empty))).ToList();
@@ -219,7 +220,7 @@ internal static class DocumenteStocPdf
         campuri["data"] = Data(n.Data);
         campuri["gestiune"] = n.GestiuneDenumire;
         campuri["furnizor"] = n.FurnizorDenumire;
-        campuri["factura"] = $"{n.FacturaNumar} din {Data(n.FacturaData)}";
+        campuri["factura"] = DocumentNir(n, " din ");
         campuri["proiect_cod"] = n.ProiectCod;
         campuri["intocmit_de"] = n.ReceptionatDeNume;
         campuri["total_valoare"] = preturi ? Lei(n.Valoare) : string.Empty;
@@ -355,4 +356,12 @@ internal static class DocumenteStocPdf
     private static string Pret(decimal v) => v.ToString("#,##0.00##", Ro);
 
     private static string Cant(decimal v) => v.ToString("#,##0.####", Ro);
+
+    /// <summary>Documentul recepției: „F 123 / 01.09.2026”, „aviz X + F 123 / …” sau „aviz X / 14.08.2026 (fără factură)” (D-40).</summary>
+    private static string DocumentNir(Nir n, string separator = " / ") =>
+        n.AvizId is null
+            ? $"{n.FacturaNumar}{separator}{(n.FacturaData is { } f ? Data(f) : string.Empty)}"
+            : n.FacturaId is null
+                ? $"aviz {n.AvizNumar}{separator}{(n.AvizData is { } a ? Data(a) : string.Empty)} (fără factură)"
+                : $"aviz {n.AvizNumar} + {n.FacturaNumar}{separator}{(n.FacturaData is { } f2 ? Data(f2) : string.Empty)}";
 }

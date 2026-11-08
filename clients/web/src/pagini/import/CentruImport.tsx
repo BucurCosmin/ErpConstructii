@@ -8,6 +8,7 @@ import { usePermisiuni } from '../../api/interogari'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatData } from '../../util/format'
 import { ImportNecesarExtern } from '../aprovizionare/ImportNecesarExtern'
+import { ImportAviz } from '../aprovizionare/ImportAviz'
 import { ImportNotaComanda } from '../aprovizionare/ImportNotaComanda'
 import { ImportFactura } from '../facturi/ImportFactura'
 
@@ -24,6 +25,7 @@ interface DocumentLucru {
 const tipuri: Record<TipDocumentImport, { eticheta: string; plural: string; culoare: string }> = {
   Factura: { eticheta: 'Factură', plural: 'facturi', culoare: 'blue' },
   NotaComanda: { eticheta: 'Notă de comandă', plural: 'note de comandă', culoare: 'purple' },
+  Aviz: { eticheta: 'Aviz de însoțire', plural: 'avize', culoare: 'cyan' },
   NecesarMateriale: { eticheta: 'Necesar de materiale', plural: 'necesare', culoare: 'magenta' },
   BonConsum: { eticheta: 'Bon de consum', plural: 'bonuri de consum', culoare: 'volcano' },
   Anexe: { eticheta: 'Pagini fără document', plural: 'grupuri de anexe', culoare: 'default' },
@@ -349,6 +351,9 @@ export function CentruImport() {
       >
         {deschis?.doc.tip === 'Factura' && (
           <ImportFactura poateCrea={poateFacturi} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
+        )}
+        {deschis?.doc.tip === 'Aviz' && (
+          <ImportAviz poateCrea={poateAprovizionare} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
         )}
         {deschis?.doc.tip === 'NotaComanda' && (
           <ImportNotaComanda poateCrea={poateAprovizionare} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />

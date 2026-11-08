@@ -56,6 +56,11 @@ export interface FacturaDeReceptionat {
   receptionataPartial: boolean
   /** Materialele care au potrivit filtrul „material”. */
   materialeGasite?: string[] | null
+  /** „Aviz” = marfă venită doar cu aviz (D-40); `facturaId` e atunci Id-ul avizului. */
+  tip: 'Factura' | 'Aviz'
+  notaComanda: string | null
+  /** La factură: NIR-uri pe avizele notei ei de comandă, încă fără factură (de legat, nu de recepționat din nou). */
+  avizeDeFacturat: number
 }
 
 export interface PropunereReceptie {
@@ -80,6 +85,10 @@ export interface PropunereReceptie {
     /** Linia nu mai așteaptă nimic (primită complet sau închisă). */
     inchisa: boolean
   }[]
+  tip: 'Factura' | 'Aviz'
+  notaComanda: string | null
+  avizeDeFacturat: number
+  proiectId: string | null
 }
 
 export interface ReceptieCerere {
@@ -90,6 +99,8 @@ export interface ReceptieCerere {
     /** Restul liniei vine mai târziu; altfel linia se închide cu ce s-a primit acum. */
     restulVine: boolean }[]
   observatii: string | null
+  /** Recepția pe aviz (D-40): `facturaId` se ignoră, iar `indexFactura` e poziția pe aviz. */
+  avizId?: string | null
 }
 
 export interface Nir {
@@ -97,8 +108,9 @@ export interface Nir {
   numar: string
   data: string
   gestiune: string
-  facturaId: string
-  facturaNumar: string
+  /** Factura recepționată; la NIR-ul pe aviz, cea care l-a acoperit (null până vine). */
+  facturaId: string | null
+  facturaNumar: string | null
   furnizorDenumire: string
   proiectCod: string
   linii: { articolCod: string; denumire: string; unitateMasura: string; cantitateFactura: number; cantitateReceptionata: number; pretUnitar: number | null; valoare: number | null; observatii: string | null }[]
@@ -112,6 +124,10 @@ export interface Nir {
   materialeGasite?: string[] | null
   /** Câte corecturi are NIR-ul (D-35). */
   corectii: number
+  avizId: string | null
+  avizNumar: string | null
+  /** Recepție pe aviz încă fără factură (valoare provizorie). */
+  asteaptaFactura: boolean
 }
 
 /** Filtrele listelor de recepție: factura / furnizorul și materialul. */
@@ -172,19 +188,71 @@ export const useFisaMagazie = (gestiuneId?: string, articolId?: string) =>
   })
 export const useFacturiDeReceptionat = (filtre: FiltreReceptii = {}) =>
   useQuery({ queryKey: [...chei.deReceptionat, filtre], queryFn: () => api.get<FacturaDeReceptionat[]>(`/api/stocuri/receptii/de-facut${parametri(filtre)}`) })
-export const usePropunereReceptie = (facturaId?: string) =>
+export const usePropunereReceptie = (facturaId?: string, tip: 'Factura' | 'Aviz' = 'Factura') =>
   useQuery({
-    queryKey: ['stocuri', 'propunere', facturaId],
-    queryFn: () => api.get<PropunereReceptie>(`/api/stocuri/receptii/de-facut/${facturaId}`),
+    queryKey: ['stocuri', 'propunere', facturaId, tip],
+    queryFn: () => api.get<PropunereReceptie>(`/api/stocuri/receptii/de-facut/${facturaId}${tip === 'Aviz' ? '?tip=Aviz' : ''}`),
     enabled: !!facturaId,
   })
+
+/** Facturarea marfii recepționate pe aviz (D-40): NIR-urile pe avizele notei de comandă a facturii. */
+export interface FacturareAviz {
+  facturaId: string
+  numar: string
+  data: string
+  furnizorDenumire: string
+  notaComanda: string | null
+  vedePreturi: boolean
+  liniiFactura: { index: number; denumire: string; unitateMasura: string; cantitate: number; pretUnitar: number | null; ramas: number }[]
+  nir: {
+    nirId: string
+    numar: string
+    data: string
+    avizNumar: string
+    gestiune: string
+    linii: {
+      indexAviz: number
+      articolCod: string
+      denumire: string
+      denumireAviz: string
+      unitateMasura: string
+      cantitate: number
+      pretUnitar: number | null
+      indexFacturaPropus: number | null
+    }[]
+  }[]
+}
+
+export interface FacturareAvizCerere {
+  facturaId: string
+  data: string | null
+  nir: { nirId: string; linii: { indexAviz: number; indexFactura: number; pretUnitar?: number | null }[] }[]
+}
+
+export const useFacturareAviz = (facturaId?: string) =>
+  useQuery({
+    queryKey: ['stocuri', 'facturare-aviz', facturaId],
+    queryFn: () => api.get<FacturareAviz>(`/api/stocuri/receptii/facturare/${facturaId}`),
+    enabled: !!facturaId,
+  })
+
+export const useFactureazaAvize = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (c: FacturareAvizCerere) => api.post<{ mesaj: string; avertismente: string[]; nir: Nir[] }>('/api/stocuri/receptii/facturare', c),
+    onSuccess: () => {
+      void reincarca(qc)
+      void qc.invalidateQueries({ queryKey: ['aprovizionare', 'avize'] })
+    },
+  })
+}
 /** Filtrele registrului NIR. */
 export interface FiltreNir extends FiltreReceptii {
   dataDe?: string
   dataPanaLa?: string
   gestiuneId?: string
   proiectId?: string
-  stare?: 'Activ' | 'Stornat' | 'CuDiferente' | 'Corectat'
+  stare?: 'Activ' | 'Stornat' | 'CuDiferente' | 'Corectat' | 'FaraFactura'
   /** NIR-urile unei facturi (link din corectura facturii). */
   facturaId?: string
 }
@@ -475,6 +543,8 @@ export interface LotStoc {
   /** Prețul de intrare (NIR); null fără dreptul „prețuri de cost”. */
   pretIntrare: number | null
   valoare: number | null
+  /** Avizul pe care a venit marfa (D-40): „aviz + factură” sau, fără factură, doar avizul. */
+  avizNumar: string | null
 }
 
 export interface FiltreTrasabilitate {

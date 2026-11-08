@@ -260,7 +260,7 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                         .HasColumnType("numeric(18,2)")
                         .HasColumnName("diferenta_valoare");
 
-                    b.Property<Guid>("FacturaId")
+                    b.Property<Guid?>("FacturaId")
                         .HasColumnType("uuid")
                         .HasColumnName("factura_id");
 
@@ -567,6 +567,19 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                         .HasColumnType("integer")
                         .HasColumnName("an");
 
+                    b.Property<DateOnly?>("AvizData")
+                        .HasColumnType("date")
+                        .HasColumnName("aviz_data");
+
+                    b.Property<Guid?>("AvizId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("aviz_id");
+
+                    b.Property<string>("AvizNumar")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("aviz_numar");
+
                     b.Property<Guid?>("CreatDe")
                         .HasColumnType("uuid")
                         .HasColumnName("creat_de");
@@ -579,16 +592,15 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                         .HasColumnType("date")
                         .HasColumnName("data");
 
-                    b.Property<DateOnly>("FacturaData")
+                    b.Property<DateOnly?>("FacturaData")
                         .HasColumnType("date")
                         .HasColumnName("factura_data");
 
-                    b.Property<Guid>("FacturaId")
+                    b.Property<Guid?>("FacturaId")
                         .HasColumnType("uuid")
                         .HasColumnName("factura_id");
 
                     b.Property<string>("FacturaNumar")
-                        .IsRequired()
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)")
                         .HasColumnName("factura_numar");
@@ -666,6 +678,9 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
 
                     b.HasKey("Id")
                         .HasName("pk_nir");
+
+                    b.HasIndex("FirmaId", "AvizId")
+                        .HasDatabaseName("ix_nir_firma_id_aviz_id");
 
                     b.HasIndex("FirmaId", "FacturaId")
                         .HasDatabaseName("ix_nir_firma_id_factura_id");
@@ -751,7 +766,7 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                         .HasColumnType("date")
                         .HasColumnName("data");
 
-                    b.Property<Guid>("FacturaId")
+                    b.Property<Guid?>("FacturaId")
                         .HasColumnType("uuid")
                         .HasColumnName("factura_id");
 

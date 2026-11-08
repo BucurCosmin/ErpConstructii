@@ -44,6 +44,27 @@ export function PrevizualizareFactura({ facturaId, inaltime = '72vh' }: { factur
   return <iframe title="Factura" src={adresa} style={{ width: '100%', height: inaltime, border: '1px solid #d9d9d9', borderRadius: 6 }} />
 }
 
+/** Originalul avizului (D-40), afișat lângă recepția pe aviz. */
+export function PrevizualizareAviz({ proiectId, avizId, inaltime = '72vh' }: { proiectId?: string | null; avizId?: string; inaltime?: string | number }) {
+  const original = useQuery({
+    queryKey: ['aprovizionare', 'avize', 'original', avizId],
+    queryFn: async () => {
+      try {
+        return await api.getBinar(`/api/aprovizionare/proiecte/${proiectId}/avize/${avizId}/original`)
+      } catch {
+        return null
+      }
+    },
+    enabled: !!avizId && !!proiectId,
+    staleTime: 10 * 60_000,
+  })
+  const adresa = useMemo(() => (original.data ? URL.createObjectURL(original.data) : undefined), [original.data])
+  useEffect(() => () => { if (adresa) URL.revokeObjectURL(adresa) }, [adresa])
+  if (original.isLoading) return <Flex justify="center" align="center" style={{ height: inaltime }}><Spin /></Flex>
+  if (!adresa) return <Alert type="info" showIcon title="Originalul avizului nu poate fi afișat (de ex. e un document Word)." />
+  return <iframe title="Avizul" src={adresa} style={{ width: '100%', height: inaltime, border: '1px solid #d9d9d9', borderRadius: 6 }} />
+}
+
 async function descarcaXml(facturaId: string) {
   const blob = await api.getBinar(`/api/facturi/primite/${facturaId}/original/xml`)
   const url = URL.createObjectURL(blob)

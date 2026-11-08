@@ -12,7 +12,9 @@ public sealed record FacturaPentruReceptie(
     string FurnizorDenumire,
     Guid ProiectId,
     string ProiectCod,
-    IReadOnlyList<LinieFacturaPentruReceptie> Linii);
+    IReadOnlyList<LinieFacturaPentruReceptie> Linii,
+    Guid? NotaComandaId = null,
+    string? NotaComandaNumar = null);
 
 /// <summary>
 /// Contractul public al modulului Facturi pentru Stocuri (regula 1): facturile cu materiale de recepționat.

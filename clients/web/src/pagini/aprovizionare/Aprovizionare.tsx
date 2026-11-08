@@ -22,7 +22,9 @@ import type { Proiect } from '../../api/tipuri'
 import { useCompartimente, useSantiere } from '../../api/proiecte'
 import { potrivesteSolicitant, SelectSolicitant, solicitantDin, valoareSolicitant } from '../../componente/SelectSolicitant'
 import { AntetPagina } from '../../layout/AntetPagina'
+import { ImportAviz } from './ImportAviz'
 import { ImportNecesarExtern } from './ImportNecesarExtern'
+import { ListaAvize } from './ListaAvize'
 import { ImportNotaComanda } from './ImportNotaComanda'
 import { ListaNoteComanda } from './ListaNoteComanda'
 import { NecesarAchizitie } from './NecesarAchizitie'
@@ -138,7 +140,7 @@ export function Aprovizionare() {
   const [formModificare] = Form.useForm<NecesarValues>()
   const modificaNecesar = useModificaNecesarMateriale()
   const stergeNecesar = useStergeNecesarMateriale()
-  const [tipImport, setTipImport] = useState<'necesar-materiale' | 'nota-comanda' | 'factura-primita'>('necesar-materiale')
+  const [tipImport, setTipImport] = useState<'necesar-materiale' | 'nota-comanda' | 'aviz' | 'factura-primita'>('necesar-materiale')
 
   const note = useNecesareMateriale(filtreNote)
   const importuriFormular = useImporturiFormular()
@@ -579,6 +581,11 @@ export function Aprovizionare() {
             children: <NecesarAchizitie poateCrea={poateCrea} />,
           },
           {
+            key: 'avize',
+            label: 'Avize',
+            children: <ListaAvize poateCrea={poateCrea} onImport={() => { setTipImport('aviz'); setTab('import') }} />,
+          },
+          {
             key: 'nota-noua',
             label: 'Notă de comandă nouă',
             children: <NotaComandaNoua poateCrea={poateCrea} />,
@@ -598,6 +605,7 @@ export function Aprovizionare() {
                       options={[
                         { value: 'necesar-materiale', label: 'Necesar de materiale' },
                         { value: 'nota-comanda', label: 'Notă de comandă' },
+                        { value: 'aviz', label: 'Aviz de însoțire a mărfii' },
                         { value: 'factura-primita', label: 'Factură primită' },
                       ]}
                     />
@@ -607,6 +615,8 @@ export function Aprovizionare() {
                     <ImportNecesarExtern poateCrea={poateCrea} />
                   ) : tipImport === 'nota-comanda' ? (
                     <ImportNotaComanda poateCrea={poateCrea} />
+                  ) : tipImport === 'aviz' ? (
+                    <ImportAviz poateCrea={poateCrea} />
                   ) : (
                     <Alert
                       type="info"

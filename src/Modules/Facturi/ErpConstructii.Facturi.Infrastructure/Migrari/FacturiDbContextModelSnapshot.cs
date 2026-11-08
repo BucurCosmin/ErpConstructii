@@ -308,6 +308,15 @@ namespace ErpConstructii.Facturi.Infrastructure.Migrari
                         .HasColumnName("moneda")
                         .IsFixedLength();
 
+                    b.Property<Guid?>("NotaComandaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nota_comanda_id");
+
+                    b.Property<string>("NotaComandaNumar")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("nota_comanda_numar");
+
                     b.Property<string>("Numar")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -357,6 +366,9 @@ namespace ErpConstructii.Facturi.Infrastructure.Migrari
 
                     b.HasKey("Id")
                         .HasName("pk_facturi_primite");
+
+                    b.HasIndex("FirmaId", "NotaComandaId")
+                        .HasDatabaseName("ix_facturi_primite_firma_id_nota_comanda_id");
 
                     b.HasIndex("FirmaId", "FurnizorCui", "Numar")
                         .HasDatabaseName("ix_facturi_primite_firma_id_furnizor_cui_numar");

@@ -68,7 +68,8 @@ internal sealed class ConfigurareNir : IEntityTypeConfiguration<Nir>
         b.ToTable("nir");
         b.HasKey(x => x.Id);
         b.Property(x => x.GestiuneDenumire).HasMaxLength(200).IsRequired();
-        b.Property(x => x.FacturaNumar).HasMaxLength(60).IsRequired();
+        b.Property(x => x.FacturaNumar).HasMaxLength(60);
+        b.Property(x => x.AvizNumar).HasMaxLength(60);
         b.Property(x => x.FurnizorDenumire).HasMaxLength(300).IsRequired();
         b.Property(x => x.ProiectCod).HasMaxLength(40).IsRequired();
         b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
@@ -78,6 +79,9 @@ internal sealed class ConfigurareNir : IEntityTypeConfiguration<Nir>
         b.Ignore(x => x.NumarAfisat);
         b.Ignore(x => x.Linii);
         b.Ignore(x => x.AreDiferente);
+        b.Ignore(x => x.AsteaptaFactura);
+        b.Ignore(x => x.Document);
+        b.HasIndex(x => new { x.FirmaId, x.AvizId });
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
         b.HasIndex(x => new { x.FirmaId, x.FacturaId }); // o factură poate avea mai multe recepții (parțiale); liniile deschise se verifică sub blocarea stocului
     }

@@ -12,6 +12,12 @@ public enum TipDocumentImport
 
     BonConsum,
 
+    /// <summary>
+    /// Aviz de însoțire a mărfii venit fără factură (marfa se recepționează pe aviz, factura vine mai târziu, D-40).
+    /// Avizul scanat împreună cu factura lui rămâne pagină a facturii.
+    /// </summary>
+    Aviz,
+
     /// <summary>Pagini care nu țin de niciun document importabil (ex. doar certificate).</summary>
     Anexe,
 }
@@ -32,6 +38,7 @@ public sealed record DocumentDetectat(TipDocumentImport Tip, IReadOnlyList<int> 
 /// <item>paginile consecutive de același tip formează un document, cât timp numărul (și data) nu se schimbă;</item>
 /// <item>factura și e-Factura ei (același număr, sau număr necitit) sunt un singur document;</item>
 /// <item>avizul, certificatele și anexele merg la ultima factură (dacă nu există încă, la prima factură care urmează);</item>
+/// <item>într-un fișier fără nicio factură, avizele sunt documente separate (marfa venită doar cu aviz, D-40);</item>
 /// <item>paginile fără titlu continuă documentul curent.</item>
 /// </list>
 /// Rezultatul e o propunere: utilizatorul poate uni sau despărți documentele. Funcție pură.
@@ -45,7 +52,7 @@ public static class ImpartireDocumente
         public bool AreEFactura => Pagini.Any(p => p.Tip == TipPagina.EFactura);
 
         /// <summary>Paginile proprii ale documentului (fără aviz, certificate, anexe).</summary>
-        private IEnumerable<PaginaClasificata> Principale => Pagini.Where(p => TipDocument(p.Tip) == Tip);
+        private IEnumerable<PaginaClasificata> Principale => Pagini.Where(p => TipDocument(p.Tip, false) == Tip);
 
         /// <summary>La factură, numărul din factura tipărită are prioritate (seria e citită complet).</summary>
         public string? Numar => Principale.OrderBy(p => p.Tip == TipPagina.Factura ? 0 : 1).FirstOrDefault(p => p.Numar is not null)?.Numar;
@@ -60,10 +67,11 @@ public static class ImpartireDocumente
         var inainte = new List<PaginaClasificata>(); // anexe dinaintea primului document
         Grup? curent = null;
         Grup? anterior = null; // documentul paginii anterioare
+        var areFactura = pagini.Any(p => p.Tip is TipPagina.Factura or TipPagina.EFactura);
 
         foreach (var p in pagini.OrderBy(p => p.Pagina))
         {
-            var tip = TipDocument(p.Tip);
+            var tip = TipDocument(p.Tip, areFactura);
             if (tip is null)
             {
                 // Aviz, certificate, anexe: la ultima factură; paginile fără titlu: la documentul curent.
@@ -131,12 +139,13 @@ public static class ImpartireDocumente
         }
     }
 
-    private static TipDocumentImport? TipDocument(TipPagina tip) => tip switch
+    private static TipDocumentImport? TipDocument(TipPagina tip, bool areFactura = true) => tip switch
     {
         TipPagina.Factura or TipPagina.EFactura => TipDocumentImport.Factura,
         TipPagina.NotaComanda => TipDocumentImport.NotaComanda,
         TipPagina.NecesarMateriale => TipDocumentImport.NecesarMateriale,
         TipPagina.BonConsum => TipDocumentImport.BonConsum,
+        TipPagina.Aviz when !areFactura => TipDocumentImport.Aviz,
         _ => null,
     };
 
@@ -149,7 +158,7 @@ public static class ImpartireDocumente
 
         // Numere diferite (comparate pe cifre: seria se citește diferit în factură și în e-Factura) → alt document.
         var numar = ClasificarePagini.CheieNumar(p.Numar);
-        var numereGrup = curent.Pagini.Where(x => TipDocument(x.Tip) == tip).Select(x => ClasificarePagini.CheieNumar(x.Numar)).Where(n => n is not null).ToHashSet();
+        var numereGrup = curent.Pagini.Where(x => TipDocument(x.Tip, false) == tip).Select(x => ClasificarePagini.CheieNumar(x.Numar)).Where(n => n is not null).ToHashSet();
         if (numar is not null && numereGrup.Count > 0 && !numereGrup.Any(n => ClasificarePagini.AcelasiNumar(n!, numar)))
         {
             return false;

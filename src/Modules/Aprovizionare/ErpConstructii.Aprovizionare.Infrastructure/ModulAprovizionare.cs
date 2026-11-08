@@ -24,8 +24,12 @@ public sealed partial class ModulAprovizionare : IModul
 
     public string Nume => AprovizionareDbContext.NumeSchema;
 
-    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare) =>
+    public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare)
+    {
         servicii.AdaugaDbContextModul<AprovizionareDbContext>(configurare, Nume);
+        servicii.AddScoped<IInterogareAvize, InterogareAvize>();
+        servicii.AddScoped<IInterogareNoteComanda, InterogareNoteComanda>();
+    }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
     {
@@ -110,6 +114,9 @@ public sealed partial class ModulAprovizionare : IModul
 
         // Necesar → notă de comandă de acceptat → achiziții (furnizor, emitere), D-37.
         FluxNotaComanda.Mapeaza(grup);
+
+        // Avize de însoțire a mărfii (marfa venită înaintea facturii), D-40.
+        EndpointuriAvize.Mapeaza(grup);
 
         grup.MapGet("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/document.docx", DescarcaNecesar)
             .WithName("DescarcaNecesarMateriale")

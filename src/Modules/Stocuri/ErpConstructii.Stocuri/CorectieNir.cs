@@ -4,7 +4,7 @@ using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Stocuri;
 
-/// <summary>Valorile corectate ale unei linii de NIR (identificată prin poziția ei în factură).</summary>
+/// <summary>Valorile corectate ale unei linii de NIR, identificată prin <see cref="LinieNir.Cheie"/> (poziția pe aviz sau în factură).</summary>
 public sealed record LinieNirCorectata(int IndexFactura, decimal CantitateFactura, decimal CantitateReceptionata, decimal PretUnitar, string? Observatii);
 
 /// <summary>O linie schimbată de corectură: înainte / după și diferența care intră (sau iese) din stoc.</summary>
@@ -29,7 +29,7 @@ public sealed class CorectieNir : EntitateFirma, ICorectieDocument
 
     public Guid NirId { get; private set; }
     public string NirNumar { get; private set; } = string.Empty;
-    public Guid FacturaId { get; private set; }
+    public Guid? FacturaId { get; private set; }
     public DateOnly Data { get; private set; }
     public string Motiv { get; private set; } = string.Empty;
     public string Rezumat { get; private set; } = string.Empty;

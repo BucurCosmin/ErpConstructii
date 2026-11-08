@@ -155,7 +155,9 @@ public static partial class ClasificarePagini
         if (titlu.Contains("BON DE CONSUM", StringComparison.Ordinal) || titlu.Contains("BON CONSUM", StringComparison.Ordinal))
             return TipPagina.BonConsum;
 
-        if (Cuvant(titlu, "AVIZ") && titlu.Contains("INSOTIRE", StringComparison.Ordinal) && !Cuvant(titlu, "FACTURA"))
+        // „Aviz de însoțire a mărfii” sau „Aviz expediție”.
+        if (Cuvant(titlu, "AVIZ") && (titlu.Contains("INSOTIRE", StringComparison.Ordinal) || titlu.Contains("EXPEDITIE", StringComparison.Ordinal)) &&
+            !Cuvant(titlu, "FACTURA"))
             return TipPagina.Aviz;
 
         if (Cuvant(titlu, "FACTURA") || (Cuvant(tot, "FACTURA") && (Cuvant(tot, "FURNIZOR") || Cuvant(tot, "VANZATOR")) &&

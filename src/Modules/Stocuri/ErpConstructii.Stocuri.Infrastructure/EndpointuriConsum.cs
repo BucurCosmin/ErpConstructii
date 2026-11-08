@@ -162,17 +162,18 @@ internal static class EndpointuriConsum
         if (!string.IsNullOrWhiteSpace(cauta))
         {
             var t = $"%{cauta.Trim()}%";
-            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar, t) || EF.Functions.ILike(n.FurnizorDenumire, t));
+            q = q.Where(n => EF.Functions.ILike(n.FacturaNumar!, t) || EF.Functions.ILike(n.AvizNumar!, t) || EF.Functions.ILike(n.FurnizorDenumire, t));
         }
 
-        var nir = await q.OrderByDescending(n => n.ProiectId == proiectId).ThenByDescending(n => n.FacturaData).Take(300).ToListAsync(ct);
+        var nir = await q.OrderByDescending(n => n.ProiectId == proiectId).ThenByDescending(n => n.FacturaData ?? n.AvizData).Take(300).ToListAsync(ct);
         var santier = await db.Gestiuni.AsNoTracking().FirstOrDefaultAsync(x => x.ProiectId == proiectId, ct);
         var depozite = await db.Gestiuni.AsNoTracking().Where(x => x.ProiectId == null).ToDictionaryAsync(x => x.Id, x => x.Denumire, ct);
         var articole = nir.SelectMany(n => n.Linii).Select(l => l.ArticolId).Distinct().ToList();
         var solduri = await db.Solduri.AsNoTracking().Where(s => articole.Contains(s.ArticolId)).ToListAsync(ct);
         decimal Sold(Guid? gestiune, Guid articol) => solduri.Where(s => s.GestiuneId == gestiune && s.ArticolId == articol).Sum(s => s.Cantitate);
 
-        var rezultat = nir.GroupBy(n => n.FacturaId).Select(g =>
+        // Marfa pe aviz încă nefacturată apare cu avizul (D-40).
+        var rezultat = nir.GroupBy(n => n.FacturaId ?? n.AvizId ?? n.Id).Select(g =>
         {
             var primul = g.First();
             var linii = g.SelectMany(n => n.Linii.Where(l => l.CantitateReceptionata > 0).Select(l => (n.GestiuneId, Linie: l)))
@@ -184,7 +185,8 @@ internal static class EndpointuriConsum
                         santier is null ? 0 : Sold(santier.Id, l.ArticolId), x.Key.GestiuneId, depozite.GetValueOrDefault(x.Key.GestiuneId, "depozit"), Sold(x.Key.GestiuneId, l.ArticolId));
                 })
                 .ToList();
-            return new FacturaPentruConsumDto(g.Key, primul.FacturaNumar, primul.FacturaData, primul.FurnizorDenumire, primul.ProiectCod, primul.ProiectId == proiectId, linii);
+            return new FacturaPentruConsumDto(g.Key, primul.FacturaNumar ?? $"aviz {primul.AvizNumar}", primul.FacturaData ?? primul.AvizData ?? primul.Data,
+                primul.FurnizorDenumire, primul.ProiectCod, primul.ProiectId == proiectId, linii);
         }).Where(f => f.Linii.Count > 0).Take(100).ToList();
         return Results.Ok(rezultat);
     }

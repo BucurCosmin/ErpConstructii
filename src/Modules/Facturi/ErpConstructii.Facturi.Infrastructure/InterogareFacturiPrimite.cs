@@ -1,6 +1,14 @@
+using ErpConstructii.Aprovizionare;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpConstructii.Facturi.Infrastructure;
+
+/// <summary>Facturile legate de o notă de comandă (pentru ștergerea avizului și a notei generate din el, D-40).</summary>
+internal sealed class InterogareFacturiNotaComanda(FacturiDbContext db) : IInterogareFacturiNotaComanda
+{
+    public Task<int> FacturiAsync(Guid notaComandaId, CancellationToken ct = default) =>
+        db.FacturiPrimite.CountAsync(f => f.NotaComandaId == notaComandaId && !db.Anulari.Any(a => a.FacturaId == f.Id), ct);
+}
 
 internal sealed class InterogareFacturiPrimite(FacturiDbContext db) : IInterogareFacturiPrimite
 {
@@ -31,6 +39,7 @@ internal sealed class InterogareFacturiPrimite(FacturiDbContext db) : IInterogar
             .ToList();
         return linii.Count == 0
             ? null
-            : new FacturaPentruReceptie(f.Id, f.Numar, f.DataEmitere, f.FurnizorId, f.FurnizorDenumire, f.ProiectId, f.ProiectCod, linii);
+            : new FacturaPentruReceptie(f.Id, f.Numar, f.DataEmitere, f.FurnizorId, f.FurnizorDenumire, f.ProiectId, f.ProiectCod, linii,
+                f.NotaComandaId, f.NotaComandaNumar);
     }
 }
