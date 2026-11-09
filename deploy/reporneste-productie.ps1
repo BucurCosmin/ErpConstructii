@@ -33,3 +33,14 @@ if ($Actualizeaza) {
 
 # porneste-productie.ps1 oprește întâi instanța care rulează.
 & (Join-Path $PSScriptRoot "porneste-productie.ps1")
+
+# Codul nou poate cere migrări noi, pe care aplicația nu le aplică singură (cer rolul erp_owner).
+$port = [int](Get-Content $fisierSetari -Raw | ConvertFrom-Json).Port
+$sanatate = try { & curl.exe -s -k --max-time 10 "https://127.0.0.1:$port/sanatate" | ConvertFrom-Json } catch { $null }
+if ($sanatate.stare -eq "migrari-lipsa") {
+    Write-Host ""
+    Write-Host "ATENȚIE: baza de date nu e la zi, unele pagini vor da erori:" -ForegroundColor Red
+    $sanatate.migrariLipsa | ForEach-Object { Write-Host "  $_" -ForegroundColor Red }
+    Write-Host "Rulează: powershell -ExecutionPolicy Bypass -File db\creeaza-baza-locala.ps1" -ForegroundColor Yellow
+    Write-Host "(fără -ParolaApp: o ia din configurarea producției), apoi din nou deploy\reporneste-productie.ps1" -ForegroundColor Yellow
+}

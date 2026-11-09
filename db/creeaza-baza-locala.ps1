@@ -22,6 +22,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 $radacina = Split-Path -Parent $PSScriptRoot
+
+# Pe serverul de producție, parola lui erp_app e cea din configurarea producției (altfel scriptul ar schimba-o și
+# aplicația n-ar mai porni: „password authentication failed for user erp_app”).
+$configProductie = Join-Path $radacina "productie\api\appsettings.Production.local.json"
+if (-not $PSBoundParameters.ContainsKey("ParolaApp") -and (Test-Path $configProductie)) {
+    $conexiuneProductie = (Get-Content $configProductie -Raw | ConvertFrom-Json).ConnectionStrings.Erp
+    if ($conexiuneProductie -match '(?:^|;)Password=([^;]*)') {
+        $ParolaApp = $Matches[1]
+        Write-Host "Parola lui erp_app: cea din productie\api\appsettings.Production.local.json."
+    }
+}
+
 $psql = Join-Path $PgBin "psql.exe"
 if (-not (Test-Path $psql)) { throw "Nu găsesc psql.exe în $PgBin (dă calea cu -PgBin, ex. -PgBin 'C:\Program Files\PostgreSQL\17\bin')." }
 
@@ -64,19 +76,16 @@ finally { Pop-Location }
 
 # Migrările rulează cu rolul proprietar, NU cu erp_app.
 $conexiune = "Host=$Gazda;Port=$Port;Database=erp;Username=erp_owner;Password=$ParolaOwner"
-# (modul, DbContext): un modul poate avea mai multe contexte (Identitate: business + autentificare).
-$contexte = @(
-    @("Identitate", "IdentitateDbContext"),
-    @("Identitate", "AutentificareDbContext"),
-    @("Proiecte", "ProiecteDbContext"),
-    @("Devize", "DevizeDbContext"),
-    @("Formulare", "FormulareDbContext"),
-    @("Parteneri", "ParteneriDbContext"),
-    @("Aprovizionare", "AprovizionareDbContext"),
-    @("Facturi", "FacturiDbContext"),
-    @("Stocuri", "StocuriDbContext"),
-    @("Audit", "AuditDbContext")
-)
+# (modul, DbContext), găsite după fișierele <Context>ModelSnapshot.cs: un modul nou intră automat.
+# Un modul poate avea mai multe contexte (Identitate: business + autentificare). Identitate rulează primul.
+$contexte = @(Get-ChildItem (Join-Path $radacina "src\Modules") -Recurse -Filter "*ModelSnapshot.cs" |
+    Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } |
+    ForEach-Object {
+        $modul = ($_.FullName.Substring((Join-Path $radacina "src\Modules").Length + 1) -split '\\')[0]
+        , @($modul, ($_.BaseName -replace 'ModelSnapshot$', ''))
+    } |
+    Sort-Object { if ($_[0] -eq "Identitate") { 0 } else { 1 } }, { $_[0] }, { $_[1] -ne "IdentitateDbContext" })
+Write-Host ("Contexte: " + (($contexte | ForEach-Object { $_[1] }) -join ", "))
 Push-Location $radacina
 foreach ($c in $contexte) {
     $m = $c[0]; $context = $c[1]

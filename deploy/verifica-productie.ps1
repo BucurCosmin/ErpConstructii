@@ -26,6 +26,13 @@ function Raspunde([string] $gazda) {
 if (Raspunde "127.0.0.1") { Ok "aplicația răspunde pe https://127.0.0.1:$port" }
 else { Problema "aplicația nu răspunde pe portul $port" "pornește-o: deploy\porneste-productie.ps1; vezi productie\loguri\api.log"; return }
 
+$sanatate = try { & curl.exe -s -k --max-time 6 "https://127.0.0.1:$port/sanatate" | ConvertFrom-Json } catch { $null }
+if ($sanatate.stare -eq "migrari-lipsa") {
+    Problema "baza de date nu e la zi (de aici vin erorile „error processing your request”): $($sanatate.migrariLipsa -join '; ')" `
+        "rulează db\creeaza-baza-locala.ps1 (fără -ParolaApp: o ia din configurarea producției), apoi deploy\reporneste-productie.ps1"
+}
+elseif ($sanatate.stare -eq "ok") { Ok "baza de date are toate migrările" }
+
 $asculta = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($asculta.LocalAddress -in "0.0.0.0", "::") { Ok "ascultă pe toate interfețele (0.0.0.0:$port)" }
 else { Problema "ascultă doar pe $($asculta.LocalAddress)" "rulează din nou deploy\pregateste-productie.ps1 (versiunea nouă ascultă pe 0.0.0.0)" }

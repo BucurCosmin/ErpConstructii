@@ -184,8 +184,12 @@ catch (Exception ex) when (esteDezvoltare && ex is Npgsql.NpgsqlException or Inv
     app.Logger.LogWarning(ex, "Clienții OAuth nu au putut fi înregistrați. Ai rulat migrările? (vezi README)");
 }
 
+await ErpConstructii.Api.Administrare.VerificareMigrari.VerificaAsync(app.Services, module, app.Logger);
+
 app.MapeazaEndpointuriAutentificare();
-app.MapGet("/sanatate", () => Results.Ok(new { stare = "ok" })).AllowAnonymous();
+app.MapGet("/sanatate", () => ErpConstructii.Api.Administrare.VerificareMigrari.Lipsa is { Count: > 0 } lipsa
+    ? Results.Ok(new { stare = "migrari-lipsa", migrariLipsa = lipsa })
+    : Results.Ok(new { stare = "ok" })).AllowAnonymous();
 
 // Toate rutele de business sunt sub /api și cer autentificare; fiecare endpoint
 // cere în plus o permisiune specifică (vezi ErpConstructii.Identitate.Permisiuni).

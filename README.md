@@ -49,6 +49,43 @@ verificării în doi pași (cod QR pentru Google/Microsoft Authenticator). Contu
 (poate crea firme). Colegii demo (Maria Ionescu, Radu Marin etc.) au parole temporare: din Administrare → Utilizatori →
 fișa utilizatorului → „Resetează parola” obții una pe care o poți folosi la login.
 
+## Actualizarea producției
+
+```powershell
+git pull
+powershell -ExecutionPolicy Bypass -File db\creeaza-baza-locala.ps1     # migrările noi (cere parola lui postgres)
+powershell -ExecutionPolicy Bypass -File deploy\reporneste-productie.ps1 -Actualizeaza
+```
+
+Pe serverul de producție, scriptul bazei ia parola lui `erp_app` din `productie\api\appsettings.Production.local.json`
+(nu o da cu `-ParolaApp`). Dacă aplicația nu pornește cu „password authentication failed for user erp_app”, rulează
+din nou `db\creeaza-baza-locala.ps1` fără `-ParolaApp`: pune înapoi parola din configurare.
+
+Aplicația nu aplică singură migrările (rulează cu `erp_app`; migrările cer `erp_owner`). Fără ele, paginile modulelor
+noi dau „error processing your request”. La pornire, lipsa lor apare în `productie\loguri\api.log`, în `/sanatate`
+(`"stare": "migrari-lipsa"`) și în `deploy\verifica-productie.ps1`. Parolele trebuie să fie cele cu care a fost creată
+baza pe acel server (altfel scriptul le schimbă și aplicația nu se mai conectează).
+
+## Cont blocat, parolă uitată, codul din Authenticator nu mai merge
+
+Pe calculatorul cu aplicația (producție sau dezvoltare), dintr-un PowerShell în rădăcina repo-ului:
+
+```powershell
+# parolă temporară nouă + deblocare + sesiuni închise
+powershell -ExecutionPolicy Bypass -File deploy\reseteaza-parola.ps1 -Email demo@erpconstructii.ro
+
+# la fel, plus dezactivarea verificării în doi pași (telefon pierdut / schimbat, codurile sunt refuzate)
+powershell -ExecutionPolicy Bypass -File deploy\reseteaza-parola.ps1 -Email demo@erpconstructii.ro -ReseteazaMfa
+```
+
+- Scriptul afișează parola temporară. La login se cere o parolă nouă; cu `-ReseteazaMfa` se scanează din nou codul QR
+  (șterge mai întâi intrarea veche din Authenticator).
+- Dacă există `productie\api` (creat de `deploy\pregateste-productie.ps1`), lucrează pe baza de producție; altfel
+  compilează și folosește configurarea de dezvoltare. Aplicația poate rula în timpul resetării.
+- Comanda din spate: `ErpConstructii.Api --reseteaza-parola <email> [--reseteaza-mfa]` (`Administrare/ComandaCont.cs`).
+- Codurile TOTP depind de oră: dacă refuzul se repetă, verifică ceasul serverului (`w32tm /query /status`,
+  resincronizare cu `w32tm /resync`, ca administrator) și pe cel al telefonului (oră automată).
+
 ## Documentație
 
 - [CLAUDE.md](CLAUDE.md): starea proiectului, reguli, convenții, backlog
