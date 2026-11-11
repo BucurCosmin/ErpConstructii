@@ -219,13 +219,21 @@ export function VerificareNumere({ serie, poateEdita }: { serie: SerieNumere; po
   )
 }
 
-/** Rapoartele PDF ale documentelor afișate (cele filtrate): registru, detaliat pe materiale, materiale adunate pe lucrare. */
-export function ButonRaport({ url, ids, filtre, csv }: {
+const TIPURI_RAPORT = [
+  { key: 'registru', label: 'Registru (un rând pe document)' },
+  { key: 'detaliat', label: 'Detaliat (documentele cu materialele lor)' },
+  { key: 'materiale', label: 'Materiale adunate pe lucrare' },
+]
+
+/** Rapoartele PDF ale documentelor afișate (cele filtrate): implicit registru, detaliat pe materiale, materiale adunate pe lucrare. */
+export function ButonRaport({ url, ids, filtre, csv, tipuri = TIPURI_RAPORT }: {
   url: string
   ids: string[]
   filtre: string
   /** Exportul CSV al materialelor (opțional). */
   csv?: () => void
+  /** Tipurile de raport ale serverului (cheia = `tip` din cerere). */
+  tipuri?: { key: string; label: string }[]
 }) {
   const { message } = App.useApp()
   const [seGenereaza, setSeGenereaza] = useState(false)
@@ -243,9 +251,7 @@ export function ButonRaport({ url, ids, filtre, csv }: {
   return (
     <Dropdown disabled={ids.length === 0} menu={{
       items: [
-        { key: 'registru', label: 'Registru (un rând pe document)' },
-        { key: 'detaliat', label: 'Detaliat (documentele cu materialele lor)' },
-        { key: 'materiale', label: 'Materiale adunate pe lucrare' },
+        ...tipuri,
         ...(csv ? [{ type: 'divider' as const }, { key: 'csv', label: 'Export CSV (materialele din documente)' }] : []),
       ],
       onClick: ({ key }) => (key === 'csv' ? csv?.() : void raport(key)),

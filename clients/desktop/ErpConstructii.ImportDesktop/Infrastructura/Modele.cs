@@ -105,6 +105,43 @@ public sealed record ConfirmaNotaComanda(
     string? NumarExtern, DateOnly Data, string? Lucrare, string FurnizorDenumire, string? FurnizorCui, string? FurnizorAdresa,
     string? FurnizorTelefon, List<LinieNotaConfirmata> Linii, string? Observatii, bool DinUrma = false);
 
+// ------------------------------------------------------------------ avize de însoțire (D-40)
+
+public sealed record LinieAvizCitita(int Rand, CampCitit<string> Denumire, CampCitit<string> UnitateMasura, CampCitit<decimal?> Cantitate);
+
+/// <summary>Nota de comandă emisă care pare a fi a avizului (numărul pomenit pe aviz, același furnizor).</summary>
+public sealed record NotaComandaPropusa(Guid Id, string Numar, string? NumarExtern, DateOnly Data, Guid ProiectId, string ProiectCod, string FurnizorDenumire);
+
+public sealed record InterpretareAviz(
+    string NumeFisier,
+    bool DinOcr,
+    CampCitit<string> NumarExtern,
+    CampCitit<DateOnly?> Data,
+    CampCitit<string> FurnizorDenumire,
+    CampCitit<string> FurnizorCui,
+    PartenerGasit? FurnizorGasit,
+    CampCitit<string> Lucrare,
+    ProiectPropus? ProiectPropus,
+    string? ReferintaComanda,
+    NotaComandaPropusa? NotaComandaPropusa,
+    List<LinieAvizCitita> Linii,
+    List<Problema> Probleme,
+    string? AvizExistent,
+    List<int> Pagini);
+
+public sealed record LinieAvizConfirmata(string Denumire, string UnitateMasura, decimal Cantitate);
+
+/// <param name="NotaComandaId">Nota de comandă emisă a mărfii; null = se generează una din aviz (la documentele din urmă, niciuna).</param>
+public sealed record ConfirmaAviz(
+    string NumarExtern, DateOnly Data, string? Lucrare, string FurnizorDenumire, string? FurnizorCui, List<LinieAvizConfirmata> Linii,
+    string? Observatii, Guid? NotaComandaId, bool DinUrma = false);
+
+/// <summary>O notă de comandă din lista proiectului (GET /api/aprovizionare/note-comanda).</summary>
+public sealed record NotaComandaLista(Guid Id, string Numar, string? NumarExtern, DateOnly Data, string FurnizorDenumire);
+
+/// <summary>Alegerea notei de comandă a avizului: o notă emisă sau (Id null) una nouă, generată din aviz.</summary>
+public sealed record OptiuneNota(Guid? Id, string Eticheta);
+
 // ------------------------------------------------------------------ necesare de materiale
 
 public sealed record LinieNecesarCitita(int Rand, CampCitit<string> Denumire, CampCitit<string> UnitateMasura, CampCitit<decimal?> Cantitate, CampCitit<string> Observatii);
@@ -137,6 +174,9 @@ public sealed record LocSolicitant(Guid Id, bool EsteSantier, string Denumire, s
     public string Eticheta => string.IsNullOrWhiteSpace(Adresa) ? Denumire : $"{Denumire} · {Adresa}";
 }
 
+
+/// <summary>D-48: primul număr de hârtie liber din seria proiectului (proiect + an).</summary>
+public sealed record NumarLiber(long Numar, int An);
 
 /// <summary>Răspunsul la confirmarea unei note de comandă / unui necesar: numărul de sistem.</summary>
 public sealed record DocumentInregistrat(Guid Id, string Numar);

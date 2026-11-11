@@ -86,7 +86,8 @@ public static partial class ClasificarePagini
 
             var (numar, data) = tip switch
             {
-                TipPagina.NotaComanda or TipPagina.NecesarMateriale or TipPagina.Aviz or TipPagina.BonConsum => NumarSiData(text),
+                TipPagina.Aviz => NumarSiDataAviz(text),
+                TipPagina.NotaComanda or TipPagina.NecesarMateriale or TipPagina.BonConsum => NumarSiData(text),
                 TipPagina.Factura or TipPagina.EFactura => (NumarFactura(text), null),
                 _ => (null, null),
             };
@@ -174,6 +175,32 @@ public static partial class ClasificarePagini
 
         return TipPagina.Altele;
     }
+
+    /// <summary>
+    /// Avizul: „Serie/Numar: INTFSN/18794”, „Serie AVSOV Numar 6786”, „Numar: OTL-220”, „Nr. X / data”. Un „nr.” oarecare
+    /// (de ex. din adresa furnizorului, „nr.34A”) nu e numărul avizului: mai bine fără număr decât unul greșit.
+    /// </summary>
+    private static (string? Numar, DateOnly? Data) NumarSiDataAviz(string text)
+    {
+        var d = PotrivireData().Match(text);
+        var data = d.Success ? Data(d.Value) : null;
+        if (PotrivireAvizSerieSlashNumar().Match(text) is { Success: true } a)
+            return (a.Groups["n"].Value.Trim('.', ',', '-'), data);
+        if (PotrivireSerieNumar().Match(text) is { Success: true } b)
+            return ($"{b.Groups["s"].Value.ToUpperInvariant()} {b.Groups["n"].Value}", data);
+        if (PotrivireAvizNumarEticheta().Match(text) is { Success: true } c)
+            return (c.Groups["n"].Value.Trim('.', ',', '-'), data);
+        if (PotrivireNumarCuData().Match(text) is { Success: true } m)
+            return (m.Groups["n"].Value, Data(m.Groups["d"].Value));
+        return (null, data);
+    }
+
+    [GeneratedRegex(@"\bSeri[ea]\s*/\s*Num[aă]r\s*[:.]?\s*(?<n>[A-Z0-9][A-Z0-9/\-.]*\d)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireAvizSerieSlashNumar();
+
+    /// <summary>„Numar: OTL-220” (cu etichetă, nu „Nr. crt.” sau „nr.” din adresă).</summary>
+    [GeneratedRegex(@"\bNum[aă]r(?:ul)?\s*:\s*(?<n>[A-Z]{0,8}-?\d[\d/\-]*)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex PotrivireAvizNumarEticheta();
 
     private static (string? Numar, DateOnly? Data) NumarSiData(string text)
     {

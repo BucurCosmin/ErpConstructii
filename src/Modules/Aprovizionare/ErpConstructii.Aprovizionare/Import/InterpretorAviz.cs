@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using ErpConstructii.SharedKernel;
@@ -69,7 +69,7 @@ public static partial class InterpretorAviz
         var furnizor = Furnizor(randuri);
         var lucrare = Lucrare(randuri);
         var comanda = randuri.Select(r => PotrivireComanda().Match(r.Text)).FirstOrDefault(m => m.Success)?.Groups["n"].Value;
-        var linii = Linii(randuri, document.DinOcr);
+        var linii = Linii(randuri, document.LiniiOrizontale.Where(l => pagini.Contains(l.Pagina)).ToList(), document.DinOcr);
 
         if (linii.Count == 0)
             probleme.Add(new ProblemaImport(Severitate.Avertisment, "materiale", "Nu am găsit materialele avizului. Adaugă-le manual."));
@@ -238,10 +238,15 @@ public static partial class InterpretorAviz
     // ------------------------------------------------------------------ materiale
 
     /// <summary>
-    /// Liniile tabelului: rândurile care se termină cu „UM cantitate” (eventual urmate de preț / valoare), după antetul
-    /// tabelului și până la total / observații / datele expediției. Numărul curent din față se scoate din denumire.
+    /// Liniile tabelului, pe rânduri fizice (ca la necesarele de materiale): rândul de text care se termină cu „UM cantitate”
+    /// (eventual urmat de preț / valoare) ține locul materialului, iar celelalte rânduri de text ale tabelului (denumirea lungă,
+    /// scrisă pe mai multe rânduri, deasupra și / sau dedesubtul cantității) se lipesc de materialul lor: după banda dintre
+    /// liniile orizontale ale tabelului, dacă s-au găsit, altfel de rândul cu cantitate cel mai apropiat pe verticală. Așa,
+    /// continuarea unei denumiri nu ajunge la materialul următor, iar un rând fără cantitate nu devine material separat.
+    /// Denumirea e textul din coloana ei (la stânga UM-ului), fără numărul curent și fără rândurile de detaliu
+    /// („REAVIZARE AVIZ …”, „Cod NC: …”).
     /// </summary>
-    private static List<LinieAvizCitita> Linii(IReadOnlyList<RandText> randuri, bool dinOcr)
+    private static List<LinieAvizCitita> Linii(IReadOnlyList<RandText> randuri, IReadOnlyList<LinieOrizontala> liniiOrizontale, bool dinOcr)
     {
         var start = 0;
         for (var i = 0; i < randuri.Count; i++)
@@ -254,79 +259,243 @@ public static partial class InterpretorAviz
             }
         }
 
-        var linii = new List<LinieAvizCitita>();
-        var inainte = new List<RandText>(); // rândurile fără cantitate de după linia anterioară
+        // Rândurile tabelului, până la total / observații / datele expediției (după primul material găsit).
+        var tabel = new List<RandAviz>();
         for (var i = start; i < randuri.Count; i++)
         {
-            var rand = randuri[i];
-            var t = Normalizeaza(rand.Text).TrimStart('[', '|', ' ');
+            var t = Normalizeaza(randuri[i].Text).TrimStart('[', '|', ' ');
             if (EsteSfarsitTabel(t))
             {
-                if (linii.Count > 0)
+                if (tabel.Any(r => r.EsteMaterial))
                     break;
                 continue;
             }
 
-            var cuvinte = rand.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(c => c.Trim('|', '[', ']')).Where(c => c.Length > 0).ToList();
+            if (EsteAntetTabel(t))
+                continue; // a doua parte a antetului („crt.”, „sau servicii”, „unitar (21%)”)
+            tabel.Add(RandAviz.Din(randuri[i]));
+        }
+
+        var materiale = tabel.Where(r => r.EsteMaterial).ToList();
+        if (materiale.Count == 0)
+            return [];
+
+        // Celula fiecărui material: rândurile de text lipite de rândul cu cantitate, deasupra și dedesubt.
+        var grupuri = materiale.ToDictionary(m => m, m => new List<RandAviz> { m });
+        if (tabel.Any(r => r.Rand.ArePozitieVerticala))
+        {
+            var benzi = BenziAviz.Din(liniiOrizontale, materiale);
+            var inaltime = materiale.Where(m => m.Rand.ArePozitieVerticala).Select(m => m.Rand.Y1 - m.Rand.Y0).Order().ToList();
+            var distantaMaxima = inaltime.Count == 0 ? 40 : Math.Max(15, (int)(inaltime[inaltime.Count / 2] * 1.6));
+            // Un rând aflat între două materiale ține de cel mai apropiat dintre ele.
+            var alMaterialului = tabel.Where(r => !r.EsteMaterial && r.Rand.ArePozitieVerticala)
+                .ToDictionary(r => r, r => CelMaiApropiat(r, materiale, benzi));
+            foreach (var m in materiale.Where(m => m.Rand.ArePozitieVerticala))
+            {
+                var candidati = alMaterialului.Where(x => x.Value == m).Select(x => x.Key).ToList();
+                var coloana = m.ColoanaDenumire() ?? candidati.Where(r => r.Califica(null, m.XUm))
+                    .OrderBy(r => Distanta(r.Rand, m.Rand)).Select(r => r.PrimulCuvantCuLitere()?.X0).FirstOrDefault();
+                foreach (var directie in new[] { -1, 1 })
+                {
+                    var capat = m.Rand;
+                    var sir = candidati.Where(r => directie < 0 ? r.Rand.Y0 < m.Rand.Y0 : r.Rand.Y0 > m.Rand.Y0)
+                        .OrderBy(r => directie < 0 ? -r.Rand.Y0 : r.Rand.Y0);
+                    foreach (var r in sir)
+                    {
+                        var aceeasiBanda = benzi is not null && benzi.Banda(r.Rand) is { } b && b == benzi.Banda(m.Rand);
+                        if (!r.Califica(coloana, m.XUm) || (!aceeasiBanda && Distanta(r.Rand, capat) > distantaMaxima))
+                            break; // celula se termină la primul rând străin sau la un spațiu mare
+                        grupuri[m].Add(r);
+                        capat = r.Rand;
+                    }
+                }
+            }
+        }
+        else
+        {
+            // Fără poziții verticale (Word, unele PDF-uri): rândurile de text de imediat dinaintea cantității țin de ea, cât
+            // sunt în coloana denumirii și nu sunt etichete (urcarea se oprește la primul rând străin sau la alt material).
+            for (var i = 0; i < tabel.Count; i++)
+            {
+                var m = tabel[i];
+                if (!m.EsteMaterial)
+                    continue;
+                int? coloana = m.ColoanaDenumire();
+                for (var j = i - 1; j >= 0 && !tabel[j].EsteMaterial; j--)
+                {
+                    var r = tabel[j];
+                    coloana ??= r.Califica(null, m.XUm) ? r.PrimulCuvantCuLitere()?.X0 : null;
+                    if (!r.Califica(coloana, m.XUm))
+                        break;
+                    grupuri[m].Add(r);
+                }
+            }
+        }
+
+        var linii = new List<LinieAvizCitita>();
+        foreach (var m in materiale)
+        {
+            var randuriMaterial = grupuri[m].OrderBy(r => r.Rand.Pagina).ThenBy(r => r.Rand.Y0).ThenBy(r => tabel.IndexOf(r)).ToList();
+            var parti = randuriMaterial
+                .Select(r => r.Denumire(m.XUm))
+                .Where(d => d.Length > 0 && !EsteDetaliu(d))
+                .ToList();
+            var textDenumire = string.Join(' ', parti);
+            if (textDenumire.Length > 300)
+                textDenumire = textDenumire[..300].TrimEnd();
+
+            var umCitita = m.Cuvinte[m.K].Text;
+            var um = UnitateMasura(umCitita)!;
+            var corectata = UnitatiOcr.ContainsKey(Normalizeaza(umCitita).TrimEnd('.'));
+            var incredere = m.Rand.Cuvinte.Count == 0 ? 100 : m.Rand.Cuvinte.Min(c => c.Incredere);
+            var cert = dinOcr && incredere < TextDocument.PragIncredere ? Certitudine.Nesigur : Certitudine.Sigur;
+            var textCantitate = m.Cuvinte[m.K + 1].Text;
+            var cantitate = ParseazaCantitate(textCantitate);
+            // Denumirea adunată din mai multe rânduri e de verificat (s-ar putea să fi prins un rând străin).
+            var certDenumire = parti.Count > 1 ? Certitudine.Nesigur : cert;
+            linii.Add(new LinieAvizCitita(
+                linii.Count + 1,
+                textDenumire.Any(char.IsLetter) ? new CampCitit<string>(textDenumire, certDenumire, textDenumire) : CampCitit<string>.Lipsa(),
+                new CampCitit<string>(um, corectata ? Certitudine.Nesigur : cert, umCitita),
+                cantitate is { } q and > 0 ? new CampCitit<decimal>(q, cert, textCantitate) : CampCitit<decimal>.Lipsa(textCantitate)));
+        }
+
+        return linii;
+    }
+
+    /// <summary>Materialul cel mai apropiat de rând, pe aceeași pagină: cel din aceeași bandă a tabelului, altfel după distanța verticală.</summary>
+    private static RandAviz? CelMaiApropiat(RandAviz r, IReadOnlyList<RandAviz> materiale, BenziAviz? benzi)
+    {
+        if (benzi?.Banda(r.Rand) is { } banda && materiale.Where(m => benzi.Banda(m.Rand) == banda).ToList() is { Count: 1 } dinBanda)
+            return dinBanda[0];
+        return materiale
+            .Where(m => m.Rand.Pagina == r.Rand.Pagina && m.Rand.ArePozitieVerticala)
+            .OrderBy(m => Distanta(r.Rand, m.Rand))
+            .FirstOrDefault();
+    }
+
+    /// <summary>Spațiul vertical dintre două rânduri (0 dacă se suprapun).</summary>
+    private static int Distanta(RandText a, RandText b) =>
+        a.Y0 >= b.Y1 ? a.Y0 - b.Y1 : a.Y1 <= b.Y0 ? b.Y0 - a.Y1 : 0;
+
+    private static readonly HashSet<string> CuvinteAntet =
+    [
+        "NR", "CRT", "DENUMIRE", "DENUMIREA", "PRODUSE", "PRODUSELOR", "SERVICII", "SERVICIILOR", "SAU", "SI", "PRODUSE/SERVICII", "UM", "U.M", "CANT",
+        "CANTITATE", "PRET", "UNITAR", "VALOARE", "VALOAREA", "TVA", "LEI", "RON", "FARA", "-", "|", "_",
+    ];
+
+    /// <summary>Rând care conține doar cuvinte de antet de tabel (a doua parte a antetului, pe un rând separat).</summary>
+    private static bool EsteAntetTabel(string normalizat)
+    {
+        var cuvinte = normalizat.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(c => c.Trim('.', ',', ':', '(', ')', '[', ']')).Where(c => c.Length > 0).ToList();
+        return cuvinte.Any(c => c.Any(char.IsLetter)) &&
+               cuvinte.All(c => CuvinteAntet.Contains(c) || (c.EndsWith('%') && c[..^1].All(char.IsDigit)));
+    }
+
+    /// <summary>Rândurile de detaliu din celula denumirii, care nu fac parte din denumirea materialului.</summary>
+    private static bool EsteDetaliu(string denumire)
+    {
+        var t = Normalizeaza(denumire);
+        return t.StartsWith("REAVIZARE", StringComparison.Ordinal) || t.StartsWith("COD NC", StringComparison.Ordinal) ||
+               t.StartsWith("NC:", StringComparison.Ordinal) || t.StartsWith("COD VAMAL", StringComparison.Ordinal);
+    }
+
+    private sealed record CuvantAviz(string Text, int X0, int X1);
+
+    /// <summary>Un rând al tabelului: cuvintele (cu poziții, dacă se știu) și, la rândul cu cantitate, poziția UM-ului.</summary>
+    /// <param name="K">Indexul cuvântului UM (urmat de cantitate); -1 = rând fără cantitate.</param>
+    private sealed record RandAviz(RandText Rand, IReadOnlyList<CuvantAviz> Cuvinte, int K)
+    {
+        public bool EsteMaterial => K >= 0;
+        public bool AreText => Cuvinte.Any(c => c.Text.Count(char.IsLetter) >= 2);
+
+        /// <summary>X-ul UM-ului (granița coloanei denumirii); 0 fără poziții.</summary>
+        public int XUm => K >= 0 ? Cuvinte[K].X0 : 0;
+
+        /// <summary>Primul cuvânt cu litere (începutul textului din coloana denumirii).</summary>
+        public CuvantAviz? PrimulCuvantCuLitere() => Cuvinte.FirstOrDefault(c => c.Text.Count(char.IsLetter) >= 1);
+
+        /// <summary>Începutul coloanei denumirii pe rândul cu cantitate (null dacă rândul are doar nr., UM și cantitate).</summary>
+        public int? ColoanaDenumire() =>
+            Cuvinte.Take(Math.Max(K, 0)).FirstOrDefault(c => c.Text.Any(char.IsLetter) && c.X1 > 0 && c.X1 < XUm - 5)?.X0;
+
+        /// <summary>
+        /// Rândul poate fi parte din celula denumirii: text citit sigur (nu zgomot OCR), fără etichete („Numele delegatului:”),
+        /// început în coloana denumirii (±45 px) și terminat înaintea coloanei UM.
+        /// </summary>
+        public bool Califica(int? coloana, int xUm)
+        {
+            if (!AreText || Cuvinte.Any(c => c.Text.EndsWith(':')))
+                return false;
+            if (Rand.Cuvinte.Count > 0 && Rand.Cuvinte.Average(c => c.Incredere) < 60)
+                return false;
+            var primul = PrimulCuvantCuLitere();
+            if (primul is null || primul.Text.Count(char.IsLetter) < 2 || (xUm > 0 && primul.X0 >= xUm - 5))
+                return false;
+            return coloana is null || Math.Abs(primul.X0 - coloana.Value) <= 45;
+        }
+
+        public static RandAviz Din(RandText rand)
+        {
+            var cuvinte = (rand.Cuvinte.Count > 0 && rand.Cuvinte.Any(c => c.X1 > 0)
+                    ? rand.Cuvinte.Select(c => new CuvantAviz(c.Text.Trim('|', '[', ']'), c.X0, c.X1))
+                    : rand.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(c => new CuvantAviz(c.Trim('|', '[', ']'), 0, 0)))
+                .Where(c => c.Text.Length > 0)
+                .ToList();
             var k = -1;
             for (var j = cuvinte.Count - 2; j >= 1; j--)
             {
-                if (UnitateMasura(cuvinte[j]) is not null && EsteNumar(cuvinte[j + 1]) && cuvinte.Skip(j + 2).All(EsteValoareSauSemn))
+                if (UnitateMasura(cuvinte[j].Text) is not null && EsteNumar(cuvinte[j + 1].Text) && cuvinte.Skip(j + 2).All(c => EsteValoareSauSemn(c.Text)))
                 {
                     k = j;
                     break;
                 }
             }
 
-            if (k < 0)
-            {
-                inainte.Add(rand);
-                continue;
-            }
-
-            var denumire = cuvinte.Take(k).ToList();
-            if (denumire.Count > 1 && int.TryParse(denumire[0].TrimEnd('.', ')'), out var nr) && nr is > 0 and < 1000)
-                denumire.RemoveAt(0);
-            var textDenumire = string.Join(' ', denumire).Trim();
-            // Denumirea pe un rând, detaliile (ex. avizele reavizate) pe rândurile următoare, cantitatea pe ultimul:
-            // primul rând de text din aceeași coloană, de deasupra liniei, e denumirea.
-            var deasupra = DenumireDeasupra(inainte, rand);
-            inainte.Clear();
-            if (deasupra is not null)
-                textDenumire = deasupra;
-            if (!textDenumire.Any(char.IsLetter))
-                continue;
-
-            var umCitita = cuvinte[k];
-            var um = UnitateMasura(umCitita)!;
-            var corectata = UnitatiOcr.ContainsKey(Normalizeaza(umCitita).TrimEnd('.'));
-            var incredere = rand.Cuvinte.Count == 0 ? 100 : rand.Cuvinte.Min(c => c.Incredere);
-            var cert = dinOcr && incredere < TextDocument.PragIncredere ? Certitudine.Nesigur : Certitudine.Sigur;
-            var cantitate = ParseazaCantitate(cuvinte[k + 1]);
-            linii.Add(new LinieAvizCitita(
-                linii.Count + 1,
-                new CampCitit<string>(textDenumire, deasupra is null ? cert : Certitudine.Nesigur, textDenumire),
-                new CampCitit<string>(um, corectata ? Certitudine.Nesigur : cert, umCitita),
-                cantitate is { } q and > 0 ? new CampCitit<decimal>(q, cert, cuvinte[k + 1]) : CampCitit<decimal>.Lipsa(cuvinte[k + 1])));
+            return new RandAviz(rand, cuvinte, k);
         }
 
-        return linii;
+        /// <summary>
+        /// Textul din coloana denumirii: cuvintele de la stânga UM-ului materialului (toate, fără poziții), fără numărul curent
+        /// din față („1”, „2.”).
+        /// </summary>
+        public string Denumire(int xUm)
+        {
+            IEnumerable<CuvantAviz> cuvinte = K >= 0 ? Cuvinte.Take(K) : Cuvinte;
+            if (xUm > 0)
+                cuvinte = cuvinte.Where(c => c.X1 == 0 || c.X1 < xUm - 5);
+            var lista = cuvinte.ToList();
+            if (lista.Count > 0 && int.TryParse(lista[0].Text.TrimEnd('.', ')'), out var nr) && nr is > 0 and < 1000 &&
+                (lista.Count > 1 || K >= 0))
+                lista.RemoveAt(0);
+            return Curata(string.Join(' ', lista.Select(c => c.Text)));
+        }
     }
 
-    /// <summary>
-    /// Primul rând de text de deasupra liniei care începe în aceeași coloană (±30 px) și are cel puțin două cuvinte de 3+
-    /// litere, fără etichete („Adresa:”); null dacă nu există (liniile obișnuite, una sub alta).
-    /// </summary>
-    private static string? DenumireDeasupra(IReadOnlyList<RandText> inainte, RandText linie)
+    /// <summary>Benzile tabelului: spațiile dintre liniile orizontale care traversează coloanele denumire → cantitate.</summary>
+    private sealed class BenziAviz(Dictionary<int, List<LinieOrizontala>> pePagini)
     {
-        var x = linie.Cuvinte.Where(c => c.Text.Any(char.IsLetter)).Select(c => c.X0).DefaultIfEmpty(-1).First();
-        if (x < 0 || linie.Cuvinte.All(c => c.X1 == 0))
-            return null;
-        return inainte
-            .Where(r => r.Cuvinte.Count > 0 && Math.Abs(r.Cuvinte[0].X0 - x) <= 30 && !r.Text.Contains(':', StringComparison.Ordinal) &&
-                        r.Cuvinte.Count(c => c.Text.Count(char.IsLetter) >= 3) >= 2)
-            .Select(r => Curata(r.Text))
-            .FirstOrDefault();
+        public static BenziAviz? Din(IReadOnlyList<LinieOrizontala> linii, IReadOnlyList<RandAviz> materiale)
+        {
+            var cuPozitii = materiale.Where(m => m.XUm > 0).ToList();
+            if (linii.Count == 0 || cuPozitii.Count == 0)
+                return null;
+            var stanga = cuPozitii.Min(m => m.Cuvinte[0].X0);
+            var um = cuPozitii.Max(m => m.XUm);
+            var pePagini = linii.Where(l => l.X0 <= stanga + 30 && l.X1 >= um)
+                .GroupBy(l => l.Pagina).Where(g => g.Count() >= 2).ToDictionary(g => g.Key, g => g.ToList());
+            return pePagini.Count == 0 ? null : new BenziAviz(pePagini);
+        }
+
+        public int? Banda(RandText rand)
+        {
+            if (!rand.ArePozitieVerticala || !pePagini.TryGetValue(rand.Pagina, out var pagina) || rand.Cuvinte.Count == 0)
+                return null;
+            var x = (rand.Cuvinte.Min(c => c.X0) + rand.Cuvinte.Max(c => c.X1)) / 2.0;
+            var y = (rand.Y0 + rand.Y1) / 2.0;
+            var deasupra = pagina.Count(l => l.YLa(x) < y);
+            return deasupra == 0 || deasupra == pagina.Count ? null : rand.Pagina * 1000 + deasupra;
+        }
     }
 
     private static bool EsteSfarsitTabel(string t) =>

@@ -13,6 +13,9 @@ namespace ErpConstructii.Aprovizionare.Infrastructure;
 
 public sealed record RenumerotareCerere(string? NumarNou, string? Motiv);
 
+/// <summary>Primul număr de hârtie liber din seria unui proiect (proiect + an).</summary>
+public sealed record NumarLiberDto(long Numar, int An);
+
 public sealed record RenumerotareDto(Guid Id, Guid DocumentId, string DocumentNumar, string? NumarVechi, string NumarNou, string Motiv, string Utilizator, DateTimeOffset La);
 
 /// <param name="Tip">registru (o linie pe necesar) | detaliat (o linie pe material din fiecare necesar) | materiale (cantitățile adunate pe lucrare).</param>
@@ -36,6 +39,9 @@ internal static class EndpointuriNumereNecesare
         g.MapGet("/necesare-materiale/numere", Verifica).WithName("VerificaNumereNecesare")
             .WithSummary("Numerele de pe hârtie ale necesarelor importate, pe ani: suprapuneri, numere sărite, fără număr, primul număr liber")
             .Produces<IReadOnlyList<VerificareNumereAn>>().CerePermisiune(vizualizare);
+        g.MapGet("/proiecte/{proiectId:guid}/necesare-materiale/numar-liber", NumarLiber).WithName("NumarLiberNecesar")
+            .WithSummary("Primul număr de hârtie liber pe proiect, în anul dat (implicit anul curent): propunerea pentru un necesar fără număr")
+            .Produces<NumarLiberDto>().CerePermisiune(vizualizare);
         g.MapGet("/necesare-materiale/renumerotari", Istoric).WithName("RenumerotariNecesare")
             .WithSummary("Istoricul renumerotărilor numerelor de pe hârtie").Produces<IReadOnlyList<RenumerotareDto>>().CerePermisiune(vizualizare);
         g.MapPost("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/renumerotare", Renumeroteaza).WithName("RenumeroteazaNecesar")
@@ -68,6 +74,13 @@ internal static class EndpointuriNumereNecesare
         // Seriile sunt pe proiect: utilizatorul vede doar seriile proiectelor lui.
         var verificare = NumerotareExterna.Verifica(await DocumenteAsync(db, null, null, ct));
         return Results.Ok(acces.Toate ? verificare : verificare.Where(v => acces.Proiecte.Contains(v.ProiectId)).ToList());
+    }
+
+    private static async Task<IResult> NumarLiber(Guid proiectId, int? an, AprovizionareDbContext db, ICeas ceas, CancellationToken ct)
+    {
+        var a = an is >= 2000 and <= 2100 ? an.Value : ceas.Azi.Year;
+        var serie = await DocumenteAsync(db, proiectId, a, ct);
+        return Results.Ok(new NumarLiberDto(NumerotareExterna.NumarLiber(serie.Select(d => d.NumarExtern)), a));
     }
 
     private static async Task<IResult> Istoric(AprovizionareDbContext db, CancellationToken ct) =>

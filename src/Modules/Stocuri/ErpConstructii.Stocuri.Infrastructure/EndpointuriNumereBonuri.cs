@@ -14,6 +14,9 @@ namespace ErpConstructii.Stocuri.Infrastructure;
 
 public sealed record RenumerotareBonCerere(string? NumarNou, string? Motiv);
 
+/// <summary>Primul număr de hârtie liber din seria unui proiect (proiect + an).</summary>
+public sealed record NumarLiberBonDto(long Numar, int An);
+
 public sealed record RenumerotareBonDto(Guid Id, Guid DocumentId, string DocumentNumar, string? NumarVechi, string NumarNou, string Motiv, string Utilizator, DateTimeOffset La);
 
 /// <param name="Tip">registru (o linie pe bon) | detaliat (o linie pe material din fiecare bon) | materiale (cantitățile adunate pe lucrare).</param>
@@ -36,6 +39,9 @@ internal static class EndpointuriNumereBonuri
         g.MapGet("/consumuri/numere", Verifica).WithName("VerificaNumereBonuri")
             .WithSummary("Numerele de pe hârtie ale bonurilor de consum, pe ani: suprapuneri, numere sărite, primul număr liber")
             .Produces<IReadOnlyList<VerificareNumereAn>>().CerePermisiune(vizualizare);
+        g.MapGet("/proiecte/{proiectId:guid}/consumuri/numar-liber", NumarLiber).WithName("NumarLiberBonConsum")
+            .WithSummary("Primul număr de hârtie liber pe proiect, în anul dat (implicit anul curent): propunerea pentru un bon fără număr")
+            .Produces<NumarLiberBonDto>().CerePermisiune(vizualizare);
         g.MapGet("/consumuri/renumerotari", Istoric).WithName("RenumerotariBonuri")
             .WithSummary("Istoricul renumerotărilor bonurilor de consum").Produces<IReadOnlyList<RenumerotareBonDto>>().CerePermisiune(vizualizare);
         g.MapPost("/proiecte/{proiectId:guid}/consumuri/{id:guid}/renumerotare", Renumeroteaza).WithName("RenumeroteazaBonConsum")
@@ -78,6 +84,13 @@ internal static class EndpointuriNumereBonuri
             return Results.Unauthorized();
         var verificare = NumerotareExterna.Verifica(await DocumenteAsync(db, null, null, ct));
         return Results.Ok(acces.Toate ? verificare : verificare.Where(v => acces.Proiecte.Contains(v.ProiectId)).ToList());
+    }
+
+    private static async Task<IResult> NumarLiber(Guid proiectId, int? an, StocuriDbContext db, ICeas ceas, CancellationToken ct)
+    {
+        var a = an is >= 2000 and <= 2100 ? an.Value : ceas.Azi.Year;
+        var serie = await DocumenteAsync(db, proiectId, a, ct);
+        return Results.Ok(new NumarLiberBonDto(NumerotareExterna.NumarLiber(serie.Select(d => d.NumarExtern)), a));
     }
 
     private static async Task<IResult> Istoric(StocuriDbContext db, CancellationToken ct) =>

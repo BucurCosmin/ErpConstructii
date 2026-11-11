@@ -1,4 +1,4 @@
-using ErpConstructii.Aprovizionare;
+﻿using ErpConstructii.Aprovizionare;
 using ErpConstructii.Aprovizionare.Import;
 using ErpConstructii.SharedKernel.Import;
 using Xunit;
@@ -32,6 +32,126 @@ public class AvizTeste
         R(1, ("Observatii:", 160)),
         R(1, ("SANTIER", 160), ("RETEHNOLOGIZARE", 400), ("CLADIRE", 800), ("U1", 1000)),
     ];
+
+    /// <summary>Rând cu poziție verticală (Y sus / jos, înălțime 30 px), ca în textul OCR sau cel digital.</summary>
+    private static RandText RY(int y, params (string Text, int X0)[] cuvinte) => R(1, cuvinte) with { Y0 = y, Y1 = y + 30 };
+
+    private static RandText[] AntetAviz(int yTabel) =>
+    [
+        RY(100, ("AVIZ", 175), ("DE", 300), ("INSOTIRE", 400), ("A", 600), ("MARFII", 650)),
+        RY(150, ("Serie/Numar:", 175), ("ABC/123", 450)),
+        RY(200, ("Data:", 175), ("03.06.2026", 300)),
+        RY(250, ("Furnizor:", 175), ("Client:", 1312)),
+        RY(300, ("SC", 175), ("FURNIZOR", 240), ("SRL", 450), ("General", 1312), ("Concrete", 1450)),
+        RY(350, ("CIF:", 175), ("RO47884086", 260), ("CIF:", 1312), (CuiFirma, 1400)),
+        RY(yTabel, ("Nr.", 200), ("Denumire", 600), ("produse", 800), ("UM", 1500), ("Cantitate", 1800)),
+        RY(yTabel + 30, ("crt.", 200)),
+    ];
+
+    private static string Linii(AvizCitit a) =>
+        string.Join(" ; ", a.Linii.Select(l => $"{l.Denumire.Valoare}|{l.UnitateMasura.Valoare}|{l.Cantitate.Valoare.ToString(System.Globalization.CultureInfo.InvariantCulture)}"));
+
+    [Fact]
+    public void Denumirea_lunga_continuata_sub_cantitate_ramane_la_materialul_ei()
+    {
+        // Celule aliniate sus: denumirea începe pe rândul cu cantitatea și continuă dedesubt (spațiu de 10 px între rândurile
+        // celulei, 40 px între materiale). Rândul de continuare nu e material nou și nu trece la materialul următor.
+        RandText[] randuri =
+        [
+            .. AntetAviz(500),
+            RY(600, ("1", 210), ("OTEL", 300), ("BETON", 400), ("B500C", 520), ("16MM", 640), ("FASONAT", 740), ("Kg", 1500), ("16.486,80", 1800)),
+            RY(640, ("CONFORM", 300), ("EXTRAS", 460), ("ARMARE", 600), ("POZ.", 740), ("12-18", 820)),
+            RY(710, ("2", 210), ("PLASA", 300), ("SUDATA", 420), ("STNB", 560), ("6MM", 660), ("buc", 1500), ("40", 1800)),
+            RY(780, ("TOTAL", 175), ("GENERAL", 300), ("16.526,80", 1800)),
+        ];
+
+        var a = InterpretorAviz.Interpreteaza(new TextDocument(randuri, [], DinOcr: false), CuiFirma);
+
+        Assert.Equal("OTEL BETON B500C 16MM FASONAT CONFORM EXTRAS ARMARE POZ. 12-18|kg|16486.80 ; PLASA SUDATA STNB 6MM|buc|40", Linii(a));
+        Assert.Equal(Certitudine.Nesigur, a.Linii[0].Denumire.Certitudine); // adunată din două rânduri: de verificat
+    }
+
+    [Fact]
+    public void Denumirea_pe_trei_randuri_cu_cantitatea_centrata_e_un_singur_material()
+    {
+        // Celule centrate vertical: numărul, UM-ul și cantitatea stau pe rândul din mijloc al denumirii.
+        RandText[] randuri =
+        [
+            .. AntetAviz(500),
+            RY(600, ("TEAVA", 300), ("PEHD", 420), ("PE100", 520), ("SDR17", 640)),
+            RY(640, ("1", 210), ("D=110MM", 300), ("PN10", 460), ("BARE", 560), ("12M", 660), ("ml", 1500), ("120", 1800)),
+            RY(680, ("PENTRU", 300), ("APA", 440), ("POTABILA", 520)),
+            RY(760, ("2", 210), ("COT", 300), ("PEHD", 380), ("D110", 480), ("buc", 1500), ("6", 1800)),
+            RY(840, ("Observatii:", 175), ("SANTIER", 400)),
+        ];
+
+        var a = InterpretorAviz.Interpreteaza(new TextDocument(randuri, [], DinOcr: false), CuiFirma);
+
+        Assert.Equal("TEAVA PEHD PE100 SDR17 D=110MM PN10 BARE 12M PENTRU APA POTABILA|ml|120 ; COT PEHD D110|buc|6", Linii(a));
+    }
+
+    [Fact]
+    public void Randul_cu_cantitate_fara_denumire_ia_denumirea_din_celula_lui_fara_detalii()
+    {
+        // Ca avizele AVSOV: denumirea deasupra, „1 TONE 24,920” sub ea, „Cod NC” dedesubt; apoi datele expediției, care nu
+        // țin de material (etichete, spațiu mare).
+        RandText[] randuri =
+        [
+            .. AntetAviz(500),
+            RY(600, ("V_PIATRA", 341), ("22.4/63", 553)),
+            RY(630, ("1", 232), ("TONE", 1500), ("24,920", 1800)),
+            RY(660, ("Cod", 341), ("NC:", 435), ("25171010", 523)),
+            RY(900, ("Emis", 175), ("de", 300), ("Date", 1312), ("privind", 1437), ("expeditia", 1617)),
+            RY(950, ("NIVACI", 175), ("OANA", 322), ("Numele", 1312), ("delegatului:", 1478), ("IONESCU", 1725)),
+        ];
+
+        var a = InterpretorAviz.Interpreteaza(new TextDocument(randuri, [], DinOcr: false), CuiFirma);
+
+        Assert.Equal("V_PIATRA 22.4/63|tone|24.920", Linii(a));
+    }
+
+    [Fact]
+    public void Liniile_tabelului_delimiteaza_celula_si_cand_randurile_sunt_departate()
+    {
+        // Cu liniile orizontale ale tabelului: tot textul dintre două linii e o celulă, oricât de mare e spațiul dintre rânduri.
+        RandText[] randuri =
+        [
+            .. AntetAviz(500),
+            RY(600, ("1", 210), ("CABLU", 300), ("CYY-F", 420), ("3X2,5", 560), ("m", 1500), ("500", 1800)),
+            RY(700, ("CUPRU,", 300), ("TAMBUR", 440), ("500M", 600)),
+            RY(800, ("2", 210), ("DOZA", 300), ("ETANSA", 420), ("buc", 1500), ("30", 1800)),
+            RY(900, ("TOTAL", 175), ("530", 1800)),
+        ];
+        LinieOrizontala[] linii =
+        [
+            new(1, 150, 580, 2200, 580), new(1, 150, 760, 2200, 760), new(1, 150, 860, 2200, 860),
+        ];
+
+        var a = InterpretorAviz.Interpreteaza(new TextDocument(randuri, [], DinOcr: false, linii), CuiFirma);
+
+        Assert.Equal("CABLU CYY-F 3X2,5 CUPRU, TAMBUR 500M|m|500 ; DOZA ETANSA|buc|30", Linii(a));
+    }
+
+    [Fact]
+    public void Fara_pozitii_randurile_de_dinaintea_cantitatii_tin_de_ea()
+    {
+        // Text fără poziții (Word): rândurile de text de dinaintea rândului cu cantitate sunt denumirea lui.
+        RandText[] randuri =
+        [
+            RandText.DinText("AVIZ DE INSOTIRE A MARFII"),
+            RandText.DinText("Serie/Numar: ABC/77"),
+            RandText.DinText("Data: 03.06.2026"),
+            RandText.DinText("Nr. Denumire produse UM Cantitate"),
+            RandText.DinText("MORTAR ADEZIV"),
+            RandText.DinText("1 PENTRU POLISTIREN 25KG sac 40"),
+            RandText.DinText("2 DIBLURI 10CM buc 500"),
+            RandText.DinText("TOTAL 540"),
+        ];
+
+        var a = InterpretorAviz.Interpreteaza(new TextDocument(randuri, [], DinOcr: false), CuiFirma);
+
+        Assert.Equal("MORTAR ADEZIV PENTRU POLISTIREN 25KG|sac|40 ; DIBLURI 10CM|buc|500", Linii(a));
+    }
 
     [Fact]
     public void Avizul_scanat_da_numarul_data_furnizorul_si_materialele()
@@ -143,5 +263,30 @@ public class AvizTeste
 
         Assert.Equal(["Aviz:1", "Aviz:2,3"], doarAvize.Select(d => $"{d.Tip}:{string.Join(",", d.Pagini)}"));
         Assert.Equal(["Factura:1,2"], cuFactura.Select(d => $"{d.Tip}:{string.Join(",", d.Pagini)}"));
+    }
+
+    [Fact]
+    public void Avizele_reavizate_catre_alt_client_sunt_anexele_avizului_catre_firma()
+    {
+        // Pagina 1: avizul transportatorului către firmă (CUI-ul ei); paginile 2-3: avizele carierei către transportator
+        // (alt client), reavizate pe primul; pagina 4: un alt aviz către firmă, document separat.
+        RandText[] text =
+        [
+            R(1, ("CIF:", 175), ("RO47884086", 260), ("CIF:", 1312), (CuiFirma, 1400)),
+            R(2, ("CIF:", 175), ("RO26007819", 260), ("CIF:", 1312), ("RO47884086", 1400)),
+            R(3, ("CIF:", 175), ("RO26007819", 260), ("CIF:", 1312), ("RO47884086", 1400)),
+            R(4, ("CUI:", 175), ("RO5169494", 260), ("Cod", 1312), ("fiscal:", 1400), ("RO5160991", 1500)),
+        ];
+        PaginaClasificata[] pagini =
+        [
+            new(1, TipPagina.Aviz, "OTL-220", null), new(2, TipPagina.Aviz, "AVSOV 6786", null),
+            new(3, TipPagina.Aviz, "AVSOV 6787", null), new(4, TipPagina.Aviz, "INTFSN/18794", null),
+        ];
+
+        var documente = ImpartireDocumente.Imparte(pagini, new TextDocument(text, [], DinOcr: true), CuiFirma);
+
+        Assert.Equal(["Aviz:1,2,3:OTL-220", "Aviz:4:INTFSN/18794"], documente.Select(d => $"{d.Tip}:{string.Join(",", d.Pagini)}:{d.Numar}"));
+        // Fără CUI-ul firmei, fiecare aviz rămâne document separat.
+        Assert.Equal(4, ImpartireDocumente.Imparte(pagini, new TextDocument(text, [], DinOcr: true)).Count);
     }
 }

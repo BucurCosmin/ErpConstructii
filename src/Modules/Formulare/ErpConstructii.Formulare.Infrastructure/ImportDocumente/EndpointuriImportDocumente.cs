@@ -83,6 +83,7 @@ internal static class EndpointuriImportDocumente
         IFirmaCurenta firma,
         IMemoryCache cache,
         IOptions<OptiuniOcr> optiuni,
+        IInterogareFirma firme,
         CancellationToken ct)
     {
         if (fisier is null || fisier.Length == 0)
@@ -128,7 +129,8 @@ internal static class EndpointuriImportDocumente
         }
 
         var clasificare = ClasificarePagini.Clasifica(text.Valoare);
-        var documente = ImpartireDocumente.Imparte(clasificare, text.Valoare);
+        // Cu CUI-ul firmei: avizele reavizate (către alt client) rămân anexele avizului către firmă.
+        var documente = ImpartireDocumente.Imparte(clasificare, text.Valoare, (await firme.FirmaActivaAsync(ct))?.Cui);
         var probleme = text.Probleme.ToList();
         if (documente.Count == 0)
         {

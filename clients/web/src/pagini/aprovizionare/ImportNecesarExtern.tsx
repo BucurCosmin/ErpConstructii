@@ -21,6 +21,7 @@ import {
   Typography,
   Upload,
 } from 'antd'
+import { api } from '../../api/client'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
 import { useImportaNecesar, useInterpreteazaNecesar, useNoteComanda } from '../../api/aprovizionare'
@@ -89,6 +90,31 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat, dinU
   // Notele importate fără necesar, pe proiect: candidatele de legat de un necesar din urmă.
   const note = useNoteComanda({ proiectId: valori?.proiectId, sursa: 'Import' }, !!valori?.proiectId && !!valori?.dinUrma)
   const noteFaraNecesar = (note.data ?? []).filter((n) => n.stare === 'Emisa' && !n.necesarId)
+
+  // D-48: documentul fără număr primește primul număr liber din seria proiectului ales (proiect + anul documentului);
+  // numărul citit de pe document sau scris de utilizator rămâne.
+  const numarLiber = useRef<string | undefined>(undefined)
+  useEffect(() => {
+    numarLiber.current = rezultat?.numarExtern.textSursa?.startsWith('propus') ? rezultat.numarExtern.valoare ?? undefined : undefined
+  }, [rezultat])
+  const proiectAles = valori?.proiectId
+  const anDocument = valori?.dataDocument?.year() ?? dayjs().year()
+  useEffect(() => {
+    if (!rezultat || !proiectAles) return
+    const actual = form.getFieldValue('numarExtern') as string | undefined
+    if (actual?.trim() && actual !== numarLiber.current) return
+    let anulat = false
+    api.get<{ numar: number }>(`/api/aprovizionare/proiecte/${proiectAles}/necesare-materiale/numar-liber?an=${anDocument}`)
+      .then((r) => {
+        if (anulat) return
+        const curent = form.getFieldValue('numarExtern') as string | undefined
+        if (curent?.trim() && curent !== numarLiber.current) return
+        numarLiber.current = String(r.numar)
+        form.setFieldValue('numarExtern', String(r.numar))
+      })
+      .catch(() => undefined)
+    return () => { anulat = true }
+  }, [rezultat, proiectAles, anDocument, form])
 
   // Șantierul proiectului ales, propus după textul de pe document (D-38).
   const santiere = useSantiere(valori?.proiectId)

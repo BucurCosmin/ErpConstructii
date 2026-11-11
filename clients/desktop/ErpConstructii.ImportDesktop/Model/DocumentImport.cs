@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using ErpConstructii.ImportDesktop.Infrastructura;
@@ -97,6 +97,27 @@ public sealed class DocumentImport : Observabil
     public string? NumarPropus { get; private set; }
     public DateOnly? DataPropusa { get; }
 
+    // D-48: numărul de hârtie propus de server (primul liber pe proiect și an), pentru necesarele / bonurile fără număr.
+    private string? _numarLiber;
+
+    /// <summary>
+    /// Numărul se poate înlocui cu cel liber al proiectului ales: documentul nu are număr sau are încă propunerea serverului
+    /// (numărul scris de utilizator sau citit din document rămâne).
+    /// </summary>
+    public bool NumarDeInlocuit => (EsteNecesar || EsteBon) && (string.IsNullOrWhiteSpace(Numar) || Numar == _numarLiber);
+
+    /// <summary>Pune primul număr liber din seria proiectului ales (marcat de verificat).</summary>
+    public void PropuneNumarLiber(string numar)
+    {
+        _numarLiber = numar;
+        Numar = numar;
+        NumarDeVerificat = true;
+        Notifica(nameof(NumarDeVerificat));
+    }
+
+    private static string? Propus(CampCitit<string> c) =>
+        c.TextSursa?.StartsWith("propus", StringComparison.Ordinal) == true ? c.Valoare : null;
+
     public string Tip
     {
         get => _tip;
@@ -105,12 +126,12 @@ public sealed class DocumentImport : Observabil
             if (Seteaza(ref _tip, value))
             {
                 Reseteaza();
-                Notifica(nameof(Titlu), nameof(EsteFactura), nameof(EsteNota), nameof(EsteNecesar), nameof(EsteBon), nameof(AreFurnizor), nameof(Importabil), nameof(EticheteTip), nameof(PoateFiDinUrma));
+                Notifica(nameof(Titlu), nameof(EsteFactura), nameof(EsteNota), nameof(EsteNecesar), nameof(EsteBon), nameof(EsteAviz), nameof(AreFurnizor), nameof(Importabil), nameof(EticheteTip), nameof(PoateFiDinUrma));
             }
         }
     }
 
-    public static IReadOnlyList<string> Tipuri { get; } = ["Factura", "NotaComanda", "NecesarMateriale", "BonConsum", "Anexe"];
+    public static IReadOnlyList<string> Tipuri { get; } = ["Factura", "NotaComanda", "NecesarMateriale", "BonConsum", "Aviz", "Anexe"];
 
     public static string Denumire(string tip) => tip switch
     {
@@ -118,6 +139,7 @@ public sealed class DocumentImport : Observabil
         "NotaComanda" => "Notă de comandă",
         "NecesarMateriale" => "Necesar de materiale",
         "BonConsum" => "Bon de consum",
+        "Aviz" => "Aviz de însoțire",
         _ => "Pagini fără document",
     };
 
@@ -126,11 +148,12 @@ public sealed class DocumentImport : Observabil
     public bool EsteNota => Tip == "NotaComanda";
     public bool EsteNecesar => Tip == "NecesarMateriale";
     public bool EsteBon => Tip == "BonConsum";
-    public bool AreFurnizor => EsteFactura || EsteNota;
-    public bool Importabil => EsteFactura || EsteNota || EsteNecesar || EsteBon;
+    public bool EsteAviz => Tip == "Aviz";
+    public bool AreFurnizor => EsteFactura || EsteNota || EsteAviz;
+    public bool Importabil => EsteFactura || EsteNota || EsteNecesar || EsteBon || EsteAviz;
 
     /// <summary>Bonul de consum nu are documente de dinainte; celelalte se pot importa „din urmă” (D-45).</summary>
-    public bool PoateFiDinUrma => EsteFactura || EsteNota || EsteNecesar;
+    public bool PoateFiDinUrma => EsteFactura || EsteNota || EsteNecesar || EsteAviz;
 
     /// <summary>
     /// Document din urmă (D-45): vechi, din arhivă. Factura nu cere nota de comandă / contractul, nota nu cere necesarul,
@@ -202,6 +225,13 @@ public sealed class DocumentImport : Observabil
 
     /// <summary>Necesar: șantierele proiectului ales.</summary>
     public ObservableCollection<LocSolicitant> Locuri { get; } = [];
+
+    // Aviz (D-40): nota de comandă a mărfii (cea pomenită pe aviz, alta emisă pe proiect sau una nouă, generată din aviz).
+    public ObservableCollection<OptiuneNota> NoteComanda { get; } = [];
+    private OptiuneNota? _notaAleasa;
+    public OptiuneNota? NotaAleasa { get => _notaAleasa; set => Seteaza(ref _notaAleasa, value); }
+    public Guid? NotaPropusaId { get; private set; }
+    public string? MesajComanda { get; private set; }
 
     private LocSolicitant? _loc;
 
@@ -308,10 +338,15 @@ public sealed class DocumentImport : Observabil
         EsteXml = false;
         Mesaj = null;
         Numar = null;
+        _numarLiber = null;
         Data = DataScadenta = null;
         Furnizor = FurnizorCui = Lucrare = Compartiment = Observatii = null;
         Loc = null;
         Locuri.Clear();
+        NotaAleasa = null;
+        NoteComanda.Clear();
+        NotaPropusaId = null;
+        MesajComanda = null;
         TotalFaraTva = TotalTva = TotalDePlata = null;
         Stare = Importabil ? StareDocument.Necitit : StareDocument.Neimportabil;
         NotificaCitire();
@@ -397,6 +432,7 @@ public sealed class DocumentImport : Observabil
     {
         DinOcr = b.DinOcr;
         Numar = b.Numar.Valoare;
+        _numarLiber = Propus(b.Numar);
         Data = Zi(b.Data);
         Lucrare = b.Lucrare.Valoare;
         Gestiune = b.Gestiune.Valoare;
@@ -429,10 +465,44 @@ public sealed class DocumentImport : Observabil
         }
     }
 
+    public void Incarca(InterpretareAviz a)
+    {
+        DinOcr = a.DinOcr;
+        Numar = a.NumarExtern.Valoare;
+        Data = Zi(a.Data);
+        Furnizor = a.FurnizorGasit?.Denumire ?? a.FurnizorDenumire.Valoare;
+        FurnizorCui = a.FurnizorGasit?.Cui ?? a.FurnizorCui.Valoare;
+        FurnizorInNomenclator = a.FurnizorGasit?.Denumire;
+        Lucrare = a.Lucrare.Valoare;
+        Existent = a.AvizExistent is { } e ? $"Avizul a fost deja importat: {e}." : null;
+        NotaPropusaId = a.NotaComandaPropusa?.Id;
+        MesajComanda = a.ReferintaComanda is { } c
+            ? $"Pe aviz scrie comanda „{c}”" + (a.NotaComandaPropusa is { } np ? $": am găsit {np.Numar} ({np.ProiectCod})." : ", dar n-am găsit-o printre notele emise.")
+            : null;
+        // Nota găsită după numărul de pe aviz dă și proiectul.
+        Propune(a.NotaComandaPropusa is { } nota ? new ProiectPropus(nota.ProiectId, nota.ProiectCod, string.Empty, 1, "Sigur") : a.ProiectPropus);
+        (NumarDeVerificat, DataDeVerificat, FurnizorDeVerificat, CuiDeVerificat, LucrareDeVerificat) =
+            (a.NumarExtern.DeVerificat, a.Data.DeVerificat, a.FurnizorDenumire.DeVerificat, a.FurnizorCui.DeVerificat, a.Lucrare.DeVerificat);
+        foreach (var l in a.Linii)
+        {
+            Linii.Add(new LinieEditabila
+            {
+                Denumire = l.Denumire.Valoare ?? string.Empty,
+                Um = l.UnitateMasura.Valoare ?? string.Empty,
+                Cantitate = l.Cantitate.Valoare,
+                DeVerificat = l.Denumire.DeVerificat || l.Cantitate.DeVerificat || l.UnitateMasura.DeVerificat,
+            });
+        }
+
+        Finalizeaza(a.Probleme);
+        Notifica(nameof(MesajComanda));
+    }
+
     public void Incarca(InterpretareNecesar n)
     {
         DinOcr = n.DinOcr;
         Numar = n.NumarExtern.Valoare;
+        _numarLiber = Propus(n.NumarExtern);
         Data = Zi(n.Data);
         Lucrare = n.Lucrare.Valoare;
         Compartiment = n.CompartimentSantier.Valoare;

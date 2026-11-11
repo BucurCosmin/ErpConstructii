@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -88,6 +88,16 @@ public sealed class ClientErp : IDisposable
     public Task<DocumentInregistrat> ImportaNotaAsync(Guid proiectId, byte[] fisier, string nume, ConfirmaNotaComanda date, CancellationToken ct) =>
         TrimiteAsync<DocumentInregistrat>(() => CuFisier($"/api/aprovizionare/proiecte/{proiectId}/note-comanda/import", fisier, nume, date), ct);
 
+    public Task<InterpretareAviz> InterpreteazaAvizAsync(byte[] fisier, string nume, CancellationToken ct) =>
+        TrimiteAsync<InterpretareAviz>(() => CuFisier("/api/aprovizionare/avize/import/interpretare", fisier, nume, null), ct);
+
+    public Task<DocumentInregistrat> ImportaAvizAsync(Guid proiectId, byte[] fisier, string nume, ConfirmaAviz date, CancellationToken ct) =>
+        TrimiteAsync<DocumentInregistrat>(() => CuFisier($"/api/aprovizionare/proiecte/{proiectId}/avize/import", fisier, nume, date), ct);
+
+    /// <summary>Notele de comandă emise către furnizori pe proiect (de care se poate lega avizul).</summary>
+    public Task<List<NotaComandaLista>> NoteComandaEmiseAsync(Guid proiectId, CancellationToken ct) =>
+        GetAsync<List<NotaComandaLista>>($"/api/aprovizionare/note-comanda?proiectId={proiectId}&stare=Emisa", ct);
+
     public Task<InterpretareNecesar> InterpreteazaNecesarAsync(byte[] fisier, string nume, CancellationToken ct) =>
         TrimiteAsync<InterpretareNecesar>(() => CuFisier("/api/aprovizionare/necesare-materiale/import/interpretare", fisier, nume, null), ct);
 
@@ -104,6 +114,12 @@ public sealed class ClientErp : IDisposable
         return [.. santiere.Where(s => s.Activ).Select(s => new LocSolicitant(s.Id, true, s.Denumire, s.Adresa))];
     }
 
+
+    /// <summary>D-48: primul număr de hârtie liber pe proiect, în anul dat (bonuri de consum sau necesare de materiale).</summary>
+    public Task<NumarLiber> NumarLiberAsync(bool bon, Guid proiectId, int an, CancellationToken ct) =>
+        GetAsync<NumarLiber>(bon
+            ? $"/api/stocuri/proiecte/{proiectId}/consumuri/numar-liber?an={an}"
+            : $"/api/aprovizionare/proiecte/{proiectId}/necesare-materiale/numar-liber?an={an}", ct);
 
     /// <summary>Materialele din stocul șantierului proiectului, cu propunerea pentru fiecare linie a bonului.</summary>
     public Task<PotrivireBon> PotrivesteBonAsync(Guid proiectId, IEnumerable<(string Denumire, string? Um)> linii, CancellationToken ct) =>

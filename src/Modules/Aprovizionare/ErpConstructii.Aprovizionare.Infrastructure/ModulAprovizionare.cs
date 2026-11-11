@@ -122,6 +122,7 @@ public sealed partial class ModulAprovizionare : IModul
 
         // Avize de însoțire a mărfii (marfa venită înaintea facturii), D-40.
         EndpointuriAvize.Mapeaza(grup);
+        RapoarteAvize.Mapeaza(grup);
 
         grup.MapGet("/proiecte/{proiectId:guid}/necesare-materiale/{id:guid}/document.docx", DescarcaNecesar)
             .WithName("DescarcaNecesarMateriale")

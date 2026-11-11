@@ -228,6 +228,14 @@
                                                   Visibility="{Binding EsteFactura, Converter={StaticResource Vizibil}}" />
                                     </StackPanel>
 
+                                    <StackPanel Visibility="{Binding EsteAviz, Converter={StaticResource Vizibil}}">
+                                        <TextBlock Text="Nota de comandă a mărfii" Style="{StaticResource Eticheta}" />
+                                        <ComboBox ItemsSource="{Binding NoteComanda}" SelectedItem="{Binding NotaAleasa}" DisplayMemberPath="Eticheta"
+                                                  ToolTip="Nota de comandă emisă către furnizor căreia îi aparține marfa; fără ea, se generează una din aviz." />
+                                        <TextBlock Text="{Binding MesajComanda}" Foreground="#667085" FontSize="12" TextWrapping="Wrap" Margin="0,2,0,0"
+                                                   Visibility="{Binding MesajComanda, Converter={StaticResource NulAscuns}}" />
+                                    </StackPanel>
+
                                     <StackPanel Visibility="{Binding EsteFactura, Converter={StaticResource Ascuns}}">
                                         <TextBlock Text="Lucrare (din document)" Style="{StaticResource Eticheta}" />
                                         <TextBox Text="{Binding Lucrare}" TextWrapping="Wrap" Background="{Binding LucrareDeVerificat, Converter={StaticResource DeVerificat}}" />
@@ -278,6 +286,22 @@
                                         <DataGridTextColumn Header="UM" Binding="{Binding Um}" Width="60" />
                                         <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue=''}" Width="80" />
                                         <DataGridTextColumn Header="Termen" Binding="{Binding Termen}" Width="100" />
+                                        <DataGridTemplateColumn Width="28">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="✕" Padding="2,0" Margin="0" BorderThickness="0" ToolTip="Șterge linia"
+                                                            Command="{Binding DataContext.StergeLinie, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+
+                                <DataGrid ItemsSource="{Binding Linii}" IsEnabled="{Binding Editabil}" Visibility="{Binding EsteAviz, Converter={StaticResource Vizibil}}">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Material / produs" Binding="{Binding Denumire}" Width="*" />
+                                        <DataGridTextColumn Header="UM" Binding="{Binding Um}" Width="60" />
+                                        <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue=''}" Width="90" />
                                         <DataGridTemplateColumn Width="28">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>

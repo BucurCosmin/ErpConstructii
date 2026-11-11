@@ -337,11 +337,21 @@ public sealed class FereastraModel : Observabil
         }
         else if (e.PropertyName == nameof(DocumentImport.ProiectId) && d is { EsteBon: true, Stare: StareDocument.DeVerificat })
         {
-            Ruleaza(() => IncarcaMaterialeAsync(d), elibereaza: false); // stocul șantierului noului proiect
+            // Stocul șantierului noului proiect și numărul liber din seria lui (D-48).
+            Ruleaza(async () => { await IncarcaMaterialeAsync(d); await ActualizeazaNumarLiberAsync(d); }, elibereaza: false);
         }
         else if (e.PropertyName == nameof(DocumentImport.ProiectId) && d is { EsteNecesar: true, Stare: StareDocument.DeVerificat })
         {
-            Ruleaza(() => IncarcaLocuriAsync(d), elibereaza: false); // șantierele noului proiect
+            // Șantierele noului proiect și numărul liber din seria lui (D-48).
+            Ruleaza(async () => { await IncarcaLocuriAsync(d); await ActualizeazaNumarLiberAsync(d); }, elibereaza: false);
+        }
+        else if (e.PropertyName == nameof(DocumentImport.ProiectId) && d is { EsteAviz: true, Stare: StareDocument.DeVerificat })
+        {
+            Ruleaza(() => IncarcaNoteComandaAsync(d), elibereaza: false); // notele de comandă emise pe noul proiect
+        }
+        else if (e.PropertyName == nameof(DocumentImport.Data) && d is { Stare: StareDocument.DeVerificat } && (d.EsteBon || d.EsteNecesar))
+        {
+            Ruleaza(() => ActualizeazaNumarLiberAsync(d), elibereaza: false); // seria e pe anul documentului
         }
         else if (e.PropertyName == nameof(DocumentImport.Tip) && d.Importabil)
         {
@@ -421,6 +431,17 @@ public sealed class FereastraModel : Observabil
                 d.NumeFisier = nume;
                 d.Incarca(n);
             }
+            else if (d.EsteAviz)
+            {
+                var a = await _client.InterpreteazaAvizAsync(fisier, nume, CancellationToken.None);
+                d.Fisier = fisier;
+                d.NumeFisier = nume;
+                d.Incarca(a);
+                if (d is { Stare: StareDocument.DeVerificat })
+                {
+                    await IncarcaNoteComandaAsync(d);
+                }
+            }
             else if (d.EsteBon)
             {
                 var b = await _client.InterpreteazaBonAsync(fisier, nume, d.Zona ?? 1, CancellationToken.None);
@@ -449,6 +470,56 @@ public sealed class FereastraModel : Observabil
             d.Stare = StareDocument.Eroare;
             d.Mesaj = ex is EroareServer ? ex.Message : $"Serverul nu răspunde: {ex.Message}";
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Aviz (D-40): notele de comandă emise pe proiectul ales, de care se poate lega marfa. Se propune nota pomenită pe aviz,
+    /// altfel o notă nouă, generată din aviz (la documentele din urmă: fără notă).
+    /// </summary>
+    private async Task IncarcaNoteComandaAsync(DocumentImport d)
+    {
+        var aleasa = d.NotaAleasa;
+        var optiuni = new List<OptiuneNota> { new(null, "Notă nouă, generată din aviz (la documentele din urmă: fără notă)") };
+        if (d.ProiectId is { } proiect)
+        {
+            var note = await _client!.NoteComandaEmiseAsync(proiect, CancellationToken.None);
+            if (d.ProiectId != proiect)
+            {
+                return; // între timp s-a ales alt proiect
+            }
+
+            optiuni.AddRange(note.OrderByDescending(n => n.Data).Select(n => new OptiuneNota(n.Id,
+                $"{n.Numar}{(string.IsNullOrWhiteSpace(n.NumarExtern) ? string.Empty : $" (nr. {n.NumarExtern})")} · {n.FurnizorDenumire} · {n.Data:dd.MM.yyyy}")));
+        }
+
+        d.NoteComanda.Clear();
+        foreach (var o in optiuni)
+        {
+            d.NoteComanda.Add(o);
+        }
+
+        d.NotaAleasa = optiuni.FirstOrDefault(o => o.Id is not null && o.Id == aleasa?.Id)
+            ?? optiuni.FirstOrDefault(o => o.Id is not null && o.Id == d.NotaPropusaId)
+            ?? optiuni[0];
+    }
+
+    /// <summary>
+    /// D-48: necesarul / bonul fără număr de hârtie (sau cu numărul propus de server) primește primul număr liber din seria
+    /// proiectului ales, în anul documentului. Numărul citit din document sau scris de utilizator nu se atinge.
+    /// </summary>
+    private async Task ActualizeazaNumarLiberAsync(DocumentImport d)
+    {
+        if (d.ProiectId is not { } proiect || !d.NumarDeInlocuit)
+        {
+            return;
+        }
+
+        var an = d.Data?.Year ?? DateTime.Today.Year;
+        var liber = await _client!.NumarLiberAsync(d.EsteBon, proiect, an, CancellationToken.None);
+        if (d.ProiectId == proiect && (d.Data?.Year ?? DateTime.Today.Year) == an && d.NumarDeInlocuit)
+        {
+            d.PropuneNumarLiber(liber.Numar.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
     }
 
@@ -644,6 +715,16 @@ public sealed class FereastraModel : Observabil
                     Gol(d.Observatii), d.DinUrma), CancellationToken.None);
                 d.Mesaj = $"Nota de comandă {n.Numar} înregistrată pe proiectul {cod}{(d.DinUrma ? " (document din urmă)" : string.Empty)}.";
             }
+            else if (d.EsteAviz)
+            {
+                var a = await _client!.ImportaAvizAsync(proiect, d.Fisier!, d.NumeFisier!, new ConfirmaAviz(
+                    (d.Numar ?? string.Empty).Trim(), data, Gol(d.Lucrare), (d.Furnizor ?? string.Empty).Trim(), Gol(d.FurnizorCui),
+                    d.Linii.Select(l => new LinieAvizConfirmata(l.Denumire.Trim(), l.Um.Trim(), l.Cantitate ?? 0)).ToList(),
+                    Gol(d.Observatii), d.NotaAleasa?.Id, d.DinUrma), CancellationToken.None);
+                d.Mesaj = $"Avizul {a.Numar} înregistrat pe proiectul {cod}" +
+                          (d.NotaAleasa?.Id is not null ? $", legat de {d.NotaAleasa.Eticheta.Split(' ')[0]}." : d.DinUrma ? " (document din urmă, fără notă)." : ", cu notă de comandă generată din el.") +
+                          " Marfa se recepționează din Stocuri → de recepționat.";
+            }
             else if (d.EsteBon)
             {
                 var n = await _client!.ImportaBonAsync(proiect, new ConsumCerere(data,
@@ -682,7 +763,8 @@ public sealed class FereastraModel : Observabil
         if (d.ProiectId is null) l.Add("Proiectul (orice cost / document se leagă de un proiect).");
         if (d.Data is null) l.Add(d.EsteFactura ? "Data facturii." : "Data documentului.");
         if (d.EsteFactura && string.IsNullOrWhiteSpace(d.Numar)) l.Add("Seria și numărul facturii.");
-        if ((d.EsteFactura || d.EsteNota) && string.IsNullOrWhiteSpace(d.Furnizor)) l.Add("Furnizorul.");
+        if (d.EsteAviz && string.IsNullOrWhiteSpace(d.Numar)) l.Add("Seria și numărul avizului.");
+        if ((d.EsteFactura || d.EsteNota || d.EsteAviz) && string.IsNullOrWhiteSpace(d.Furnizor)) l.Add("Furnizorul.");
         if (d.EsteNecesar && d.Loc is null) l.Add("Șantierul proiectului care cere materialele.");
         if (d.Linii.Count == 0) l.Add("Cel puțin o linie.");
         foreach (var (linie, i) in d.Linii.Select((x, i) => (x, i + 1)))

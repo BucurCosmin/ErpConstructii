@@ -72,7 +72,7 @@ public sealed class Citire(string radacina, string folderCache, bool faraCache, 
         }
 
         var pagini = ClasificarePagini.Clasifica(text).ToList();
-        var documente = ImpartireDocumente.Imparte(pagini, text)
+        var documente = ImpartireDocumente.Imparte(pagini, text, cuiFirma)
             .Select(d => Interpreteaza(d, text))
             .ToList();
         return new RezultatCitire(new FisierCitit(documente), text, pagini, null, dinCache);

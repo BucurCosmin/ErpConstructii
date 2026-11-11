@@ -1,4 +1,4 @@
-namespace ErpConstructii.SharedKernel.Import;
+﻿namespace ErpConstructii.SharedKernel.Import;
 
 /// <summary>Ce se poate importa dintr-un fișier cu mai multe documente.</summary>
 public enum TipDocumentImport
@@ -38,7 +38,9 @@ public sealed record DocumentDetectat(TipDocumentImport Tip, IReadOnlyList<int> 
 /// <item>paginile consecutive de același tip formează un document, cât timp numărul (și data) nu se schimbă;</item>
 /// <item>factura și e-Factura ei (același număr, sau număr necitit) sunt un singur document;</item>
 /// <item>avizul, certificatele și anexele merg la ultima factură (dacă nu există încă, la prima factură care urmează);</item>
-/// <item>într-un fișier fără nicio factură, avizele sunt documente separate (marfa venită doar cu aviz, D-40);</item>
+/// <item>într-un fișier fără nicio factură, avizele sunt documente separate (marfa venită doar cu aviz, D-40); avizele
+/// furnizorului furnizorului (marfa „reavizată”, către alt client: fără CUI-ul firmei) de după avizul către firmă sunt
+/// anexele acestuia;</item>
 /// <item>paginile fără titlu continuă documentul curent.</item>
 /// </list>
 /// Rezultatul e o propunere: utilizatorul poate uni sau despărți documentele. Funcție pură.
@@ -49,6 +51,9 @@ public static class ImpartireDocumente
     {
         public TipDocumentImport Tip { get; } = tip;
         public List<PaginaClasificata> Pagini { get; } = [];
+
+        /// <summary>Pagini lipite de document care nu-i dau numărul (ex. avizele reavizate de lângă avizul către firmă).</summary>
+        public List<PaginaClasificata> Anexe { get; } = [];
         public bool AreEFactura => Pagini.Any(p => p.Tip == TipPagina.EFactura);
 
         /// <summary>Paginile proprii ale documentului (fără aviz, certificate, anexe).</summary>
@@ -61,7 +66,8 @@ public static class ImpartireDocumente
     }
 
     /// <param name="text">Textul paginilor: cu el, bonurile de consum de pe aceeași pagină devin documente separate.</param>
-    public static IReadOnlyList<DocumentDetectat> Imparte(IReadOnlyList<PaginaClasificata> pagini, TextDocument? text = null)
+    /// <param name="cuiFirma">CUI-ul firmei active: avizele către alt client (reavizate) se lipesc de avizul către firmă.</param>
+    public static IReadOnlyList<DocumentDetectat> Imparte(IReadOnlyList<PaginaClasificata> pagini, TextDocument? text = null, string? cuiFirma = null)
     {
         var grupuri = new List<Grup>();
         var inainte = new List<PaginaClasificata>(); // anexe dinaintea primului document
@@ -111,12 +117,65 @@ public static class ImpartireDocumente
             tinta.Pagini.AddRange(inainte);
         }
 
+        if (!areFactura && text is not null && CifreCui(cuiFirma) is { } cui)
+        {
+            grupuri = AvizeReavizate(grupuri, text, cui);
+        }
+
         return grupuri
-            .Select(g => new DocumentDetectat(g.Tip, g.Pagini.Select(p => p.Pagina).Order().ToList(), g.Numar, g.Data))
+            .Select(g => new DocumentDetectat(g.Tip, g.Pagini.Concat(g.Anexe).Select(p => p.Pagina).Order().ToList(), g.Numar, g.Data))
             .SelectMany(d => d.Tip == TipDocumentImport.BonConsum && text is not null ? PeBonuri(d, text) : [d])
             .OrderBy(d => d.Pagini[0])
             .ThenBy(d => d.Zona ?? 0)
             .ToList();
+    }
+
+    /// <summary>
+    /// Avizul către firmă (cu CUI-ul ei) urmat de avizele furnizorului lui către el (marfa reavizată, alt client): cele din
+    /// urmă sunt anexele primului, nu avize de importat.
+    /// </summary>
+    private static List<Grup> AvizeReavizate(List<Grup> grupuri, TextDocument text, string cui)
+    {
+        bool CatreFirma(Grup g)
+        {
+            var pagini = g.Pagini.Select(p => p.Pagina).ToHashSet();
+            return text.Randuri.Where(r => pagini.Contains(r.Pagina))
+                .Any(r => System.Text.RegularExpressions.Regex.IsMatch(r.Text, $@"(?<!\d){cui}(?!\d)"));
+        }
+
+        var rezultat = new List<Grup>();
+        Grup? avizFirma = null;
+        foreach (var g in grupuri)
+        {
+            if (g.Tip != TipDocumentImport.Aviz)
+            {
+                avizFirma = null;
+                rezultat.Add(g);
+                continue;
+            }
+
+            if (CatreFirma(g))
+            {
+                avizFirma = g;
+                rezultat.Add(g);
+            }
+            else if (avizFirma is not null)
+            {
+                avizFirma.Anexe.AddRange(g.Pagini); // aviz reavizat: anexă a avizului către firmă
+            }
+            else
+            {
+                rezultat.Add(g);
+            }
+        }
+
+        return rezultat;
+    }
+
+    private static string? CifreCui(string? cui)
+    {
+        var cifre = new string((cui ?? string.Empty).Where(char.IsAsciiDigit).ToArray()).TrimStart('0');
+        return cifre.Length >= 2 ? cifre : null;
     }
 
     /// <summary>Bonurile de consum de pe paginile documentului, fiecare cu paginile lui și numărul lui pe aceste pagini.</summary>

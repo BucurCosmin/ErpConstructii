@@ -26,3 +26,6 @@ tessdata/
 
 # instanța de producție locală (deploy/pregateste-productie.ps1): binare, certificate, secrete, jurnale
 productie/
+
+# backup-urile bazei de date (db/backup-baza.ps1): date personale, hash-uri de parole
+backup/
