@@ -14,11 +14,16 @@ export const tema: ThemeConfig = {
   },
   components: {
     Layout: {
-      siderBg: '#14294a',
-      headerHeight: 64,
+      // Navigarea stă într-o singură bară sus (meniul pe grupuri), ca pagina să aibă toată lățimea.
+      headerBg: '#14294a',
+      headerHeight: 56,
+      headerPadding: '0 16px',
     },
     Menu: {
       darkItemBg: '#14294a',
+      darkPopupBg: '#14294a',
+      horizontalLineHeight: '56px',
+      itemPaddingInline: 12,
       darkSubMenuItemBg: '#10223e',
       darkItemSelectedBg: '#1f5fbf',
       darkGroupTitleColor: 'rgba(255,255,255,0.45)',

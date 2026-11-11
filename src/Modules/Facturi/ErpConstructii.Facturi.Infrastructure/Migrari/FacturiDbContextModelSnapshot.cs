@@ -260,6 +260,10 @@ namespace ErpConstructii.Facturi.Infrastructure.Migrari
                         .HasColumnType("date")
                         .HasColumnName("data_scadenta");
 
+                    b.Property<bool>("DinUrma")
+                        .HasColumnType("boolean")
+                        .HasColumnName("din_urma");
+
                     b.Property<Guid?>("DocumentPdfId")
                         .HasColumnType("uuid")
                         .HasColumnName("document_pdf_id");

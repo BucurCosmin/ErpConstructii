@@ -5,7 +5,7 @@ import { useCreeazaUtilizator, useRoluri } from '../../api/administrare'
 import { EroareApi } from '../../api/client'
 import { useProfil, useProiecte } from '../../api/interogari'
 import type { TipUtilizator } from '../../api/tipuri'
-import { tipuriUtilizator } from '../../util/format'
+import { etichetaProiect, tipuriUtilizator } from '../../util/format'
 import { ParolaTemporara } from './ParolaTemporara'
 
 interface Valori {
@@ -121,7 +121,7 @@ export function UtilizatorNou({ deschis, laInchidere, laCreare }: Props) {
               allowClear
               placeholder="Toată firma"
               showSearch={{ optionFilterProp: 'label' }}
-              options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} – ${p.denumire}` }))}
+              options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
             />
           </Form.Item>
           <Form.Item name="valabilDe" label="Valabil de la">

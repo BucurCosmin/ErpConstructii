@@ -1,8 +1,11 @@
 import { Select } from 'antd'
 import { useCompartimente, useSantiere } from '../api/proiecte'
-import type { Compartiment, Santier } from '../api/proiecte'
+import type { Santier } from '../api/proiecte'
 
-/** Valoarea aleasă: „S:<id>” = șantier al proiectului, „C:<id>” = compartiment al firmei (D-38). */
+/**
+ * Valoarea aleasă: „S:<id>” = șantier al proiectului. „C:<id>” (compartiment al firmei) apare doar la necesarele emise
+ * înainte pe un compartiment, care îl păstrează la modificare; necesarele noi se emit pe un șantier al proiectului.
+ */
 export type ValoareSolicitant = string
 
 export const solicitantDin = (v?: ValoareSolicitant | null) => ({
@@ -15,18 +18,18 @@ export const valoareSolicitant = (santierId?: string | null, compartimentId?: st
 
 const cheie = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()
 
-/** Textul de pe un document (OCR / necesar vechi) potrivit cu un șantier sau compartiment: denumire identică sau, unică, pe cuvinte întregi. */
-export function potrivesteSolicitant(text: string | null | undefined, santiere: Santier[], compartimente: Compartiment[]): ValoareSolicitant | undefined {
+/** Textul de pe un document (OCR / necesar vechi) potrivit cu un șantier al proiectului: denumire identică sau, unică, pe cuvinte întregi. */
+export function potrivesteSolicitant(text: string | null | undefined, santiere: Santier[]): ValoareSolicitant | undefined {
   const t = cheie(text ?? '')
   if (!t) return undefined
-  const locuri = [...santiere.map((s) => ({ v: `S:${s.id}`, d: cheie(s.denumire) })), ...compartimente.map((c) => ({ v: `C:${c.id}`, d: cheie(c.denumire) }))]
+  const locuri = santiere.map((s) => ({ v: `S:${s.id}`, d: cheie(s.denumire) }))
   const identice = locuri.filter((l) => l.d === t)
   if (identice.length) return identice.length === 1 ? identice[0].v : undefined
   const partiale = locuri.filter((l) => l.d.length >= 3 && (` ${t} `.includes(` ${l.d} `) || ` ${l.d} `.includes(` ${t} `)))
   return partiale.length === 1 ? partiale[0].v : undefined
 }
 
-/** Cine cere materialele: un șantier al proiectului sau un compartiment al firmei. */
+/** Cine cere materialele: un șantier al proiectului ales. */
 export function SelectSolicitant({ proiectId, value, onChange, disabled }: {
   proiectId?: string
   value?: ValoareSolicitant
@@ -34,20 +37,23 @@ export function SelectSolicitant({ proiectId, value, onChange, disabled }: {
   disabled?: boolean
 }) {
   const santiere = useSantiere(proiectId)
-  const compartimente = useCompartimente()
+  // Doar pentru afișarea compartimentului unui necesar vechi (nu se mai poate alege altul).
+  const vechi = value?.startsWith('C:') ? value.slice(2) : undefined
+  const compartimente = useCompartimente(true)
+  const compartiment = vechi ? compartimente.data?.find((c) => c.id === vechi) : undefined
   return (
     <Select
       value={value}
       onChange={onChange}
       disabled={disabled || !proiectId}
       showSearch={{ optionFilterProp: 'label' }}
-      loading={santiere.isLoading || compartimente.isLoading}
-      placeholder={proiectId ? 'Alege șantierul sau compartimentul' : 'Alege întâi proiectul'}
-      notFoundContent="Nu există șantiere / compartimente: adaugă-le în fișa proiectului sau în Administrare."
+      loading={santiere.isLoading}
+      placeholder={proiectId ? 'Alege șantierul' : 'Alege întâi proiectul'}
+      notFoundContent="Proiectul nu are șantiere: adaugă-le în fișa proiectului (tab-ul „Șantiere”)."
       options={[
-        { label: 'Șantierele proiectului', options: (santiere.data ?? []).map((s) => ({ value: `S:${s.id}`, label: s.adresa ? `${s.denumire} · ${s.adresa}` : s.denumire })) },
-        { label: 'Compartimentele firmei', options: (compartimente.data ?? []).map((c) => ({ value: `C:${c.id}`, label: c.denumire })) },
-      ].filter((g) => g.options.length > 0)}
+        ...(santiere.data ?? []).map((s) => ({ value: `S:${s.id}`, label: s.adresa ? `${s.denumire} · ${s.adresa}` : s.denumire })),
+        ...(vechi ? [{ value: value!, label: `${compartiment?.denumire ?? 'Compartiment'} (compartiment, necesar emis înainte)` }] : []),
+      ]}
     />
   )
 }

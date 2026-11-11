@@ -1,10 +1,14 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
+using ErpConstructii.SharedKernel;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Primitives;
 using OpenIddict.Abstractions;
 using OpenIddict.Server.AspNetCore;
@@ -203,8 +207,10 @@ public static class EndpointuriAutentificare
             : MesajCredentialeGresite);
     }
 
-    private static async Task<IResult> AutentificaMfa(CerereCodMfa cerere, SignInManager<ContUtilizator> sesiuni)
+    private static async Task<IResult> AutentificaMfa(
+        CerereCodMfa cerere, SignInManager<ContUtilizator> sesiuni, UserManager<ContUtilizator> conturi, ICeas ceas, ILoggerFactory jurnal)
     {
+        var logger = jurnal.CreateLogger("ErpConstructii.Autentificare");
         SignInResult rezultat;
         if (!string.IsNullOrWhiteSpace(cerere.CodRecuperare))
         {
@@ -225,9 +231,33 @@ public static class EndpointuriAutentificare
             return Results.Ok(new RaspunsAutentificare("ok"));
         }
 
-        return Eroare(rezultat.IsLockedOut
-            ? "Contul este blocat temporar după prea multe încercări greșite."
-            : "Cod incorect sau expirat. Dacă sesiunea de login a expirat, reia autentificarea.");
+        if (rezultat.IsLockedOut)
+        {
+            return Eroare("Contul este blocat temporar după prea multe încercări greșite. Încearcă din nou peste 15 minute.");
+        }
+
+        // Pasul cu parola a expirat (cookie-ul de 2FA durează câteva minute) sau serverul a fost repornit între pași.
+        var cont = await sesiuni.GetTwoFactorAuthenticationUserAsync();
+        if (cont is null)
+        {
+            return Eroare("Sesiunea de login a expirat. Reia autentificarea cu parola.");
+        }
+
+        // Codul refuzat, dar corect cu alt ceas: ceasul serverului (sau al telefonului) nu e sincronizat.
+        if (!string.IsNullOrWhiteSpace(cerere.Cod) && await conturi.GetAuthenticatorKeyAsync(cont) is { Length: > 0 } cheie
+            && DecalajCeasTotp.Decalaj(cheie, cerere.Cod, ceas.Acum) is { } decalaj && Math.Abs(decalaj) > 60)
+        {
+            var minute = Math.Round(Math.Abs(decalaj) / 60.0);
+            logger.LogWarning(
+                "Cod MFA refuzat pentru {Email}, dar corect cu un decalaj de {Decalaj} s: ceasul serverului este {Sens} față de telefon. Sincronizează ora serverului (w32tm /resync).",
+                cont.Email, decalaj, decalaj > 0 ? "în urmă" : "înainte");
+            return Eroare($"Codul este corect, dar ceasul serverului diferă de al telefonului cu aproximativ {minute:0} minute. " +
+                          "Administratorul trebuie să sincronizeze ora serverului (sau verifică ora automată pe telefon); nu e nevoie de resetarea parolei.");
+        }
+
+        logger.LogWarning("Cod MFA refuzat pentru {Email}: nu se potrivește cu cheia acestui server nici cu decalaj de ceas (altă intrare din Authenticator?).", cont.Email);
+        return Eroare($"Cod incorect pentru acest server. Dacă în aplicația de autentificare ai mai multe intrări „ERP Construcții”, " +
+                      $"folosește-o pe cea scanată pe acest server ({EmitentMfa(sesiuni.Context)}); intrările vechi fără server în nume pot fi ale altei instalări.");
     }
 
     private static async Task<IResult> CitesteConfigurareMfa(HttpContext ctx, UserManager<ContUtilizator> conturi)
@@ -246,11 +276,23 @@ public static class EndpointuriAutentificare
                 ?? throw new InvalidOperationException("Cheia TOTP nu a putut fi generată.");
         }
 
-        const string Emitent = "ERP Construcții";
-        var uri = $"otpauth://totp/{Uri.EscapeDataString(Emitent)}:{Uri.EscapeDataString(cont.Email ?? string.Empty)}" +
-                  $"?secret={cheie}&issuer={Uri.EscapeDataString(Emitent)}&digits=6";
+        // Numele intrării din Authenticator conține serverul: fiecare instalare (dezvoltare, producție) are altă cheie, iar unele
+        // aplicații înlocuiesc intrarea cu același nume la scanarea unui cod nou, ceea ce strica MFA pe celălalt server.
+        var emitent = EmitentMfa(ctx);
+        var uri = $"otpauth://totp/{Uri.EscapeDataString(emitent)}:{Uri.EscapeDataString(cont.Email ?? string.Empty)}" +
+                  $"?secret={cheie}&issuer={Uri.EscapeDataString(emitent)}&digits=6";
         var cheieFormatata = string.Join(' ', cheie.ToLowerInvariant().Chunk(4).Select(g => new string(g)));
         return Results.Ok(new ConfigurareMfaDto(cheieFormatata, uri, cont.TwoFactorEnabled));
+    }
+
+    /// <summary>„ERP Construcții (dezvoltare)” sau „ERP Construcții (sdaq.home.ro)”; configurabil cu Autentificare:EmitentMfa.</summary>
+    private static string EmitentMfa(HttpContext ctx)
+    {
+        var configurat = ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()["Autentificare:EmitentMfa"];
+        if (!string.IsNullOrWhiteSpace(configurat))
+            return configurat.Trim();
+        var mediu = ctx.RequestServices.GetRequiredService<Microsoft.Extensions.Hosting.IHostEnvironment>();
+        return mediu.IsDevelopment() ? "ERP Construcții (dezvoltare)" : $"ERP Construcții ({ctx.Request.Host.Host})";
     }
 
     private static async Task<IResult> ActiveazaMfa(

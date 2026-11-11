@@ -77,7 +77,7 @@ public class PotrivireArticolTeste
 
 public class DocumenteStocTeste
 {
-    private static readonly Gestiune Depozit = Gestiune.DepozitCentral();
+    private static readonly Gestiune Depozit = Gestiune.DepozitCentral(ErpConstructii.Stocuri.Depozit.Central());
     private static readonly Guid Articol = Guid.NewGuid();
 
     private static LinieNirCerere Linie(decimal primit, string? observatii = null) =>
@@ -135,7 +135,7 @@ public class ConsumSiReturTeste
 {
     private static readonly Guid Proiect = Guid.NewGuid();
     private static readonly Gestiune Santier = Gestiune.Santier(Proiect, "P-2026-001", "Hală");
-    private static readonly Gestiune Depozit = Gestiune.DepozitCentral();
+    private static readonly Gestiune Depozit = Gestiune.DepozitCentral(ErpConstructii.Stocuri.Depozit.Central());
     private static readonly Guid Ciment = Guid.NewGuid();
     private static readonly Guid Fundatii = Guid.NewGuid();
 
@@ -245,7 +245,7 @@ public class StornoNirTeste
     [Fact]
     public void Documentul_de_storno_cere_motiv_si_preia_liniile_receptionate()
     {
-        var nir = Nir.Emite(2026, 5, new DateOnly(2026, 9, 11), Gestiune.DepozitCentral(), Guid.NewGuid(), "GTX 901", new DateOnly(2026, 9, 10), null, "GAMA",
+        var nir = Nir.Emite(2026, 5, new DateOnly(2026, 9, 11), Gestiune.DepozitCentral(ErpConstructii.Stocuri.Depozit.Central()), Guid.NewGuid(), "GTX 901", new DateOnly(2026, 9, 10), null, "GAMA",
             Guid.NewGuid(), "P-2026-001",
             [new LinieNirCerere(0, Guid.NewGuid(), "MAT-00001", "Ciment", "sac", 120, 120, 10m, null),
              new LinieNirCerere(2, Guid.NewGuid(), "MAT-00002", "Adeziv", "sac", 40, 0, 45m, "nelivrat")],
@@ -258,7 +258,7 @@ public class StornoNirTeste
 
 public class InventarTeste
 {
-    private static readonly Gestiune Depozit = Gestiune.DepozitCentral();
+    private static readonly Gestiune Depozit = Gestiune.DepozitCentral(ErpConstructii.Stocuri.Depozit.Central());
     private static readonly ArticolCandidat Ciment = new(Guid.NewGuid(), "MAT-00001", "Ciment", "sac");
     private static readonly ArticolCandidat Adeziv = new(Guid.NewGuid(), "MAT-00002", "Adeziv", "sac");
     private static readonly ArticolCandidat Diblu = new(Guid.NewGuid(), "MAT-00003", "Diblu", "buc");

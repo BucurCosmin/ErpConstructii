@@ -3,6 +3,10 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Citirea balanțelor de stoc exportate în Excel (D-42). -->
+    <PackageReference Include="DocumentFormat.OpenXml" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
     <ProjectReference Include="..\ErpConstructii.Stocuri\ErpConstructii.Stocuri.csproj" />
     <!-- Contractele publice ale altor module (regula 1); NU infrastructura lor. -->

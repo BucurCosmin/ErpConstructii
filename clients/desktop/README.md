@@ -8,6 +8,10 @@ le verifică pe rând lângă imaginea paginilor și le importă în aplicația 
 drepturi, verificări, potriviri de furnizori și proiecte, aceeași bază de date. Fără serverul aplicației instalat și
 pornit, nu face nimic.
 
+**Documente din urmă (D-45):** bifa „Documente din urmă” de deasupra listei se propune tuturor documentelor din fișier și
+se poate schimba pe fiecare document. Factura din urmă nu cere nota de comandă / contractul, nota nu cere necesarul,
+necesarul intră aprobat, fără nota „de acceptat”. Legăturile se pun ulterior, în aplicația web.
+
 ## Pornire
 
 - **Din aplicația web:** Import documente → „Deschide în aplicația Windows” (linkul `erp-import://deschide?server=…`).

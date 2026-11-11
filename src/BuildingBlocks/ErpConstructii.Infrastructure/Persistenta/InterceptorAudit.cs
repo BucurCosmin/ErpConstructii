@@ -185,6 +185,10 @@ public sealed class InterceptorAudit(IFirmaCurenta firmaCurenta, IUtilizatorCure
                     case EntityState.Modified when p.IsModified && !Equals(p.OriginalValue, p.CurrentValue):
                         modificari[nume] = new[] { Valoare(p.OriginalValue), Valoare(p.CurrentValue) };
                         break;
+                    // La ștergere rămân în jurnal valorile pe care le avea înregistrarea.
+                    case EntityState.Deleted when p.OriginalValue is not null:
+                        modificari[nume] = Valoare(p.OriginalValue);
+                        break;
                 }
             }
 

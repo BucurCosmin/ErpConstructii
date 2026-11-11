@@ -1,5 +1,5 @@
-import { CheckCircleOutlined, DesktopOutlined, DownloadOutlined, InboxOutlined, MergeCellsOutlined, MoreOutlined, ScissorOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Dropdown, Flex, Modal, Progress, Result, Row, Select, Space, Spin, Tag, Tooltip, Typography, Upload } from 'antd'
+import { CheckCircleOutlined, DesktopOutlined, HistoryOutlined, DownloadOutlined, InboxOutlined, MergeCellsOutlined, MoreOutlined, ScissorOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Checkbox, Col, Dropdown, Flex, Modal, Progress, Result, Row, Select, Space, Spin, Tag, Tooltip, Typography, Upload } from 'antd'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { fisierDocument, useAnalizeazaFisier } from '../../api/importDocumente'
@@ -53,6 +53,8 @@ export function CentruImport() {
   const [pagina, setPagina] = useState<number>()
   const [deschis, setDeschis] = useState<{ doc: DocumentLucru; fisier: File }>()
   const [seTaie, setSeTaie] = useState<number>()
+  // D-45: documentele din fișier sunt din arhivă (bifa propusă în fiecare ecran de import).
+  const [dinUrma, setDinUrma] = useState(false)
   const urmatorId = useRef(1)
 
   useEffect(() => () => {
@@ -238,6 +240,11 @@ export function CentruImport() {
                       {documente.length === 1 ? 'Un document' : `${documente.length} documente`} în {analiza.pagini.length === 1 ? 'o pagină' : `${analiza.pagini.length} pagini`}
                     </Typography.Text>
                     <Typography.Text type="secondary">{numarare.join(', ')}</Typography.Text>
+                    <Tooltip title="Documente vechi, aduse din arhivă: se importă și fără documentele de dinaintea lor (necesar, notă de comandă, contract). Bifa se poate schimba în fiecare ecran de import.">
+                      <Checkbox checked={dinUrma} onChange={(e) => setDinUrma(e.target.checked)} style={{ marginTop: 6 }}>
+                        <HistoryOutlined /> Documente din urmă (import din arhivă)
+                      </Checkbox>
+                    </Tooltip>
                   </Space>
                   {deImportat.length > 0 && (
                     <Space>
@@ -350,16 +357,16 @@ export function CentruImport() {
         title={deschis && `${tipuri[deschis.doc.tip].eticheta} · ${interval(deschis.doc.pagini)} din ${fisier.name}`}
       >
         {deschis?.doc.tip === 'Factura' && (
-          <ImportFactura poateCrea={poateFacturi} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
+          <ImportFactura poateCrea={poateFacturi} dinUrma={dinUrma} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
         )}
         {deschis?.doc.tip === 'Aviz' && (
-          <ImportAviz poateCrea={poateAprovizionare} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
+          <ImportAviz poateCrea={poateAprovizionare} dinUrma={dinUrma} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
         )}
         {deschis?.doc.tip === 'NotaComanda' && (
-          <ImportNotaComanda poateCrea={poateAprovizionare} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
+          <ImportNotaComanda poateCrea={poateAprovizionare} dinUrma={dinUrma} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
         )}
         {deschis?.doc.tip === 'NecesarMateriale' && (
-          <ImportNecesarExtern poateCrea={poateAprovizionare} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
+          <ImportNecesarExtern poateCrea={poateAprovizionare} dinUrma={dinUrma} fisierInitial={deschis.fisier} onImportat={(t) => importat(deschis.doc.id, t)} />
         )}
       </Modal>
     </>

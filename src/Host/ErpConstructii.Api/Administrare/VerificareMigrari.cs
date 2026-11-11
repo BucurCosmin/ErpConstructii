@@ -27,8 +27,21 @@ internal static class VerificareMigrari
             if (scope.ServiceProvider.GetService(tip) is not DbContext db) continue;
             try
             {
+                // erp_app nu are mereu drept de citire pe istoricul migrărilor (tabelele create înaintea drepturilor implicite):
+                // se verifică înainte, ca jurnalul să nu primească erori de la o interogare refuzată.
+                if (!await PoateCitiIstoriculAsync(db))
+                {
+                    logger.LogDebug("Migrările {Context} nu pot fi verificate cu rolul aplicației.", tip.Name);
+                    continue;
+                }
+
                 var neaplicate = (await db.Database.GetPendingMigrationsAsync()).ToList();
                 if (neaplicate.Count > 0) lipsa.Add($"{tip.Name}: {string.Join(", ", neaplicate)}");
+            }
+            catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.InsufficientPrivilege)
+            {
+                // erp_app nu are mereu drept de citire pe istoricul migrărilor: nu se poate verifica, dar nu e o problemă.
+                logger.LogDebug("Migrările {Context} nu pot fi verificate cu rolul aplicației.", tip.Name);
             }
             catch (Exception ex) when (ex is Npgsql.NpgsqlException or InvalidOperationException)
             {
@@ -37,6 +50,37 @@ internal static class VerificareMigrari
         }
 
         Lipsa = lipsa;
+        LogheazaLipsa(lipsa, logger);
+    }
+
+    /// <summary>Tabela de istoric lipsă = nicio migrare aplicată (se raportează); fără drept de citire = nu se poate verifica.</summary>
+    private static async Task<bool> PoateCitiIstoriculAsync(DbContext db)
+    {
+        var optiuni = Microsoft.EntityFrameworkCore.Infrastructure.RelationalOptionsExtension.Extract(
+            Microsoft.EntityFrameworkCore.Infrastructure.AccessorExtensions.GetService<Microsoft.EntityFrameworkCore.Infrastructure.IDbContextOptions>(db));
+        var tabela = optiuni.MigrationsHistoryTableName ?? "__EFMigrationsHistory";
+        var schema = optiuni.MigrationsHistoryTableSchema ?? "public";
+        var conexiune = db.Database.GetDbConnection();
+        var deschisa = conexiune.State == System.Data.ConnectionState.Open;
+        if (!deschisa) await conexiune.OpenAsync();
+        try
+        {
+            await using var comanda = conexiune.CreateCommand();
+            comanda.CommandText = "SELECT CASE WHEN to_regclass(@t) IS NULL THEN true ELSE has_table_privilege(@t, 'SELECT') END";
+            var p = comanda.CreateParameter();
+            p.ParameterName = "t";
+            p.Value = $"\"{schema}\".\"{tabela}\"";
+            comanda.Parameters.Add(p);
+            return await comanda.ExecuteScalarAsync() is true;
+        }
+        finally
+        {
+            if (!deschisa) await conexiune.CloseAsync();
+        }
+    }
+
+    private static void LogheazaLipsa(List<string> lipsa, ILogger logger)
+    {
         if (lipsa.Count > 0)
         {
             logger.LogError(

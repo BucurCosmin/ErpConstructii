@@ -11,6 +11,7 @@ import {
   useNumaraInventar,
   useRenuntaInventar,
 } from '../../api/stocuri'
+import { etichetaGestiune } from '../../api/stocuri'
 import type { Inventar, LinieInventar } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { NumarRo } from '../../componente/NumarRo'
@@ -191,7 +192,7 @@ export function InventarGestiune({ poateEdita, poateAproba }: { poateEdita: bool
           }
         }}>
           <Form.Item name="gestiuneId" label="Gestiunea" rules={[{ required: true, message: 'Alege gestiunea.' }]}>
-            <Select showSearch={{ optionFilterProp: 'label' }} options={(gestiuni.data ?? []).map((g) => ({ value: g.id, label: `${g.cod} — ${g.denumire}` }))} />
+            <Select showSearch={{ optionFilterProp: 'label' }} options={(gestiuni.data ?? []).map((g) => ({ value: g.id, label: etichetaGestiune(g) }))} />
           </Form.Item>
           <Form.Item name="data" label="Data inventarului" rules={[{ required: true }]}>
             <DatePicker format="DD.MM.YYYY" disabledDate={(d) => d.isAfter(dayjs(), 'day')} />

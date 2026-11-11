@@ -42,7 +42,7 @@ public class ReceptieParcialaTeste
     [Fact]
     public void Nirul_partial_nu_cere_observatie_dar_linia_inchisa_cu_lipsa_cere()
     {
-        Nir Emite(params LinieNirCerere[] linii) => Nir.Emite(2026, 1, new DateOnly(2026, 9, 11), Gestiune.DepozitCentral(), Guid.NewGuid(), "F1",
+        Nir Emite(params LinieNirCerere[] linii) => Nir.Emite(2026, 1, new DateOnly(2026, 9, 11), Gestiune.DepozitCentral(Depozit.Central()), Guid.NewGuid(), "F1",
             new DateOnly(2026, 9, 10), null, "Furnizor", Guid.NewGuid(), "P-1", linii, null, Guid.NewGuid(), "Gestionar").Valoare;
 
         // 60 din 100, restul vine: fără observație, fără diferență pe NIR; valoarea intrată 60 × 10 = 600.
@@ -50,7 +50,7 @@ public class ReceptieParcialaTeste
         Assert.Equal((600m, false), (partial.Valoare, partial.AreDiferente));
 
         // 60 din 100 cu linia închisă: observația e obligatorie.
-        Assert.True(Nir.Emite(2026, 1, new DateOnly(2026, 9, 11), Gestiune.DepozitCentral(), Guid.NewGuid(), "F1", new DateOnly(2026, 9, 10), null, "Furnizor",
+        Assert.True(Nir.Emite(2026, 1, new DateOnly(2026, 9, 11), Gestiune.DepozitCentral(Depozit.Central()), Guid.NewGuid(), "F1", new DateOnly(2026, 9, 10), null, "Furnizor",
             Guid.NewGuid(), "P-1", [new LinieNirCerere(0, Guid.NewGuid(), "MAT-1", "Ciment", "sac", 100, 60, 10m, null)], null, Guid.NewGuid(), "Gestionar").Esec);
 
         // Tot ce era de primit, marcat „restul vine”: nu mai rămâne nimic, linia se închide fără diferență.

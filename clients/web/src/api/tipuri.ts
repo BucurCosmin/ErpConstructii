@@ -25,12 +25,17 @@ export interface Proiect {
   arhivat: boolean
   arhivatLa: string | null
   arhivatDe: string | null
+  /** D-47: „Sediu” = centru de cost al firmei (fără beneficiar), cu aceleași documente ca o lucrare. */
+  tip: TipProiect
 }
 
+export type TipProiect = 'Lucrare' | 'Sediu'
+
 export interface CreeazaProiect {
+  tip: TipProiect
   cod: string
   denumire: string
-  beneficiar: string
+  beneficiar: string | null
   cuiBeneficiar: string | null
   adresaSantier: string
 }

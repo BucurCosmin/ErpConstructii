@@ -67,12 +67,12 @@ if (-not $FaraWeb) {
     }
     else {
         Write-Host "Pornesc interfața web..."
-        $web = Join-Path $radacina "clients\web"
-        if (-not (Test-Path (Join-Path $web "node_modules"))) {
-            Push-Location $web
+        $dosarWeb = Join-Path $radacina "clients\web"
+        if (-not (Test-Path (Join-Path $dosarWeb "node_modules"))) {
+            Push-Location $dosarWeb
             try { npm ci; if ($LASTEXITCODE -ne 0) { throw "npm ci a eșuat." } } finally { Pop-Location }
         }
-        Start-Process powershell -WorkingDirectory $web -ArgumentList @(
+        Start-Process powershell -WorkingDirectory $dosarWeb -ArgumentList @(
             "-NoExit", "-Command", "`$Host.UI.RawUI.WindowTitle = 'ERP web (dezvoltare)'; npm run dev"
         ) | Out-Null
         if (AsteaptaPort 5173 60) { Write-Host "Interfața web rulează: http://localhost:5173" -ForegroundColor Green }

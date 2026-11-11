@@ -15,6 +15,17 @@ public enum StareProiect
 }
 
 /// <summary>
+/// Ce fel de centru de cost e proiectul (D-47): o lucrare pentru un beneficiar sau un sediu al firmei (birouri, bază,
+/// depozit), pe care merg cheltuielile de sediu. Sediul folosește aceleași documente (necesare, note de comandă, facturi,
+/// bonuri de consum) și rapoarte ca o lucrare; locurile din el se definesc ca șantierele unei lucrări.
+/// </summary>
+public enum TipProiect
+{
+    Lucrare,
+    Sediu,
+}
+
+/// <summary>
 /// Proiectul este axa costurilor (REQ-GEN-01): oferta, bugetul, consumurile, pontajul,
 /// situațiile și facturile se leagă toate de un proiect și de articolele lui de deviz.
 /// Structura obiect → categorie → articol stă în modulul Devize, versionată.
@@ -23,7 +34,8 @@ public sealed class Proiect : EntitateFirma
 {
     private Proiect() { }
 
-    public Proiect(string cod, string denumire, string beneficiar, string? cuiBeneficiar, string adresaSantier)
+    /// <param name="tip">Sediul nu are beneficiar și pornește „în execuție” (centru de cost permanent).</param>
+    public Proiect(string cod, string denumire, string beneficiar, string? cuiBeneficiar, string adresaSantier, TipProiect tip = TipProiect.Lucrare)
     {
         if (string.IsNullOrWhiteSpace(cod))
         {
@@ -32,11 +44,32 @@ public sealed class Proiect : EntitateFirma
 
         Cod = cod.Trim().ToUpperInvariant();
         Denumire = denumire.Trim();
-        Beneficiar = beneficiar.Trim();
+        Beneficiar = (beneficiar ?? string.Empty).Trim();
         CuiBeneficiar = cuiBeneficiar?.Trim();
         AdresaSantier = adresaSantier.Trim();
-        Stare = StareProiect.Ofertare;
+        Tip = tip;
+        Stare = tip == TipProiect.Sediu ? StareProiect.InExecutie : StareProiect.Ofertare;
     }
+
+    /// <summary>Validarea datelor la creare (aceleași reguli ca la modificare).</summary>
+    public static IReadOnlyList<string> Valideaza(TipProiect tip, string? cod, string? denumire, string? beneficiar)
+    {
+        var probleme = new List<string>();
+        if (!Enum.IsDefined(tip))
+            probleme.Add("Tipul proiectului nu este valid.");
+        if (string.IsNullOrWhiteSpace(cod) || cod.Trim().Length > 40)
+            probleme.Add("Codul este obligatoriu (cel mult 40 de caractere).");
+        if (string.IsNullOrWhiteSpace(denumire) || denumire.Trim().Length > 300)
+            probleme.Add("Denumirea este obligatorie (cel mult 300 de caractere).");
+        if (tip == TipProiect.Lucrare && string.IsNullOrWhiteSpace(beneficiar))
+            probleme.Add("Beneficiarul lucrării este obligatoriu.");
+        if ((beneficiar ?? string.Empty).Trim().Length > 300)
+            probleme.Add("Beneficiarul are cel mult 300 de caractere.");
+        return probleme;
+    }
+
+    public TipProiect Tip { get; private set; }
+    public bool EsteSediu => Tip == TipProiect.Sediu;
 
     public string Cod { get; private set; } = string.Empty;
     public string Denumire { get; private set; } = string.Empty;
@@ -107,15 +140,10 @@ public sealed class Proiect : EntitateFirma
     /// </summary>
     public Rezultat Modifica(
         string cod, string denumire, string beneficiar, string? cuiBeneficiar, string adresaSantier,
-        StareProiect stare, DateOnly? dataInceput, DateOnly? termenContractual)
+        StareProiect stare, DateOnly? dataInceput, DateOnly? termenContractual, TipProiect? tip = null)
     {
-        var probleme = new List<string>();
-        if (string.IsNullOrWhiteSpace(cod) || cod.Trim().Length > 40)
-            probleme.Add("Codul este obligatoriu (cel mult 40 de caractere).");
-        if (string.IsNullOrWhiteSpace(denumire) || denumire.Trim().Length > 300)
-            probleme.Add("Denumirea este obligatorie (cel mult 300 de caractere).");
-        if (string.IsNullOrWhiteSpace(beneficiar) || beneficiar.Trim().Length > 300)
-            probleme.Add("Beneficiarul este obligatoriu (cel mult 300 de caractere).");
+        var tipNou = tip ?? Tip;
+        var probleme = Valideaza(tipNou, cod, denumire, beneficiar).ToList();
         if (cuiBeneficiar?.Trim().Length > 20)
             probleme.Add("CUI-ul beneficiarului are cel mult 20 de caractere.");
         if ((adresaSantier ?? string.Empty).Trim().Length > 500)
@@ -127,10 +155,12 @@ public sealed class Proiect : EntitateFirma
         if (probleme.Count > 0)
             return Rezultat.Esuat(Eroare.Validare(string.Join(" ", probleme)));
 
+        Tip = tipNou;
         Cod = cod.Trim().ToUpperInvariant();
         Denumire = denumire.Trim();
-        Beneficiar = beneficiar.Trim();
+        Beneficiar = (beneficiar ?? string.Empty).Trim();
         CuiBeneficiar = string.IsNullOrWhiteSpace(cuiBeneficiar) ? null : cuiBeneficiar.Trim();
+
         AdresaSantier = (adresaSantier ?? string.Empty).Trim();
         Stare = stare;
         DataInceput = dataInceput;

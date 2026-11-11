@@ -7,7 +7,7 @@ import { useProiecte } from '../../api/interogari'
 import { useGestiuni, useNir, useStorneazaNir } from '../../api/stocuri'
 import type { FiltreNir, Nir } from '../../api/stocuri'
 import { LinkFactura } from '../../componente/LinkFactura'
-import { formatCantitate, formatLei } from '../../util/format'
+import { etichetaProiect, formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { CorectieNir } from './CorectieNir'
 
@@ -133,7 +133,7 @@ export function RegistruNir({ poateAnula, poateEdita }: { poateAnula: boolean; p
           </Form.Item>
           <Form.Item name="proiectId">
             <Select allowClear placeholder="Toate proiectele" style={{ width: 220 }} showSearch={{ optionFilterProp: 'label' }}
-              options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+              options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
           </Form.Item>
           <Form.Item name="cauta">
             <Input allowClear placeholder="Nr. NIR, factura sau furnizor" style={{ width: 210 }} />

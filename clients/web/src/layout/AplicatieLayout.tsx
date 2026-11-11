@@ -1,15 +1,13 @@
 import {
   BellOutlined,
+  DownOutlined,
   LogoutOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
   QuestionCircleOutlined,
   SafetyOutlined,
-  SearchOutlined,
   SwapOutlined,
   UserOutlined,
 } from '@ant-design/icons'
-import { App, Avatar, Badge, Button, Dropdown, Input, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd'
+import { App, Avatar, Badge, Button, Dropdown, Layout, Menu, Select, Space, Tooltip, Typography, theme } from 'antd'
 import type { MenuProps } from 'antd'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
@@ -18,10 +16,14 @@ import { iesire, schimbaFirma } from '../api/autentificare'
 import { usePermisiuni, useProfil } from '../api/interogari'
 import { grupuri, module } from './module'
 
-const { Header, Sider, Content } = Layout
+const { Header, Content } = Layout
 
+/**
+ * Cadrul aplicației: o singură bară sus (logo, meniul pe grupuri, firma activă, contul), iar pagina ocupă
+ * toată lățimea. Grupurile (Proiect, Execuție, Financiar, Sistem) se deschid ca meniuri derulante; modulele principale
+ * stau direct pe bară. Toate secțiunile sunt mereu vizibile.
+ */
 export function AplicatieLayout() {
-  const [restrans, setRestrans] = useState(false)
   const navigheaza = useNavigate()
   const locatie = useLocation()
   const { token } = theme.useToken()
@@ -56,13 +58,24 @@ export function AplicatieLayout() {
         .filter((m) => m.grup === grup)
         .map((m) => ({ key: m.cale, icon: m.icon, label: m.eticheta }))
       if (dinGrup.length === 0) continue
-      if (titlu) elemente.push({ type: 'group', key: grup, label: restrans ? null : titlu, children: dinGrup })
-      else elemente.push(...dinGrup)
+      if (titlu) {
+        elemente.push({
+          key: `grup-${grup}`,
+          label: (
+            <span>
+              {titlu} <DownOutlined style={{ fontSize: 10, marginInlineStart: 2 }} />
+            </span>
+          ),
+          children: dinGrup,
+        })
+      } else {
+        elemente.push(...dinGrup)
+      }
     }
     return elemente
-  }, [permisiuni.data, restrans])
+  }, [permisiuni.data])
 
-  // Elementul activ: cel mai lung prefix de rută (ex. /proiecte/123 → /proiecte).
+  // Elementul activ: cel mai lung prefix de rută (ex. /proiecte/123 → /proiecte); grupul lui apare și el activ.
   const selectat =
     module
       .map((m) => m.cale)
@@ -75,136 +88,106 @@ export function AplicatieLayout() {
     .join('')
     .slice(0, 2)
 
+  const textDeschis = 'rgba(255,255,255,0.85)'
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        collapsible
-        collapsed={restrans}
-        trigger={null}
-        width={248}
-        collapsedWidth={72}
-        style={{ position: 'sticky', top: 0, height: '100vh', overflow: 'auto' }}
+      <Header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 10,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          height: 56,
+          lineHeight: '56px',
+          paddingInline: 16,
+        }}
       >
         <div
-          style={{
-            height: 64,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: restrans ? '0 20px' : '0 20px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-          }}
+          role="link"
+          tabIndex={0}
+          onClick={() => navigheaza('/')}
+          onKeyDown={(e) => e.key === 'Enter' && navigheaza('/')}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flexShrink: 0 }}
         >
-          <img src="/favicon.svg" alt="" width={32} height={32} />
-          {!restrans && (
-            <div style={{ lineHeight: 1.15 }}>
-              <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, letterSpacing: 0.2 }}>ERP Construcții</div>
-              <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>Management proiecte</div>
-            </div>
-          )}
+          <img src="/favicon.svg" alt="" width={28} height={28} />
+          <span style={{ color: '#fff', fontWeight: 700, fontSize: 15, letterSpacing: 0.2, whiteSpace: 'nowrap' }}>ERP Construcții</span>
         </div>
+
         <Menu
           theme="dark"
-          mode="inline"
+          mode="horizontal"
           selectedKeys={[selectat]}
           items={elementeMeniu}
           onClick={(e) => navigheaza(e.key)}
-          style={{ borderInlineEnd: 0, paddingBlock: 8 }}
+          // Toate secțiunile rămân vizibile pe bară (fără „…”); încap de la ~1280 px lățime.
+          disabledOverflow
+          style={{ flex: 1, minWidth: 0, borderBottom: 0, lineHeight: '56px', flexWrap: 'nowrap' }}
         />
-      </Sider>
 
-      <Layout>
-        <Header
-          style={{
-            position: 'sticky',
-            top: 0,
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            paddingInline: 16,
-            background: token.colorBgContainer,
-            borderBottom: `1px solid ${token.colorBorderSecondary}`,
-          }}
-        >
-          <Button
-            type="text"
-            icon={restrans ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setRestrans(!restrans)}
-            aria-label="Restrânge meniul"
-          />
+        <Select
+          value={profil.data?.firmaActiva ?? undefined}
+          style={{ width: 220, flexShrink: 0 }}
+          suffixIcon={<SwapOutlined />}
+          loading={profil.isLoading || schimbaFirmaInCurs}
+          disabled={schimbaFirmaInCurs}
+          options={profil.data?.firme.map((f) => ({ value: f.id, label: f.denumire }))}
+          onChange={laSchimbareaFirmei}
+          aria-label="Firma activă"
+          popupMatchSelectWidth={false}
+        />
 
-          <Select
-            value={profil.data?.firmaActiva ?? undefined}
-            style={{ minWidth: 240 }}
-            suffixIcon={<SwapOutlined />}
-            loading={profil.isLoading || schimbaFirmaInCurs}
-            disabled={schimbaFirmaInCurs}
-            options={profil.data?.firme.map((f) => ({ value: f.id, label: f.denumire }))}
-            onChange={laSchimbareaFirmei}
-            aria-label="Firma activă"
-          />
-
-          <Input
-            prefix={<SearchOutlined style={{ color: token.colorTextTertiary }} />}
-            placeholder="Caută proiecte, devize, documente…"
-            style={{ maxWidth: 420 }}
-            allowClear
-            onPressEnter={(e) => {
-              const text = (e.target as HTMLInputElement).value.trim()
-              if (text) navigheaza(`/proiecte?cauta=${encodeURIComponent(text)}`)
-            }}
-          />
-
-          <div style={{ flex: 1 }} />
-
-          <Space size={4}>
-            <Tooltip title="Ajutor">
-              <Button type="text" icon={<QuestionCircleOutlined />} />
-            </Tooltip>
-            <Tooltip title="Notificări">
-              <Badge count={0} size="small">
-                <Button type="text" icon={<BellOutlined />} />
-              </Badge>
-            </Tooltip>
-            <Dropdown
-              menu={{
-                items: [
-                  { key: 'profil', icon: <UserOutlined />, label: 'Profilul meu', disabled: true },
-                  {
-                    key: 'mfa',
-                    icon: <SafetyOutlined />,
-                    label: profil.data?.mfaActivat ? 'Verificare în doi pași: activă' : 'Verificare în doi pași: inactivă',
-                    disabled: true,
-                  },
-                  { type: 'divider' },
-                  { key: 'iesire', icon: <LogoutOutlined />, label: 'Ieșire', danger: true },
-                ],
-                onClick: ({ key }) => {
-                  if (key === 'iesire') void iesire()
+        <Space size={2} style={{ flexShrink: 0 }}>
+          <Tooltip title="Ajutor">
+            <Button type="text" icon={<QuestionCircleOutlined style={{ color: textDeschis }} />} />
+          </Tooltip>
+          <Tooltip title="Notificări">
+            <Badge count={0} size="small">
+              <Button type="text" icon={<BellOutlined style={{ color: textDeschis }} />} />
+            </Badge>
+          </Tooltip>
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'cine',
+                  label: (
+                    <div style={{ lineHeight: 1.3 }}>
+                      <Typography.Text strong style={{ display: 'block' }}>{profil.data?.nume ?? '…'}</Typography.Text>
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{profil.data?.email}</Typography.Text>
+                    </div>
+                  ),
+                  disabled: true,
                 },
-              }}
-              placement="bottomRight"
-            >
-              <Space style={{ cursor: 'pointer', paddingInline: 8 }}>
-                <Avatar style={{ background: token.colorPrimary }}>{initiale}</Avatar>
-                <div style={{ lineHeight: 1.2 }}>
-                  <Typography.Text strong style={{ display: 'block' }}>
-                    {profil.data?.nume ?? '…'}
-                  </Typography.Text>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {profil.data?.email}
-                  </Typography.Text>
-                </div>
-              </Space>
-            </Dropdown>
-          </Space>
-        </Header>
+                { type: 'divider' },
+                { key: 'profil', icon: <UserOutlined />, label: 'Profilul meu', disabled: true },
+                {
+                  key: 'mfa',
+                  icon: <SafetyOutlined />,
+                  label: profil.data?.mfaActivat ? 'Verificare în doi pași: activă' : 'Verificare în doi pași: inactivă',
+                  disabled: true,
+                },
+                { type: 'divider' },
+                { key: 'iesire', icon: <LogoutOutlined />, label: 'Ieșire', danger: true },
+              ],
+              onClick: ({ key }) => {
+                if (key === 'iesire') void iesire()
+              },
+            }}
+            placement="bottomRight"
+          >
+            <Tooltip title={profil.data?.nume} placement="left">
+              <Avatar style={{ background: token.colorPrimary, cursor: 'pointer', marginInlineStart: 4 }}>{initiale}</Avatar>
+            </Tooltip>
+          </Dropdown>
+        </Space>
+      </Header>
 
-        <Content style={{ padding: 24 }}>
-          <Outlet />
-        </Content>
-      </Layout>
+      <Content style={{ padding: '16px 20px' }}>
+        <Outlet />
+      </Content>
     </Layout>
   )
 }

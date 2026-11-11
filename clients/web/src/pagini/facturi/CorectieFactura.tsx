@@ -7,7 +7,7 @@ import { useContracteFactura, useCorecteazaFactura, useNoteComandaFactura, useSt
 import type { FacturaPrimita } from '../../api/facturi'
 import { useProiecte } from '../../api/interogari'
 import { NumarRo } from '../../componente/NumarRo'
-import { formatLei } from '../../util/format'
+import { etichetaProiect, formatLei } from '../../util/format'
 import { PrevizualizareFactura } from '../stocuri/PrevizualizareFactura'
 
 interface LinieValori {
@@ -180,7 +180,7 @@ export function CorectieFactura({ factura, onInchide }: { factura?: FacturaPrimi
               <Col span={8}>
                 <Form.Item name="proiectId" label="Proiect" rules={[{ required: true }]}>
                   <Select showSearch={{ optionFilterProp: 'label' }}
-                    options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+                    options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
                 </Form.Item>
               </Col>
               <Col span={10}><Form.Item name="furnizorDenumire" label="Furnizor" rules={[{ required: true, whitespace: true }]}><Input maxLength={300} /></Form.Item></Col>

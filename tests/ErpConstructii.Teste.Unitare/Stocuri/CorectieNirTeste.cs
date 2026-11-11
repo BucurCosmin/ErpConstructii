@@ -10,7 +10,7 @@ public class CorectieNirTeste
     private static readonly DateOnly Zi = new(2026, 11, 7);
 
     // Recepție greșită: 7.000 saci în loc de 7, la 30 lei → valoare 210.000.
-    private static Nir NirGresit() => ErpConstructii.Stocuri.Nir.Emite(2026, 4, new DateOnly(2026, 11, 2), Gestiune.DepozitCentral(), Guid.NewGuid(), "F1",
+    private static Nir NirGresit() => ErpConstructii.Stocuri.Nir.Emite(2026, 4, new DateOnly(2026, 11, 2), Gestiune.DepozitCentral(Depozit.Central()), Guid.NewGuid(), "F1",
         new DateOnly(2026, 11, 1), null, "Furnizor", Guid.NewGuid(), "P-1",
         [new LinieNirCerere(0, Ciment, "MAT-1", "Ciment", "sac", 7000, 7000, 30m, null), new LinieNirCerere(1, Guid.NewGuid(), "MAT-2", "Var", "sac", 10, 10, 12m, null)],
         null, Guid.NewGuid(), "Gestionar").Valoare;

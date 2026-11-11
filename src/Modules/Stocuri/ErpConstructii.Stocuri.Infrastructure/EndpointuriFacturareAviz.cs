@@ -237,15 +237,19 @@ internal static class EndpointuriFacturareAviz
         return avertismente;
     }
 
-    /// <summary>NIR-urile active pe aviz, încă fără factură, ale avizelor notei de comandă a facturii (fără notă: ale furnizorului, pe proiect).</summary>
+    /// <summary>
+    /// NIR-urile active pe aviz, încă fără factură, ale avizelor notei de comandă a facturii (fără notă: ale furnizorului, pe proiect).
+    /// Avizele din urmă fără notă (D-45) ale aceluiași furnizor, pe proiect, se pot lega de orice factură a lui.
+    /// </summary>
     private static async Task<(List<Nir> Nir, Dictionary<Guid, AvizPentruReceptie> Avize)> NirDeLegatAsync(
         StocuriDbContext db, FacturaPentruReceptie f, IEnumerable<IInterogareAvize> avize, CancellationToken ct)
     {
         if (avize.FirstOrDefault() is not { } q)
             return ([], []);
+        var aleFurnizorului = (await q.ToateAsync(ct)).Where(a => a.FurnizorId == f.FurnizorId && a.ProiectId == f.ProiectId);
         var lista = f.NotaComandaId is { } nc
-            ? await q.AleNotelorAsync([nc], ct)
-            : (await q.ToateAsync(ct)).Where(a => a.FurnizorId == f.FurnizorId && a.ProiectId == f.ProiectId).ToList();
+            ? (await q.AleNotelorAsync([nc], ct)).Concat(aleFurnizorului.Where(a => a.NotaComandaId is null)).ToList()
+            : aleFurnizorului.ToList();
         var dupaId = lista.ToDictionary(a => a.Id);
         var ids = lista.Select(a => (Guid?)a.Id).ToList();
         var nir = ids.Count == 0

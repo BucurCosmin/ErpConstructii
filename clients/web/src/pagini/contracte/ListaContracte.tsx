@@ -5,7 +5,7 @@ import { stariContract, tipuriContract, useContracte } from '../../api/contracte
 import type { Contract } from '../../api/contracte'
 import { usePermisiuni, useProiecte } from '../../api/interogari'
 import { AntetPagina } from '../../layout/AntetPagina'
-import { formatData, formatLei } from '../../util/format'
+import { etichetaProiect, formatData, formatLei } from '../../util/format'
 import { DetaliiContract, ProgresContract } from './DetaliiContract'
 import { EditorContract } from './EditorContract'
 
@@ -33,7 +33,7 @@ export function ListaContracte({ proiectId }: { proiectId?: string }) {
       <Flex gap={8} wrap style={{ marginBottom: 12 }}>
         {!proiectId && (
           <Select allowClear showSearch={{ optionFilterProp: 'label' }} placeholder="Toate proiectele" style={{ width: 260 }} value={proiectAles} onChange={setProiectAles}
-            options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+            options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
         )}
         <Segmented value={stare} onChange={(v) => setStare(String(v))}
           options={[{ value: 'Toate', label: 'Toate' }, { value: 'Activ', label: 'Active' }, { value: 'Ciorna', label: 'Ciorne' }, { value: 'Finalizat', label: 'Finalizate' }, { value: 'Reziliat', label: 'Reziliate' }]} />

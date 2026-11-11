@@ -113,11 +113,14 @@ export function DetaliiProiect() {
                           items={[
                             { label: 'Cod', children: p.cod },
                             { label: 'Stare', children: stariProiect[p.stare].eticheta },
+                            { label: 'Tip', children: p.tip === 'Sediu' ? 'Sediu al firmei (cheltuieli de sediu)' : 'Lucrare', span: 2 },
                             { label: 'Denumire', children: p.denumire, span: 2 },
-                            { label: 'Beneficiar', children: p.beneficiar },
-                            { label: 'CUI beneficiar', children: p.cuiBeneficiar ?? '—' },
+                            ...(p.tip === 'Sediu' ? [] : [
+                              { label: 'Beneficiar', children: p.beneficiar },
+                              { label: 'CUI beneficiar', children: p.cuiBeneficiar ?? '—' },
+                            ]),
                             {
-                              label: 'Amplasament',
+                              label: p.tip === 'Sediu' ? 'Adresa sediului' : 'Amplasament',
                               span: 2,
                               children: (
                                 <>
@@ -150,7 +153,7 @@ export function DetaliiProiect() {
             },
             {
               key: 'santiere',
-              label: 'Șantiere',
+              label: p?.tip === 'Sediu' ? 'Locații' : 'Șantiere',
               children: <SantiereProiect proiectId={proiectId} poateEdita={poateEdita} />,
             },
             {

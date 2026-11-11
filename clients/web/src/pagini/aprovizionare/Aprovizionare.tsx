@@ -19,7 +19,7 @@ import {
 import type { ImportFormularApi } from '../../api/formulare'
 import { usePermisiuni, useProfil, useProiecte } from '../../api/interogari'
 import type { Proiect } from '../../api/tipuri'
-import { useCompartimente, useSantiere } from '../../api/proiecte'
+import { useSantiere } from '../../api/proiecte'
 import { potrivesteSolicitant, SelectSolicitant, solicitantDin, valoareSolicitant } from '../../componente/SelectSolicitant'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { ImportAviz } from './ImportAviz'
@@ -29,6 +29,10 @@ import { ImportNotaComanda } from './ImportNotaComanda'
 import { ListaNoteComanda } from './ListaNoteComanda'
 import { NecesarAchizitie } from './NecesarAchizitie'
 import { NotaComandaNoua } from './NotaComandaNoua'
+import { TagDinUrma } from '../../componente/DocumentDinUrma'
+import { ButonRaport, ModalRenumerotare, VerificareNumere } from '../../componente/NumereHartie'
+import type { DocumentDeRenumerotat, SerieNumere } from '../../componente/NumereHartie'
+import { etichetaProiect } from '../../util/format'
 
 interface LinieNecesarValues {
   denumire: string
@@ -99,6 +103,30 @@ function LiniiNecesar() {
   )
 }
 
+/** D-48: numerele de pe hârtie ale necesarelor importate. */
+const serieNecesare: SerieNumere = {
+  denumire: 'necesarele importate',
+  verificare: '/api/aprovizionare/necesare-materiale/numere',
+  istoric: '/api/aprovizionare/necesare-materiale/renumerotari',
+  renumerotare: (d) => `/api/aprovizionare/proiecte/${d.proiectId}/necesare-materiale/${d.id}/renumerotare`,
+  invalideaza: [['aprovizionare']],
+}
+
+function csvNecesare(necesare: NecesarMateriale[]) {
+  const camp = (v: string | number | null) => {
+    const t = v === null ? '' : typeof v === 'number' ? String(v).replace('.', ',') : v
+    return /[;"\r\n]/.test(t) ? `"${t.replaceAll('"', '""')}"` : t
+  }
+  const randuri = [
+    ['Necesar', 'Nr. hârtie', 'Data', 'Proiect', 'Șantier', 'Stare', 'Material', 'UM', 'Cantitate', 'Observații'],
+    ...necesare.flatMap((n) => n.linii.map((l) => [n.numar, n.numarExtern, new Date(`${n.data}T00:00:00`).toLocaleDateString('ro-RO'), n.proiectCod,
+      n.compartimentSantier, n.stare === 'Aprobata' ? 'aprobat' : n.stare === 'Respinsa' ? 'respins' : 'în așteptare', l.denumire, l.unitateMasura,
+      l.cantitate, l.observatii])),
+  ]
+  descarca(new Blob(['\ufeff' + randuri.map((x) => x.map(camp).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }),
+    `necesare-materiale-${new Date().toISOString().slice(0, 10)}.csv`)
+}
+
 function descarca(blob: Blob, nume: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -148,6 +176,7 @@ export function Aprovizionare() {
   const sablonActiv = sabloane.data?.some((sablon) => sablon.codTip === 'necesar-materiale' && sablon.activ) ?? false
   const poateCrea = permisiuni.data?.includes('aprovizionare.creare') ?? false
   const [tab, setTab] = useState('necesare')
+  const [deRenumerotat, setDeRenumerotat] = useState<DocumentDeRenumerotat>()
   const poateAproba = permisiuni.data?.includes('aprovizionare.aprobare') ?? false
   const poateEdita = permisiuni.data?.includes('aprovizionare.editare') ?? false
   const poateSchimba = (n: NecesarMateriale) =>
@@ -155,12 +184,11 @@ export function Aprovizionare() {
 
   // Necesarele de dinainte de D-38 au doar textul: se propune șantierul / compartimentul cu aceeași denumire.
   const santiereModificat = useSantiere(deModificat?.proiectId)
-  const compartimente = useCompartimente()
   useEffect(() => {
-    if (!deModificat || formModificare.getFieldValue('solicitant') || !santiereModificat.data || !compartimente.data) return
-    const propus = potrivesteSolicitant(deModificat.compartimentSantier, santiereModificat.data, compartimente.data)
+    if (!deModificat || formModificare.getFieldValue('solicitant') || !santiereModificat.data) return
+    const propus = potrivesteSolicitant(deModificat.compartimentSantier, santiereModificat.data)
     if (propus) formModificare.setFieldValue('solicitant', propus)
-  }, [deModificat, santiereModificat.data, compartimente.data, formModificare])
+  }, [deModificat, santiereModificat.data, formModificare])
 
   const deschideModificarea = (n: NecesarMateriale) => {
     setDeModificat(n)
@@ -304,6 +332,20 @@ export function Aprovizionare() {
 
   const randuriNote = note.data ?? []
 
+  const descriereFiltre = () => {
+    const p: string[] = []
+    if (filtreNote.dataDe || filtreNote.dataPanaLa) p.push(`perioada ${filtreNote.dataDe ?? '…'} – ${filtreNote.dataPanaLa ?? '…'}`)
+    const pr = proiecte.data?.find((x) => x.id === filtreNote.proiectId)
+    if (pr) p.push(`proiectul ${pr.cod}`)
+    if (filtreNote.lucrare) p.push(`lucrarea „${filtreNote.lucrare}”`)
+    if (filtreNote.material) p.push(`materialul „${filtreNote.material}”`)
+    if (filtreNote.stare) p.push(filtreNote.stare === 'Aprobata' ? 'aprobate' : filtreNote.stare === 'Respinsa' ? 'respinse' : 'în așteptare')
+    if (filtreNote.numar) p.push(`numărul „${filtreNote.numar}”`)
+    if (filtreNote.intocmit) p.push(`întocmite de „${filtreNote.intocmit}”`)
+    if (filtreNote.aprobatDe) p.push(`aprobate de „${filtreNote.aprobatDe}”`)
+    return p.join(', ')
+  }
+
   return (
     <>
       <AntetPagina
@@ -321,7 +363,13 @@ export function Aprovizionare() {
             label: 'Necesare de materiale',
             children: (
               <Space direction="vertical" style={{ width: '100%' }} size="large">
-                <Card title="Necesare de materiale">
+                <Card title="Necesare de materiale" extra={
+                  <Space wrap>
+                    <VerificareNumere serie={serieNecesare} poateEdita={poateEdita} />
+                    <ButonRaport url="/api/aprovizionare/necesare-materiale/raport/pdf" ids={randuriNote.map((n) => n.id)} filtre={descriereFiltre()}
+                      csv={() => csvNecesare(randuriNote)} />
+                  </Space>
+                }>
                   {note.error && <Alert type="error" showIcon message="Necesarele de materiale nu au putut fi încărcate." description={note.error.message} />}
                   <Form form={formFiltre} layout="vertical" onFinish={aplicaFiltreNote}>
                     <Row gutter={12}>
@@ -332,7 +380,7 @@ export function Aprovizionare() {
                             showSearch
                             optionFilterProp="label"
                             placeholder="Toate lucrările"
-                            options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                            options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
                           />
                         </Form.Item>
                       </Col>
@@ -371,7 +419,7 @@ export function Aprovizionare() {
                       </Col>
                       <Col xs={12} md={4}>
                         <Form.Item name="numar" label="Număr">
-                          <Input maxLength={30} placeholder="NM/AAAA/NNNN" />
+                          <Input maxLength={30} placeholder="NM/AAAA/NNNN sau nr. hârtie" />
                         </Form.Item>
                       </Col>
                       <Col xs={24} md={8}>
@@ -446,9 +494,16 @@ export function Aprovizionare() {
                             <span>{numar}</span>
                             {nota.sursa === 'Import' && (
                               <Tooltip title="Necesar emis în afara sistemului; numărul de pe documentul original">
-                                <Tag color="purple" style={{ marginInlineEnd: 0 }}>importat{nota.numarExtern ? ` · nr. ${nota.numarExtern}` : ''}</Tag>
+                                <Tag color="purple" style={{ marginInlineEnd: 0 }}>importat{nota.numarExtern ? ` · nr. ${nota.numarExtern}` : ' · fără nr.'}</Tag>
                               </Tooltip>
                             )}
+                            {nota.sursa === 'Import' && poateEdita && (
+                              <Button size="small" type="link" icon={<EditOutlined />} style={{ padding: 0, height: 'auto' }}
+                                onClick={() => setDeRenumerotat({ id: nota.id, proiectId: nota.proiectId, numarSistem: nota.numar, numarExtern: nota.numarExtern, data: nota.data })}>
+                                renumerotează
+                              </Button>
+                            )}
+                            {nota.dinUrma && <TagDinUrma />}
                           </Space>
                         ),
                       },
@@ -502,6 +557,7 @@ export function Aprovizionare() {
                       },
                     ]}
                   />
+                  <ModalRenumerotare serie={serieNecesare} document={deRenumerotat} onInchide={() => setDeRenumerotat(undefined)} />
                 </Card>
               </Space>
             ),
@@ -527,7 +583,7 @@ export function Aprovizionare() {
                         style={{ display: 'block', marginTop: 6 }}
                         value={proiectId || undefined}
                         loading={proiecte.isLoading}
-                        options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                        options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
                         onChange={setProiectId}
                         showSearch
                         optionFilterProp="label"
@@ -553,9 +609,9 @@ export function Aprovizionare() {
                   <Form form={formNota} layout="vertical" initialValues={{ linii: [{}] }} onFinish={emite}>
                     <Form.Item
                       name="solicitant"
-                      label="Șantier / Compartiment"
-                      rules={[{ required: true, message: 'Alege șantierul sau compartimentul care cere materialele.' }]}
-                      extra="Șantierele se adaugă în fișa proiectului (tab-ul Șantiere), compartimentele în Administrare → Compartimente."
+                      label="Șantier"
+                      rules={[{ required: true, message: 'Alege șantierul proiectului care cere materialele.' }]}
+                      extra="Șantierele se adaugă în fișa proiectului (tab-ul „Șantiere”)."
                     >
                       <SelectSolicitant proiectId={proiectId || undefined} />
                     </Form.Item>
@@ -573,7 +629,8 @@ export function Aprovizionare() {
           {
             key: 'note-comanda',
             label: 'Note de comandă',
-            children: <ListaNoteComanda poateCrea={poateCrea} poateAproba={poateAproba} onNotaNoua={() => setTab('nota-noua')} />,
+            children: <ListaNoteComanda poateCrea={poateCrea} poateAproba={poateAproba} poateEdita={poateEdita}
+              poateAnula={permisiuni.data?.includes('aprovizionare.anulare') ?? false} onNotaNoua={() => setTab('nota-noua')} />,
           },
           {
             key: 'necesar-achizitie',
@@ -677,8 +734,8 @@ export function Aprovizionare() {
         <Alert type="info" showIcon style={{ marginBottom: 12 }}
           title="Necesarul nu e încă aprobat, deci se poate corecta. Nota de comandă de acceptat generată din el preia aceleași materiale." />
         <Form form={formModificare} layout="vertical" onFinish={salveazaModificarea}>
-          <Form.Item name="solicitant" label="Șantier / Compartiment"
-            rules={[{ required: true, message: 'Alege șantierul sau compartimentul care cere materialele.' }]}
+          <Form.Item name="solicitant" label="Șantier"
+            rules={[{ required: true, message: 'Alege șantierul proiectului care cere materialele.' }]}
             extra={deModificat && !deModificat.santierId && !deModificat.compartimentId ? `Pe necesar scrie: „${deModificat.compartimentSantier}”.` : undefined}>
             <SelectSolicitant proiectId={deModificat?.proiectId} />
           </Form.Item>

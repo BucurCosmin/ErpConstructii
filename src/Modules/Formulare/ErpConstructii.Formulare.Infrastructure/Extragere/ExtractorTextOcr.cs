@@ -80,12 +80,14 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
     /// Pune în cache textul deja recunoscut al paginilor unui fișier (numerotarea paginilor din acel fișier): documentele
     /// tăiate dintr-un fișier citit în centrul de import nu mai trec încă o dată prin OCR.
     /// </summary>
-    public void Memoreaza(byte[] continut, string extensie, IEnumerable<RandText> randuri)
+    public void Memoreaza(byte[] continut, string extensie, IEnumerable<RandText> randuri, IEnumerable<LinieOrizontala>? linii = null)
     {
         var amprenta = Amprenta(continut, extensie);
+        var liniiPagini = (linii ?? []).GroupBy(l => l.Pagina).ToDictionary(g => g.Key, g => g.ToList());
         foreach (var pagina in randuri.GroupBy(r => r.Pagina))
         {
             cache?.Set(CheiePagina(amprenta, pagina.Key), pagina.ToList(), optiuni.Value.DurataCache);
+            cache?.Set(CheieLinii(amprenta, pagina.Key), liniiPagini.GetValueOrDefault(pagina.Key) ?? [], optiuni.Value.DurataCache);
         }
     }
 
@@ -93,6 +95,8 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
 
     /// <summary>Cache pe pagină: același fișier citit pentru factură, apoi pentru nota de comandă, trece o singură dată prin OCR.</summary>
     private static string CheiePagina(string amprenta, int pagina) => $"ocr:{amprenta}:{pagina}";
+
+    private static string CheieLinii(string amprenta, int pagina) => $"ocr-linii:{amprenta}:{pagina}";
 
     private RezultatImport<TextDocument> Extrage(SursaImport sursa, IReadOnlyCollection<int>? doarPaginile, CancellationToken ct)
     {
@@ -119,11 +123,13 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
 
         var pagini = Enumerable.Range(1, Math.Min(numar, o.PaginiMaxime)).Where(p => doarPaginile is null || doarPaginile.Contains(p)).ToList();
         var citite = new Dictionary<int, List<RandText>>();
+        var linii = new Dictionary<int, List<LinieOrizontala>>();
         foreach (var p in pagini)
         {
             if (cache?.TryGetValue(CheiePagina(amprenta, p), out List<RandText>? r) == true && r is not null)
             {
                 citite[p] = r;
+                linii[p] = cache.TryGetValue(CheieLinii(amprenta, p), out List<LinieOrizontala>? l) && l is not null ? l : [];
             }
         }
 
@@ -163,16 +169,22 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
                     using var original = Pix.LoadFromMemory(imagine);
                     using var pix = o.EliminaLiniiTabel ? FaraLiniiTabel(original) : original.Clone();
                     var cuvinte = Citeste(motor, pix, o.ModSegmentare);
+                    var rotita = false;
                     if (CuvinteBune(cuvinte) < PragCuvinteBune && OrientareMaiBuna(motor, pix, CuvinteBune(cuvinte)) is { } rotire and not 0)
                     {
-                        using var rotita = pix.Rotate90(rotire);
-                        cuvinte = Citeste(motor, rotita, o.ModSegmentare);
+                        using var pixRotit = pix.Rotate90(rotire);
+                        cuvinte = Citeste(motor, pixRotit, o.ModSegmentare);
+                        rotita = true;
                         logger.LogDebug("Pagina {Pagina} din {Fisier} a fost rotită ({Rotire}).", p, sursa.NumeFisier, rotire);
                     }
 
                     var randuriPagina = GrupareRanduri.PeRanduri(cuvinte, p).ToList();
                     citite[p] = randuriPagina;
+                    // Liniile tabelelor se caută pe imaginea originală (înainte de ștergerea lor), doar dacă textul s-a citit
+                    // fără rotire (altfel coordonatele nu mai corespund).
+                    linii[p] = rotita ? [] : DetectareLinii.DinImagine(imagine, p);
                     cache?.Set(CheiePagina(amprenta, p), randuriPagina, o.DurataCache);
+                    cache?.Set(CheieLinii(amprenta, p), linii[p], o.DurataCache);
                 }
             }
             catch (IOException ex)
@@ -203,7 +215,8 @@ public sealed class ExtractorTextOcr(IOptions<OptiuniOcr> optiuni, ILogger<Extra
             }
         }
 
-        return RezultatImport<TextDocument>.Ok(new TextDocument(randuri, [], DinOcr: true), probleme);
+        return RezultatImport<TextDocument>.Ok(new TextDocument(randuri, [], DinOcr: true, pagini.SelectMany(p => linii.GetValueOrDefault(p) ?? []).ToList()), probleme);
+
     }
 
     private static byte[] Randeaza(byte[] pdf, int index, OptiuniOcr o)

@@ -86,8 +86,18 @@ internal static class FluxNotaComanda
         return r;
     }
 
-    private static async Task<int> UrmatorulNumarAsync(AprovizionareDbContext db, int an, CancellationToken ct) =>
-        (await db.NoteComanda.Where(c => c.An == an).MaxAsync(c => (int?)c.Numar, ct) ?? 0) + 1;
+    /// <summary>
+    /// Următorul număr NC al anului. Numerele notelor șterse (D-44) rămân ocupate: se iau în calcul și ele, altfel ștergerea
+    /// ultimei note i-ar refolosi numărul. Se apelează după blocarea secvenței.
+    /// </summary>
+    internal static async Task<int> UrmatorulNumarAsync(AprovizionareDbContext db, int an, CancellationToken ct)
+    {
+        var maxNote = await db.NoteComanda.Where(c => c.An == an).MaxAsync(c => (int?)c.Numar, ct) ?? 0;
+        var prefix = $"NC/{an}/";
+        var sterse = await db.StergeriNoteComanda.AsNoTracking().Where(s => s.Numar.StartsWith(prefix)).Select(s => s.Numar).ToListAsync(ct);
+        var maxSterse = sterse.Select(n => int.TryParse(n[prefix.Length..], out var x) ? x : 0).DefaultIfEmpty(0).Max();
+        return Math.Max(maxNote, maxSterse) + 1;
+    }
 
     /// <summary>
     /// Aprobarea necesarului din lista necesarelor: acceptă nota lui; necesarele de dinainte de D-37 (fără notă) primesc acum

@@ -1,12 +1,14 @@
-import { CheckOutlined, CloseOutlined, DownloadOutlined, FilePdfOutlined, FileWordOutlined, PaperClipOutlined, PlusOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
-import { Alert, App, Badge, Button, Card, DatePicker, Dropdown, Form, Input, Modal, Popconfirm, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { CheckOutlined, CloseOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, FilePdfOutlined, FileWordOutlined, HistoryOutlined, LinkOutlined, PaperClipOutlined, PlusOutlined, PrinterOutlined, SearchOutlined } from '@ant-design/icons'
+import { Alert, App, Badge, Button, Card, DatePicker, Drawer, Dropdown, Empty, Form, Input, Modal, Popconfirm, Segmented, Select, Space, Table, Tag, Timeline, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useState } from 'react'
 import { api } from '../../api/client'
-import { useAcceptaNotaComanda, useNoteComanda, useRespingeNotaComanda } from '../../api/aprovizionare'
-import type { FiltreNoteComanda, LinieNotaComanda, NotaComanda, StareNotaComanda } from '../../api/aprovizionare'
+import { useAcceptaNotaComanda, useIstoricNotaComanda, useLeagaNotaDeNecesar, useNecesareMateriale, useNotaDinUrma, useNoteComanda, useNoteComandaSterse, useRespingeNotaComanda, useStergeNotaComanda } from '../../api/aprovizionare'
+import type { FiltreNoteComanda, LinieNotaComanda, NotaComanda, StareNotaComanda, StergereNotaComanda } from '../../api/aprovizionare'
+import { NotaComandaNoua } from './NotaComandaNoua'
+import { TagDinUrma } from '../../componente/DocumentDinUrma'
 import { useProiecte } from '../../api/interogari'
-import { formatData } from '../../util/format'
+import { etichetaProiect, formatData } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 
 interface ValoriFiltre {
@@ -38,6 +40,106 @@ function csv(cap: string[], randuri: (string | number | null)[][], nume: string)
   descarca(new Blob(['﻿' + [cap.join(';'), ...randuri.map((r) => r.map(camp).join(';'))].join('\r\n')], { type: 'text/csv;charset=utf-8' }), nume)
 }
 
+type Vedere = StareNotaComanda | 'Sterse'
+
+/** Leagă nota importată fără necesar de necesarul ei (D-45), de obicei importat după ea. */
+function LeagaNecesar({ nota, onInchide }: { nota: NotaComanda; onInchide: () => void }) {
+  const { message } = App.useApp()
+  const necesare = useNecesareMateriale({ proiectId: nota.proiectId })
+  const leaga = useLeagaNotaDeNecesar()
+  const dinUrma = useNotaDinUrma()
+  const [necesarId, setNecesarId] = useState<string>()
+  const marcheazaDinUrma = async () => {
+    try {
+      await dinUrma.mutateAsync({ proiectId: nota.proiectId, id: nota.id, dinUrma: true })
+      message.success(`${nota.numar} e marcată document din urmă: rămâne fără necesar (îl poți lega oricând).`)
+      onInchide()
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+  const salveaza = async () => {
+    if (!necesarId) return
+    try {
+      const n = await leaga.mutateAsync({ proiectId: nota.proiectId, id: nota.id, necesarId })
+      message.success(`${n.numar} a fost legată de necesarul ${n.necesarNumar ?? ''}; legătura apare în istoricul notei.`)
+      onInchide()
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+  const optiuni = (necesare.data ?? []).filter((n) => n.stare !== 'Respinsa')
+  return (
+    <Modal open title={`Leagă ${nota.numar} de necesarul de materiale`} okText="Leagă" cancelText="Renunță"
+      okButtonProps={{ disabled: !necesarId, loading: leaga.isPending }} onOk={() => void salveaza()} onCancel={onInchide} destroyOnHidden
+      footer={(_, { OkBtn, CancelBtn }) => (
+        <Space>
+          {!nota.dinUrma && (
+            <Tooltip title="Comandă veche, fără necesar în aplicație: nu mai apare ca „fără necesar”; necesarul se poate lega și mai târziu.">
+              <Button icon={<HistoryOutlined />} loading={dinUrma.isPending} onClick={() => void marcheazaDinUrma()}>E din urmă (fără necesar)</Button>
+            </Tooltip>
+          )}
+          <CancelBtn />
+          <OkBtn />
+        </Space>
+      )}>
+      <Typography.Paragraph type="secondary">
+        Necesarele proiectului {nota.proiectCod}. Dacă necesarul nu e încă în aplicație, importă-l întâi (la un necesar din urmă poți alege nota chiar la import).
+      </Typography.Paragraph>
+      <Select style={{ width: '100%' }} showSearch={{ optionFilterProp: 'label' }} loading={necesare.isLoading} value={necesarId} onChange={setNecesarId}
+        placeholder={optiuni.length ? 'Alege necesarul' : 'Proiectul nu are necesare'}
+        options={optiuni.map((n) => ({
+          value: n.id,
+          label: `${n.numar}${n.numarExtern ? ` (nr. ${n.numarExtern})` : ''} · ${dayjs(n.data).format('DD.MM.YYYY')} · ${n.compartimentSantier} · ${n.linii.map((l) => l.denumire).join(', ')}`,
+        }))} />
+    </Modal>
+  )
+}
+
+/** Istoricul modificărilor unei note emise (D-44): cine, când, de ce și ce s-a schimbat. */
+function IstoricNota({ nota, onInchide }: { nota: NotaComanda; onInchide: () => void }) {
+  const istoric = useIstoricNotaComanda(nota)
+  return (
+    <Drawer open onClose={onInchide} size={640} title={`Istoricul notei ${nota.numar}`}>
+      {istoric.isLoading ? null : (istoric.data ?? []).length === 0 ? <Empty description="Nota nu a fost modificată." /> : (
+        <Timeline
+          items={(istoric.data ?? []).map((c) => ({
+            color: c.tip === 'ComandaAnulata' ? 'orange' : c.tip === 'NecesarLegat' ? 'green' : 'blue',
+            children: (
+              <div>
+                <Typography.Text strong>{c.tip === 'ComandaAnulata' ? 'Comandă anulată (revenită la achiziții)' : c.tip === 'NecesarLegat' ? 'Legată de necesar' : 'Modificare'}</Typography.Text>
+                <Typography.Text type="secondary"> · {c.corectatDe}, {dayjs(c.corectatLa).format('DD.MM.YYYY HH:mm')}</Typography.Text>
+                <div>Motiv: {c.motiv}</div>
+                <Typography.Text type="secondary">{c.rezumat}</Typography.Text>
+              </div>
+            ),
+          }))} />
+      )}
+      <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>Toate modificările apar și în Jurnal modificări (butonul din meniul Sistem).</Typography.Paragraph>
+    </Drawer>
+  )
+}
+
+/** Notele de comandă șterse: rămân aici cine, când, de ce și ce s-a întâmplat cu materialele. */
+function NoteSterse() {
+  const sterse = useNoteComandaSterse(true)
+  return (
+    <Card size="small" title="Note de comandă șterse">
+      <Table<StergereNotaComanda> rowKey="id" size="small" className="tabel-compact" loading={sterse.isLoading} dataSource={sterse.data}
+        pagination={{ defaultPageSize: 50, hideOnSinglePage: true, size: 'small' }}
+        columns={[
+          { title: 'Număr', dataIndex: 'numar', width: 130, render: (n: string, s) => <>{n}{s.numarExtern && <Typography.Text type="secondary"> · {s.numarExtern}</Typography.Text>}</> },
+          { title: 'Data notei', dataIndex: 'data', width: 100, render: formatData },
+          { title: 'Proiect', dataIndex: 'proiectCod', width: 110 },
+          { title: 'Furnizor', dataIndex: 'furnizorDenumire', ellipsis: true },
+          { title: 'Motiv', dataIndex: 'motiv', ellipsis: { showTitle: true } },
+          { title: 'Efect', dataIndex: 'efect', ellipsis: { showTitle: true }, render: (e: string | null) => e ?? '—' },
+          { title: 'Ștearsă de', width: 200, render: (_, s) => `${s.stearsaDe}, ${dayjs(s.stearsaLa).format('DD.MM.YYYY HH:mm')}` },
+        ]} />
+    </Card>
+  )
+}
+
 const numeFisier = (n: NotaComanda) => `${n.numar}_${n.furnizorDenumire}`.replace(/[^a-zA-Z0-9_-]+/g, '_')
 const cantitate = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigits: 4 })
 
@@ -45,13 +147,26 @@ const cantitate = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigi
  * Notele de comandă către furnizori (formularul GC 007): filtre (perioadă, lucrare / proiect, număr, furnizor, material, sursă),
  * documentul Word din șablonul firmei, PDF, originalul scanat, rapoarte PDF pe lucrare și export CSV.
  */
-export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNotaNoua?: () => void; poateCrea?: boolean; poateAproba?: boolean }) {
+export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba, poateEdita, poateAnula }: {
+  onNotaNoua?: () => void
+  poateCrea?: boolean
+  poateAproba?: boolean
+  poateEdita?: boolean
+  poateAnula?: boolean
+}) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const [filtre, setFiltre] = useState<FiltreNoteComanda>({})
   // D-37: notele generate din necesare se acceptă aici; „Emise” = comenzile trimise la furnizori (rapoartele le iau doar pe ele).
-  const [stare, setStare] = useState<StareNotaComanda>('Emisa')
+  const [vedere, setVedere] = useState<Vedere>('Emisa')
+  const stare: StareNotaComanda = vedere === 'Sterse' ? 'Emisa' : vedere
   const note = useNoteComanda({ ...filtre, stare })
+  const sterge = useStergeNotaComanda()
+  const [deModificat, setDeModificat] = useState<NotaComanda>()
+  const [deSters, setDeSters] = useState<NotaComanda>()
+  const [cuIstoric, setCuIstoric] = useState<NotaComanda>()
+  const [deLegat, setDeLegat] = useState<NotaComanda>()
+  const [motivStergere, setMotivStergere] = useState('')
   const deAcceptat = useNoteComanda({ stare: 'DeAcceptat' })
   const accepta = useAcceptaNotaComanda()
   const respingeNota = useRespingeNotaComanda()
@@ -79,11 +194,38 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
       message.error((e as Error).message)
     }
   }
+  const stergeNota = async () => {
+    if (!deSters || !motivStergere.trim()) return
+    try {
+      const r = await sterge.mutateAsync({ proiectId: deSters.proiectId, id: deSters.id, motiv: motivStergere.trim() })
+      message.success(r.mesaj)
+      setDeSters(undefined)
+      setMotivStergere('')
+    } catch (e) {
+      message.error((e as Error).message)
+    }
+  }
+
   const [selectate, setSelectate] = useState<string[]>([])
+  // D-45: notele importate bifate, fără necesar și încă nemarcate, se pot marca din urmă deodată.
+  const dinUrmaBifate = useNotaDinUrma()
   const [seGenereaza, setSeGenereaza] = useState(false)
 
   const lista = note.data ?? []
   const alese = selectate.length ? lista.filter((n) => selectate.includes(n.id)) : lista
+  const deMarcat = lista.filter((n) => selectate.includes(n.id) && n.stare === 'Emisa' && n.sursa === 'Import' && !n.necesarId && !n.dinUrma)
+  const marcheazaBifate = async () => {
+    let reusite = 0
+    for (const n of deMarcat) {
+      try {
+        await dinUrmaBifate.mutateAsync({ proiectId: n.proiectId, id: n.id, dinUrma: true })
+        reusite++
+      } catch (e) {
+        message.error(`${n.numar}: ${(e as Error).message}`)
+      }
+    }
+    if (reusite > 0) message.success(`${reusite} ${reusite === 1 ? 'notă marcată' : 'note marcate'} ca documente din urmă.`)
+  }
   const nr = alese.length
 
   const descriereFiltre = () => {
@@ -144,13 +286,15 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
 
   return (
     <Space orientation="vertical" style={{ width: '100%' }} size="middle">
-      <Segmented<StareNotaComanda> value={stare} onChange={(v) => { setStare(v); setSelectate([]) }}
+      <Segmented<Vedere> value={vedere} onChange={(v) => { setVedere(v); setSelectate([]) }}
         options={[
           { value: 'Emisa', label: 'Emise către furnizori' },
           { value: 'DeAcceptat', label: <Space size={6}>De acceptat<Badge count={deAcceptat.data?.length ?? 0} color="#d4380d" /></Space> },
           { value: 'Acceptata', label: 'Acceptate (la achiziții)' },
           { value: 'Respinsa', label: 'Respinse' },
+          { value: 'Sterse', label: 'Șterse' },
         ]} />
+      {vedere === 'Sterse' ? <NoteSterse /> : <>
       <Form<ValoriFiltre>
         layout="inline"
         style={{ rowGap: 8 }}
@@ -175,7 +319,7 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
         </Form.Item>
         <Form.Item name="proiectId">
           <Select allowClear placeholder="Toate proiectele" style={{ width: 220 }} showSearch={{ optionFilterProp: 'label' }}
-            options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+            options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
         </Form.Item>
         <Form.Item name="lucrare">
           <Input allowClear placeholder="Obiect / lucrare" style={{ width: 160 }} maxLength={300} />
@@ -215,6 +359,13 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
         extra={
           <Space wrap>
             {selectate.length > 0 && <Tag color="blue" closable onClose={() => setSelectate([])}>{selectate.length} bifate</Tag>}
+            {emise && poateEdita && deMarcat.length > 0 && (
+              <Popconfirm title={`Marchezi ${deMarcat.length} ${deMarcat.length === 1 ? 'notă' : 'note'} ca documente din urmă?`}
+                description="Notele importate bifate, fără necesar: nu mai apar ca „fără necesar”. Schimbarea apare în istoricul fiecărei note."
+                okText="Marchează" cancelText="Nu" onConfirm={() => void marcheazaBifate()}>
+                <Button icon={<HistoryOutlined />} loading={dinUrmaBifate.isPending}>Din urmă ({deMarcat.length})</Button>
+              </Popconfirm>
+            )}
             {emise && <Dropdown
               disabled={nr === 0}
               menu={{
@@ -290,6 +441,15 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
                 <Tooltip title={n.sursa === 'Import' ? `Importată de pe hârtie${n.numarExtern ? `; nr. ${n.numarExtern} pe document` : ''}` : 'Emisă în aplicație'}>
                   <span>{numar}</span>{n.numarExtern && <Typography.Text type="secondary"> · {n.numarExtern}</Typography.Text>}
                   {n.necesarNumar && <div><Typography.Text type="secondary" style={{ fontSize: 12 }}>din {n.necesarNumar}</Typography.Text></div>}
+                  {(n.dinUrma || (n.sursa === 'Import' && n.stare === 'Emisa' && !n.necesarId)) && (
+                    <div>
+                      {n.dinUrma ? <TagDinUrma /> : (
+                        <Tooltip title="Importată fără necesar de materiale: leag-o de necesarul ei (🔗) sau, dacă e o comandă veche, marcheaz-o din urmă la import.">
+                          <Tag color="orange" style={{ marginInlineEnd: 0 }}>fără necesar</Tag>
+                        </Tooltip>
+                      )}
+                    </div>
+                  )}
                 </Tooltip>
               ),
             },
@@ -311,7 +471,7 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
               },
             },
             {
-              title: '', key: 'actiuni', width: stare === 'DeAcceptat' ? 150 : 100, fixed: 'right',
+              title: '', key: 'actiuni', width: stare === 'DeAcceptat' ? 150 : emise ? 220 : 100, fixed: 'right',
               render: (_, n) => (
                 <Space size={2}>
                   {n.stare === 'DeAcceptat' && poateAproba && (
@@ -338,12 +498,60 @@ export function ListaNoteComanda({ onNotaNoua, poateCrea, poateAproba }: { onNot
                       <Button size="small" type="text" icon={<PaperClipOutlined />} onClick={() => void original(n)} />
                     </Tooltip>
                   )}
+                  {n.stare === 'Emisa' && poateEdita && (
+                    <Tooltip title="Modifică (cu motiv; se păstrează istoricul)">
+                      <Button size="small" type="text" icon={<EditOutlined />} onClick={() => setDeModificat(n)} />
+                    </Tooltip>
+                  )}
+                  {n.stare === 'Emisa' && n.sursa === 'Import' && !n.necesarId && poateEdita && (
+                    <Tooltip title="Leagă de necesarul de materiale">
+                      <Button size="small" type="text" icon={<LinkOutlined />} onClick={() => setDeLegat(n)} />
+                    </Tooltip>
+                  )}
+                  {n.stare === 'Emisa' && (n.corectii ?? 0) > 0 && (
+                    <Tooltip title={`Istoric: ${n.corectii} ${n.corectii === 1 ? 'modificare' : 'modificări'}`}>
+                      <Badge count={n.corectii} size="small" color="#1f5fbf" offset={[-4, 4]}>
+                        <Button size="small" type="text" icon={<HistoryOutlined />} onClick={() => setCuIstoric(n)} />
+                      </Badge>
+                    </Tooltip>
+                  )}
+                  {n.stare === 'Emisa' && poateAnula && (
+                    <Tooltip title={n.acceptataDe && !n.notaSursaId ? 'Anulează comanda (nota revine la achiziții)' : 'Șterge (cu motiv)'}>
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => setDeSters(n)} />
+                    </Tooltip>
+                  )}
                 </Space>
               ),
             },
           ]}
         />
       </Card>
+
+      </>}
+
+      {deModificat && (
+        <Drawer open size={1100} title={`Modifică nota de comandă ${deModificat.numar}`} onClose={() => setDeModificat(undefined)} destroyOnHidden>
+          <NotaComandaNoua key={deModificat.id} poateCrea={!!poateEdita} deModificat={deModificat} onModificat={() => setDeModificat(undefined)} />
+        </Drawer>
+      )}
+      {cuIstoric && <IstoricNota nota={cuIstoric} onInchide={() => setCuIstoric(undefined)} />}
+      {deLegat && <LeagaNecesar nota={deLegat} onInchide={() => setDeLegat(undefined)} />}
+      <Modal open={!!deSters} title={deSters && (deSters.acceptataDe && !deSters.notaSursaId ? `Anulezi comanda ${deSters.numar}?` : `Ștergi nota de comandă ${deSters.numar}?`)}
+        okText={deSters?.acceptataDe && !deSters.notaSursaId ? 'Anulează comanda' : 'Șterge'} okButtonProps={{ danger: true, disabled: !motivStergere.trim(), loading: sterge.isPending }}
+        cancelText="Renunță" onOk={() => void stergeNota()} onCancel={() => { setDeSters(undefined); setMotivStergere('') }} destroyOnHidden>
+        {deSters && (
+          <Space orientation="vertical" style={{ width: '100%' }}>
+            <Typography.Paragraph style={{ marginBottom: 0 }}>
+              {deSters.furnizorDenumire} · {deSters.proiectCod} · {deSters.linii.length} materiale
+            </Typography.Paragraph>
+            <Alert type="info" showIcon
+              title={deSters.acceptataDe && !deSters.notaSursaId
+                ? `Nota vine dintr-o notă acceptată${deSters.necesarNumar ? ` (necesarul ${deSters.necesarNumar})` : ''}: nu dispare, ci revine la achiziții („Necesar de achiziție”), fără furnizor, ca să fie comandată din nou.`
+                : 'Nota dispare din listă; în „Șterse” și în Jurnal modificări rămân cine, când, de ce și ce conținea. Numărul nu se refolosește. Nota legată de facturi sau avize nu se poate șterge.'} />
+            <Input.TextArea rows={3} maxLength={1000} value={motivStergere} onChange={(e) => setMotivStergere(e.target.value)} placeholder="Motivul (obligatoriu)" />
+          </Space>
+        )}
+      </Modal>
 
       <Modal open={!!deRespins} title={deRespins && `Respinge ${deRespins.numar}${deRespins.necesarNumar ? ` (și necesarul ${deRespins.necesarNumar})` : ''}`}
         okText="Respinge" okButtonProps={{ danger: true, disabled: !motiv.trim(), loading: respingeNota.isPending }} cancelText="Renunță"

@@ -11,7 +11,7 @@ public class ReceptieAvizTeste
     private static readonly Guid Factura = Guid.NewGuid();
 
     // Avizul: oțel 8 mm 100 kg (poziția 0), oțel 10 mm 200 kg (poziția 1), primite complet, fără prețuri.
-    private static Nir NirPeAviz() => Nir.EmiteDinAviz(2026, 7, new DateOnly(2026, 8, 15), Gestiune.DepozitCentral(), Guid.NewGuid(), "INTFSN/20488",
+    private static Nir NirPeAviz() => Nir.EmiteDinAviz(2026, 7, new DateOnly(2026, 8, 15), Gestiune.DepozitCentral(Depozit.Central()), Guid.NewGuid(), "INTFSN/20488",
         new DateOnly(2026, 8, 14), null, "INTERTRANSCOM", Guid.NewGuid(), "P-07",
         [new LinieNirCerere(0, Otel8, "MAT-1", "Otel 8", "kg", 100, 100, 0m, null), new LinieNirCerere(1, Otel10, "MAT-2", "Otel 10", "kg", 200, 200, 0m, null)],
         null, Guid.NewGuid(), "Gestionar").Valoare;
@@ -64,7 +64,7 @@ public class ReceptieAvizTeste
     public void Starea_avizului_si_a_facturii_se_calculeaza_din_NIR_urile_pe_aviz()
     {
         // Pe aviz s-au primit doar 60 din 100 kg de oțel 8 (restul vine), oțel 10 complet.
-        var nir = Nir.EmiteDinAviz(2026, 8, new DateOnly(2026, 8, 15), Gestiune.DepozitCentral(), Guid.NewGuid(), "A1", new DateOnly(2026, 8, 14), null, "F",
+        var nir = Nir.EmiteDinAviz(2026, 8, new DateOnly(2026, 8, 15), Gestiune.DepozitCentral(Depozit.Central()), Guid.NewGuid(), "A1", new DateOnly(2026, 8, 14), null, "F",
             Guid.NewGuid(), "P", [new LinieNirCerere(0, Otel8, "MAT-1", "Otel 8", "kg", 100, 60, 0m, null, Partiala: true),
                 new LinieNirCerere(1, Otel10, "MAT-2", "Otel 10", "kg", 200, 200, 0m, null)], null, Guid.NewGuid(), "G").Valoare;
 

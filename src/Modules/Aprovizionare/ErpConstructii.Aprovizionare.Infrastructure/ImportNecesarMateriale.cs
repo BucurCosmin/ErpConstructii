@@ -1,3 +1,4 @@
+﻿using System.Globalization;
 using System.Text.Json;
 using ErpConstructii.Aprovizionare.Import;
 using ErpConstructii.Formulare;
@@ -47,7 +48,9 @@ public sealed record ConfirmaImportNecesarCerere(
     string? CompartimentSantier,
     IReadOnlyList<LinieNecesarMaterialeCerere> Linii,
     Guid? SantierId = null,
-    Guid? CompartimentId = null);
+    Guid? CompartimentId = null,
+    bool DinUrma = false,
+    IReadOnlyList<Guid>? NoteComandaIds = null);
 
 /// <summary>
 /// Importul necesarelor de materiale emise în afara sistemului (scanări PDF, poze, Word):
@@ -97,6 +100,7 @@ internal static class ImportNecesarMateriale
         IEnumerable<IExtractorText> extractori,
         IInterogareProiecte proiecte,
         AprovizionareDbContext db,
+        ICeas ceas,
         CancellationToken ct)
     {
         var (sursa, extractor, eroare) = await CitesteFisierAsync(fisier, extractori, ct);
@@ -116,9 +120,33 @@ internal static class ImportNecesarMateriale
         var necesar = InterpretorNecesarMateriale.Interpreteaza(document);
         var candidati = (await proiecte.ListaActiveAsync(ct)).Select(p => new ProiectCandidat(p.Id, p.Cod, p.Denumire)).ToList();
         var propunere = PotrivireProiect.Propune(necesar.Lucrare.Valoare, candidati);
-        var existenta = await NecesarCuAcelasiOriginalAsync(db, DocumentOriginal.Amprenta(sursa!.Continut), ct);
+        var existenta = await NecesarCuAcelasiOriginalAsync(db, DocumentOriginal.Amprenta(sursa!.Continut), ct)
+            ?? await NecesarDublatAsync(db, necesar.NumarExtern.Valoare, necesar.Data.Certitudine == Certitudine.Lipsa ? null : necesar.Data.Valoare, ct);
 
         var probleme = extras.Probleme.Concat(necesar.Probleme).Concat(ProblemaPagini(pagini, document, "necesarul")).ToList();
+
+        // D-48: seria de hârtie e pe proiect și an. Fără număr pe document, se propune primul număr liber din seria proiectului
+        // propus; un număr folosit deja în serie e semnalat. Fără proiect propus, nu se poate propune nimic.
+        var numarExtern = Text(necesar.NumarExtern);
+        var anDocument = necesar.Data.Certitudine == Certitudine.Lipsa ? ceas.Azi.Year : necesar.Data.Valoare.Year;
+        if (propunere is not null)
+        {
+            var serie = await EndpointuriNumereNecesare.DocumenteAsync(db, propunere.Proiect.Id, anDocument, ct);
+            if (NumerotareExterna.Valoare(necesar.NumarExtern.Valoare) is not > 0)
+            {
+                var liber = NumerotareExterna.NumarLiber(serie.Select(d => d.NumarExtern)).ToString(CultureInfo.InvariantCulture);
+                numarExtern = new CampTextDto(liber, Certitudine.Nesigur.ToString(), $"propus: primul număr liber pe {propunere.Proiect.Cod} în {anDocument}");
+                probleme.Insert(0, new ProblemaImport(Severitate.Informare, "numar",
+                    $"Documentul nu are număr; propun nr. {liber}, primul liber pe proiectul {propunere.Proiect.Cod} în {anDocument} (îl poți schimba)."));
+            }
+            else if (existenta is null &&
+                     NumerotareExterna.Folosit(necesar.NumarExtern.Valoare, propunere.Proiect.Id, anDocument, serie) is { Count: > 0 } folosit)
+            {
+                probleme.Insert(0, new ProblemaImport(Severitate.Avertisment, "numar",
+                    $"Nr. {necesar.NumarExtern.Valoare} e folosit deja pe proiectul {propunere.Proiect.Cod} în {anDocument} de " +
+                    $"{string.Join(", ", folosit.Select(d => $"{d.NumarSistem} din {d.Data:dd.MM.yyyy}"))}. Poți importa și renumerota apoi din „Verifică numerele”."));
+            }
+        }
         if (propunere is null && necesar.Lucrare.Valoare is not null)
         {
             probleme.Add(new ProblemaImport(Severitate.Informare, "lucrare",
@@ -128,7 +156,7 @@ internal static class ImportNecesarMateriale
         return Results.Ok(new InterpretareNecesarDto(
             sursa.NumeFisier,
             necesar.DinOcr,
-            Text(necesar.NumarExtern),
+            numarExtern,
             new CampDataDto(necesar.Data.Certitudine == Certitudine.Lipsa ? null : necesar.Data.Valoare, necesar.Data.Certitudine.ToString(), necesar.Data.TextSursa),
             Text(necesar.CompartimentSantier),
             Text(necesar.Lucrare),
@@ -199,10 +227,23 @@ internal static class ImportNecesarMateriale
             return Results.BadRequest(new { mesaj = "Adaugă cel puțin un material." });
         }
 
+        // D-45: notele de comandă importate deja se leagă doar de un necesar din urmă (altfel necesarul își generează nota lui).
+        var noteDeLegat = (cerere.NoteComandaIds ?? []).Distinct().ToList();
+        if (noteDeLegat.Count > 0 && !cerere.DinUrma)
+        {
+            return Results.BadRequest(new { mesaj = "Notele de comandă existente se leagă doar de un necesar marcat „document din urmă”." });
+        }
+
         var hash = DocumentOriginal.Amprenta(sursa!.Continut);
         if (await NecesarCuAcelasiOriginalAsync(db, hash, ct) is { } existenta)
         {
             return Results.Conflict(new { mesaj = $"Acest document a fost deja importat ca necesarul {existenta}." });
+        }
+
+        // Același necesar dintr-un alt fișier (altă scanare): același număr și aceeași dată.
+        if (await NecesarDublatAsync(db, cerere.NumarExtern, cerere.DataDocument, ct) is { } dublat)
+        {
+            return Results.Conflict(new { mesaj = $"Necesarul nr. {cerere.NumarExtern!.Trim()} din {cerere.DataDocument:dd.MM.yyyy} a fost deja importat: {dublat}." });
         }
 
         var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
@@ -253,11 +294,40 @@ internal static class ImportNecesarMateriale
 
         db.DocumenteOriginale.Add(original);
         db.NecesareMateriale.Add(rezultat.Valoare);
-        // D-37: și necesarul importat generează nota de comandă „de acceptat”.
-        var nota = await FluxNotaComanda.GenereazaAsync(db, tranzactie, firmaId, azi.Year, rezultat.Valoare, utilizatorId, utilizator.Nume, ct);
-        if (nota.Esec)
+        if (cerere.DinUrma)
         {
-            return Results.BadRequest(new { mesaj = nota.Eroare.Mesaj });
+            // D-45: necesarul vechi intră aprobat, fără nota „de acceptat” (comanda s-a făcut deja); notele lui importate se leagă de el.
+            var dinUrma = rezultat.Valoare.MarcheazaDinUrma(ceas.Acum);
+            if (dinUrma.Esec)
+            {
+                return Results.BadRequest(new { mesaj = dinUrma.Eroare.Mesaj });
+            }
+
+            var note = noteDeLegat.Count == 0 ? [] : await db.NoteComanda.Where(n => noteDeLegat.Contains(n.Id)).ToListAsync(ct);
+            if (note.Count != noteDeLegat.Count)
+            {
+                return Results.NotFound(new { mesaj = "O notă de comandă aleasă nu mai există." });
+            }
+
+            foreach (var n in note)
+            {
+                var legare = n.LeagaDeNecesar(rezultat.Valoare, utilizatorId, utilizator.Nume, ceas.Acum);
+                if (legare.Esec)
+                {
+                    return Results.BadRequest(new { mesaj = $"{n.NumarAfisat}: {legare.Eroare.Mesaj}" });
+                }
+
+                db.CorectiiNoteComanda.Add(legare.Valoare);
+            }
+        }
+        else
+        {
+            // D-37: și necesarul importat generează nota de comandă „de acceptat”.
+            var nota = await FluxNotaComanda.GenereazaAsync(db, tranzactie, firmaId, azi.Year, rezultat.Valoare, utilizatorId, utilizator.Nume, ct);
+            if (nota.Esec)
+            {
+                return Results.BadRequest(new { mesaj = nota.Eroare.Mesaj });
+            }
         }
 
         await db.SaveChangesAsync(ct);
@@ -303,6 +373,22 @@ internal static class ImportNecesarMateriale
         using var ms = new MemoryStream((int)fisier.Length);
         await fisier.CopyToAsync(ms, ct);
         return (new SursaImport(fisier.FileName, ms.ToArray()), extractor, null);
+    }
+
+    /// <summary>Necesarul importat deja cu același număr extern și aceeași dată (din orice fișier).</summary>
+    private static async Task<string?> NecesarDublatAsync(AprovizionareDbContext db, string? numarExtern, DateOnly? data, CancellationToken ct)
+    {
+        if (ClasificarePagini.CheieNumar(numarExtern) is null || data is null)
+        {
+            return null;
+        }
+
+        var existente = await db.NecesareMateriale.AsNoTracking()
+            .Where(n => n.NumarExtern != null && n.Data == data)
+            .Select(n => new { n.An, n.Numar, n.NumarExtern, n.Data })
+            .ToListAsync(ct);
+        return DocumentDublat.DupaNumarSiData(numarExtern, data,
+            existente.Select(n => new DocumentImportat($"NM/{n.An}/{n.Numar:D4}", n.NumarExtern, n.Data)))?.Descriere;
     }
 
     private static async Task<string?> NecesarCuAcelasiOriginalAsync(AprovizionareDbContext db, string hash, CancellationToken ct)

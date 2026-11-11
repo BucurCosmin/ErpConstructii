@@ -7,9 +7,10 @@ import { api } from '../../api/client'
 import { useAnuleazaFactura, useFacturiPrimite } from '../../api/facturi'
 import type { FacturaPrimita, FiltreFacturi, LinieFactura } from '../../api/facturi'
 import { useProiecte } from '../../api/interogari'
-import { formatData, formatLei } from '../../util/format'
+import { etichetaProiect, formatData, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { CorectieFactura } from './CorectieFactura'
+import { TagDinUrma } from '../../componente/DocumentDinUrma'
 
 type Grupare = 'Furnizor' | 'Proiect' | 'Luna' | 'CotaTva'
 
@@ -221,7 +222,7 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImpor
         </Form.Item>
         <Form.Item name="proiectId">
           <Select allowClear placeholder="Toate proiectele" style={{ width: 220 }} showSearch={{ optionFilterProp: 'label' }}
-            options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+            options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
         </Form.Item>
         <Form.Item name="cauta">
           <Input allowClear placeholder="Furnizor, CUI sau număr" style={{ width: 200 }} />
@@ -342,7 +343,7 @@ export function ListaFacturiPrimite({ poateCrea, poateAnula, poateEdita, onImpor
               title: 'Număr', dataIndex: 'numar', width: 165, ellipsis: { showTitle: true }, sorter: (a, b) => a.numar.localeCompare(b.numar),
               render: (n: string, f) => (
                 <>
-                  {n} {f.esteStorno && <Tag color="volcano">storno</Tag>}
+                  {n} {f.esteStorno && <Tag color="volcano">storno</Tag>}{f.dinUrma && <TagDinUrma />}
                   {f.corectii > 0 && <Tooltip title={`Corectată de ${f.corectii} ori (istoricul e în fereastra de corectare și în jurnal)`}><EditOutlined style={{ color: '#1677ff', marginInlineStart: 4 }} /></Tooltip>}
                   {!f.liniiConcordante && f.stare !== 'Anulata' && (
                     <Tooltip title="Suma liniilor nu dă totalul facturii: liniile au fost citite greșit la import. Totalurile facturii sunt cele folosite în rapoarte.">

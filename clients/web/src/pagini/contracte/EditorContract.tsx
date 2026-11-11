@@ -6,7 +6,7 @@ import { tipuriContract, useParteneriContract, useSalveazaContract } from '../..
 import type { Contract, TipContract } from '../../api/contracte'
 import { useProiecte } from '../../api/interogari'
 import { NumarRo } from '../../componente/NumarRo'
-import { formatLei } from '../../util/format'
+import { etichetaProiect, formatLei } from '../../util/format'
 
 const PARTENER_NOU = '__nou__'
 
@@ -136,7 +136,7 @@ export function EditorContract({ deschis, proiectId, contract, onInchide, onSalv
           {!contract && !proiectId && (
             <Col xs={24}>
               <Form.Item name="proiectId" label="Proiect" rules={[{ required: true, message: 'Alege proiectul.' }]}>
-                <Select showSearch={{ optionFilterProp: 'label' }} options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+                <Select showSearch={{ optionFilterProp: 'label' }} options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
               </Form.Item>
             </Col>
           )}

@@ -1,4 +1,4 @@
-using ErpConstructii.Identitate;
+﻿using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure;
 using ErpConstructii.Infrastructure.Autorizare;
 using ErpConstructii.SharedKernel;
@@ -24,13 +24,16 @@ public sealed record ProiectDto(
     DateTimeOffset CreatLa,
     bool Arhivat = false,
     DateTimeOffset? ArhivatLa = null,
-    string? ArhivatDe = null);
+    string? ArhivatDe = null,
+    string Tip = "Lucrare");
 
-public sealed record CreeazaProiectCerere(string Cod, string Denumire, string Beneficiar, string? CuiBeneficiar, string AdresaSantier);
+/// <param name="Tip">„Lucrare” (implicit) sau „Sediu” (D-47: centru de cost al firmei, fără beneficiar).</param>
+public sealed record CreeazaProiectCerere(string Cod, string Denumire, string? Beneficiar, string? CuiBeneficiar, string AdresaSantier, string? Tip = null);
 
 /// <summary>Editarea completă a proiectului (administrator): toate datele, inclusiv starea și datele contractuale.</summary>
 public sealed record ModificaProiectCerere(
-    string Cod, string Denumire, string Beneficiar, string? CuiBeneficiar, string? AdresaSantier, string Stare, DateOnly? DataInceput, DateOnly? TermenContractual);
+    string Cod, string Denumire, string? Beneficiar, string? CuiBeneficiar, string? AdresaSantier, string Stare, DateOnly? DataInceput, DateOnly? TermenContractual,
+    string? Tip = null);
 
 public sealed record SantierDto(Guid Id, Guid ProiectId, string Denumire, string? Adresa, bool Activ);
 
@@ -42,6 +45,14 @@ public sealed record CompartimentCerere(string Denumire, bool Activ = true);
 
 public sealed class ModulProiecte : IModul
 {
+    private static ProiectDto Dto(Proiect p) => new(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(),
+        p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume, p.Tip.ToString());
+
+    /// <summary>„Lucrare” / „Sediu” (lipsă = lucrare); null dacă textul nu e un tip.</summary>
+    private static TipProiect? TipDin(string? text) =>
+        string.IsNullOrWhiteSpace(text) ? TipProiect.Lucrare
+        : Enum.TryParse<TipProiect>(text, true, out var t) && Enum.IsDefined(t) ? t : null;
+
     public string Nume => ProiecteDbContext.NumeSchema;
 
     public void AdaugaServicii(IServiceCollection servicii, IConfiguration configurare)
@@ -83,7 +94,7 @@ public sealed class ModulProiecte : IModul
 
             return await interogare
                 .OrderBy(p => p.Cod)
-                .Select(p => new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume))
+                .Select(p => Dto(p))
                 .ToListAsync(ct);
         }).CerePermisiune(vizualizare);
 
@@ -92,7 +103,7 @@ public sealed class ModulProiecte : IModul
             var p = await db.Proiecte.AsNoTracking().FirstOrDefaultAsync(x => x.Id == proiectId, ct);
             return p is null
                 ? Results.NotFound()
-                : Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
+                : Results.Ok(Dto(p));
         }).CerePermisiune(vizualizare);
 
         grup.MapPost("/", async (CreeazaProiectCerere cerere, ProiecteDbContext db, CancellationToken ct) =>
@@ -103,10 +114,21 @@ public sealed class ModulProiecte : IModul
                 return Results.Conflict(new { mesaj = $"Există deja un proiect cu codul {cod}." });
             }
 
-            var proiect = new Proiect(cerere.Cod, cerere.Denumire, cerere.Beneficiar, cerere.CuiBeneficiar, cerere.AdresaSantier);
+            if (TipDin(cerere.Tip) is not { } tip)
+            {
+                return Results.BadRequest(new { mesaj = "Tipul proiectului nu este valid (Lucrare sau Sediu)." });
+            }
+
+            if (Proiect.Valideaza(tip, cerere.Cod, cerere.Denumire, cerere.Beneficiar) is { Count: > 0 } probleme)
+            {
+                return Results.BadRequest(new { mesaj = string.Join(" ", probleme) });
+            }
+
+            var proiect = new Proiect(cerere.Cod, cerere.Denumire, cerere.Beneficiar ?? string.Empty, cerere.CuiBeneficiar, cerere.AdresaSantier ?? string.Empty, tip);
             db.Proiecte.Add(proiect);
             // D-38: fiecare proiect pornește cu un șantier (la adresa lui); altele se adaugă din fișa proiectului.
-            db.Santiere.Add(Santier.Creeaza(proiect.Id, "Șantier principal", proiect.AdresaSantier).Valoare);
+            // Sediul (D-47) pornește cu locul lui principal; birourile, baza, depozitul se adaugă la fel.
+            db.Santiere.Add(Santier.Creeaza(proiect.Id, tip == TipProiect.Sediu ? "Sediu" : "Șantier principal", proiect.AdresaSantier).Valoare);
             await db.SaveChangesAsync(ct);
             return Results.Created($"/api/proiecte/{proiect.Id}", new { proiect.Id });
         }).CerePermisiune(creare);
@@ -121,7 +143,7 @@ public sealed class ModulProiecte : IModul
             if (r.Esec)
                 return Results.Conflict(new { mesaj = r.Eroare.Mesaj });
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
+            return Results.Ok(Dto(p));
         }).WithName("ArhiveazaProiect").CerePermisiunePeFirma(editare);
 
         grup.MapPost("/{proiectId:guid}/reactivare", async (Guid proiectId, ProiecteDbContext db, CancellationToken ct) =>
@@ -133,7 +155,7 @@ public sealed class ModulProiecte : IModul
             if (r.Esec)
                 return Results.Conflict(new { mesaj = r.Eroare.Mesaj });
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
+            return Results.Ok(Dto(p));
         }).WithName("ReactiveazaProiect").CerePermisiunePeFirma(editare);
 
         // Editarea completă: doar cine are dreptul de editare pe proiecte pe toată firma (administratorul).
@@ -144,15 +166,17 @@ public sealed class ModulProiecte : IModul
                 return Results.NotFound();
             if (!Enum.TryParse<StareProiect>(cerere.Stare, true, out var stare))
                 return Results.BadRequest(new { mesaj = "Starea proiectului nu este validă." });
+            if (TipDin(cerere.Tip ?? p.Tip.ToString()) is not { } tip)
+                return Results.BadRequest(new { mesaj = "Tipul proiectului nu este valid (Lucrare sau Sediu)." });
             var cod = (cerere.Cod ?? string.Empty).Trim().ToUpperInvariant();
             if (await db.Proiecte.AnyAsync(x => x.Cod == cod && x.Id != proiectId, ct))
                 return Results.Conflict(new { mesaj = $"Există deja un proiect cu codul {cod}." });
             var r = p.Modifica(cerere.Cod ?? string.Empty, cerere.Denumire ?? string.Empty, cerere.Beneficiar ?? string.Empty, cerere.CuiBeneficiar,
-                cerere.AdresaSantier ?? string.Empty, stare, cerere.DataInceput, cerere.TermenContractual);
+                cerere.AdresaSantier ?? string.Empty, stare, cerere.DataInceput, cerere.TermenContractual, tip);
             if (r.Esec)
                 return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
             await db.SaveChangesAsync(ct);
-            return Results.Ok(new ProiectDto(p.Id, p.Cod, p.Denumire, p.Beneficiar, p.CuiBeneficiar, p.AdresaSantier, p.Stare.ToString(), p.DataInceput, p.TermenContractual, p.CreatLa, p.Arhivat, p.ArhivatLa, p.ArhivatDeNume));
+            return Results.Ok(Dto(p));
         }).WithName("ModificaProiect").CerePermisiunePeFirma(editare);
 
         // Șantierele proiectului (D-38). Lista o folosesc și necesarele de materiale (aprovizionare).
@@ -183,6 +207,9 @@ public sealed class ModulProiecte : IModul
             var s = await db.Santiere.FirstOrDefaultAsync(x => x.Id == id && x.ProiectId == proiectId, ct);
             if (s is null)
                 return Results.NotFound();
+            if (s.Activ && !cerere.Activ &&
+                StergereSantier.VerificaDezactivarea(s, await db.Santiere.Where(x => x.ProiectId == proiectId).ToListAsync(ct)) is { Esec: true } dezactivare)
+                return Results.BadRequest(new { mesaj = dezactivare.Eroare.Mesaj });
             var r = s.Modifica(cerere.Denumire ?? string.Empty, cerere.Adresa, cerere.Activ);
             if (r.Esec)
                 return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
@@ -192,6 +219,35 @@ public sealed class ModulProiecte : IModul
             await db.SaveChangesAsync(ct);
             return Results.Ok(new SantierDto(s.Id, s.ProiectId, s.Denumire, s.Adresa, s.Activ));
         }).WithName("ModificaSantier").CerePermisiune(editare);
+
+        // Șantierul pus din greșeală se șterge; documentele lui (necesarele) se mută întâi pe alt șantier activ al proiectului.
+        // Fără mutaPe și cu documente: 409, cu numărul documentelor, ca interfața să ceară șantierul.
+        grup.MapDelete("/{proiectId:guid}/santiere/{id:guid}", async (
+            Guid proiectId, Guid id, Guid? mutaPe, ProiecteDbContext db, IEnumerable<IUtilizariSantier> utilizari, CancellationToken ct) =>
+        {
+            var santiere = await db.Santiere.Where(x => x.ProiectId == proiectId).ToListAsync(ct);
+            var s = santiere.FirstOrDefault(x => x.Id == id);
+            if (s is null)
+                return Results.NotFound();
+            var documente = 0;
+            foreach (var u in utilizari)
+                documente += await u.NumaraAsync(id, ct);
+            var r = StergereSantier.Verifica(s, santiere, documente, mutaPe);
+            if (r.Esec)
+                return r.Eroare.Cod == StergereSantier.CodDocumenteDeMutat
+                    ? Results.Conflict(new { mesaj = r.Eroare.Mesaj, documente })
+                    : Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
+            if (r.Valoare is { } tinta)
+            {
+                var loc = new LocSolicitant(tinta.Id, true, tinta.Denumire, tinta.Activ);
+                foreach (var u in utilizari)
+                    await u.MutaAsync(id, loc, ct);
+            }
+
+            db.Santiere.Remove(s);
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        }).WithName("StergeSantier").CerePermisiune(editare);
 
         // Compartimentele firmei (D-38): le administrează administratorul; le citesc și necesarele de materiale.
         grup.MapGet("/compartimente", async (bool? toate, ProiecteDbContext db, CancellationToken ct) =>

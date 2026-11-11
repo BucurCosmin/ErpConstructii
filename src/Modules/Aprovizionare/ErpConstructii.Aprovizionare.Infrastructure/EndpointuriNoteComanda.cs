@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ErpConstructii.Aprovizionare.Import;
 using ErpConstructii.Formulare;
 using ErpConstructii.Identitate;
@@ -48,7 +48,9 @@ public sealed record NotaComandaDto(
     DateTimeOffset? AcceptataLa = null,
     string? MotivRespingere = null,
     Guid? NotaSursaId = null,
-    string? NecesarNumar = null);
+    string? NecesarNumar = null,
+    int Corectii = 0,
+    bool DinUrma = false);
 
 public sealed record LinieNotaComandaCititaDto(int Rand, CampTextDto Denumire, CampTextDto UnitateMasura, CampNumarDto Cantitate, string? Termen);
 
@@ -81,7 +83,9 @@ public sealed record ConfirmaNotaComandaCerere(
     string? FurnizorAdresa,
     string? FurnizorTelefon,
     IReadOnlyList<LinieNotaComandaDto> Linii,
-    string? Observatii);
+    string? Observatii,
+    Guid? NecesarId = null,
+    bool DinUrma = false);
 
 /// <summary>Datele unei note de comandă emise în sistem; numărul se generează la emitere.</summary>
 /// <param name="NecesarId">Necesarul aprobat din care s-au preluat materialele (opțional).</param>
@@ -235,7 +239,15 @@ internal static class EndpointuriNoteComanda
         var necesare = comenzi.Where(c => c.NecesarId != null).Select(c => c.NecesarId!.Value).Distinct().ToList();
         var numere = necesare.Count == 0 ? [] : await db.NecesareMateriale.AsNoTracking().Where(n => necesare.Contains(n.Id))
             .Select(n => new { n.Id, n.An, n.Numar }).ToDictionaryAsync(n => n.Id, n => $"NM/{n.An}/{n.Numar:D4}", ct);
-        return Results.Ok(comenzi.Select(c => CaDto(c) with { NecesarNumar = c.NecesarId is { } nid ? numere.GetValueOrDefault(nid) : null }).ToList());
+        // Câte modificări are fiecare notă (D-44), pentru „Istoric” în listă.
+        var idNote = comenzi.Select(c => c.Id).ToList();
+        var corectii = await db.CorectiiNoteComanda.AsNoTracking().Where(c => idNote.Contains(c.NotaComandaId))
+            .GroupBy(c => c.NotaComandaId).Select(g => new { g.Key, Numar = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Numar, ct);
+        return Results.Ok(comenzi.Select(c => CaDto(c) with
+        {
+            NecesarNumar = c.NecesarId is { } nid ? numere.GetValueOrDefault(nid) : null,
+            Corectii = corectii.GetValueOrDefault(c.Id),
+        }).ToList());
     }
 
     private static async Task<IResult> Emite(
@@ -295,7 +307,7 @@ internal static class EndpointuriNoteComanda
 
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await ModulAprovizionare.BlocheazaSecventaAsync(db, tranzactie, firmaId, data.Year, ct, SecventaComenzi);
-        var numar = (await db.NoteComanda.Where(c => c.An == data.Year).MaxAsync(c => (int?)c.Numar, ct) ?? 0) + 1;
+        var numar = await FluxNotaComanda.UrmatorulNumarAsync(db, data.Year, ct);
 
         var rezultat = NotaComanda.Emite(
             data.Year, numar,
@@ -342,7 +354,7 @@ internal static class EndpointuriNoteComanda
     private static async Task<IResult> Detalii(Guid proiectId, Guid id, AprovizionareDbContext db, CancellationToken ct)
     {
         var c = await db.NoteComanda.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id && x.ProiectId == proiectId, ct);
-        return c is null ? Results.NotFound() : Results.Ok(CaDto(c));
+        return c is null ? Results.NotFound() : Results.Ok(CaDto(c) with { Corectii = await db.CorectiiNoteComanda.CountAsync(x => x.NotaComandaId == id, ct) });
     }
 
     private static async Task<IResult> Interpreteaza(
@@ -387,7 +399,8 @@ internal static class EndpointuriNoteComanda
                 "Nu am găsit proiectul după textul lucrării; alege-l din listă (pentru stoc, proiectul de stoc al firmei)."));
         }
 
-        var existenta = await ComandaCuAcelasiOriginalAsync(db, DocumentOriginal.Amprenta(sursa!.Continut), ct);
+        var existenta = await ComandaCuAcelasiOriginalAsync(db, DocumentOriginal.Amprenta(sursa!.Continut), ct)
+            ?? await ComandaDublataAsync(db, citita.NumarExtern.Valoare, citita.Data.Certitudine == Certitudine.Lipsa ? null : citita.Data.Valoare, ct);
 
         return Results.Ok(new InterpretareNotaComandaDto(
             sursa.NumeFisier,
@@ -476,6 +489,12 @@ internal static class EndpointuriNoteComanda
             return Results.Conflict(new { mesaj = $"Acest document a fost deja importat ca {existenta}." });
         }
 
+        // Aceeași notă dintr-un alt fișier (altă scanare): același număr și aceeași dată.
+        if (await ComandaDublataAsync(db, cerere.NumarExtern, cerere.Data, ct) is { } dublata)
+        {
+            return Results.Conflict(new { mesaj = $"Nota de comandă nr. {cerere.NumarExtern!.Trim()} din {cerere.Data:dd.MM.yyyy} a fost deja importată: {dublata}." });
+        }
+
         // Același fișier importat înainte ca necesar de materiale: indexul unic pe amprentă nu permite o a doua copie.
         if (await db.DocumenteOriginale.AsNoTracking().AnyAsync(d => d.HashSha256 == hash, ct))
         {
@@ -499,6 +518,15 @@ internal static class EndpointuriNoteComanda
             return Results.BadRequest(new { mesaj = $"CUI-ul furnizorului „{cui}” nu este valid." });
         }
 
+        // Necesarul din care provine comanda (opțional; la documentele din urmă poate lipsi, D-45).
+        if (cerere.NecesarId is { } necesarId
+            && await db.NecesareMateriale.AsNoTracking().FirstOrDefaultAsync(n => n.Id == necesarId, ct) is var necesar
+            && (necesar is null || necesar.ProiectId != proiect.Id || necesar.Stare == StareNecesarMateriale.Respinsa))
+        {
+            return Results.BadRequest(new { mesaj = necesar is null ? "Necesarul ales nu există." : necesar.Stare == StareNecesarMateriale.Respinsa
+                ? $"Necesarul {necesar.NumarAfisat} a fost respins." : $"Necesarul {necesar.NumarAfisat} e pe alt proiect ({necesar.ProiectCod})." });
+        }
+
         var furnizor = await parteneri.CautaFurnizorAsync(cui, cerere.FurnizorDenumire, ct);
         if (furnizor is null)
         {
@@ -515,7 +543,7 @@ internal static class EndpointuriNoteComanda
         var azi = ceas.Azi;
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await ModulAprovizionare.BlocheazaSecventaAsync(db, tranzactie, firmaId, azi.Year, ct, SecventaComenzi);
-        var numar = (await db.NoteComanda.Where(c => c.An == azi.Year).MaxAsync(c => (int?)c.Numar, ct) ?? 0) + 1;
+        var numar = await FluxNotaComanda.UrmatorulNumarAsync(db, azi.Year, ct);
 
         var original = new DocumentOriginal(sursa.NumeFisier, ImportNecesarMateriale.TipContinut(sursa.Extensie), sursa.Continut);
         var rezultat = NotaComanda.Importa(
@@ -524,8 +552,8 @@ internal static class EndpointuriNoteComanda
                 cerere.NumarExtern, cerere.Data, proiect.Id, proiect.Cod, cerere.Lucrare,
                 furnizor.Id, furnizor.Denumire, furnizor.Cui ?? cui,
                 cerere.Linii.Select(l => new LinieNotaComanda(l.Denumire ?? string.Empty, l.UnitateMasura ?? string.Empty, l.Cantitate, l.Termen, null)).ToList(),
-                cerere.Observatii, cerere.FurnizorAdresa, cerere.FurnizorTelefon),
-            original.Id, utilizatorId, utilizator.Nume);
+                cerere.Observatii, cerere.FurnizorAdresa, cerere.FurnizorTelefon, NecesarId: cerere.NecesarId),
+            original.Id, utilizatorId, utilizator.Nume, cerere.DinUrma);
         if (rezultat.Esec)
         {
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
@@ -554,6 +582,22 @@ internal static class EndpointuriNoteComanda
             : Results.File(original.Continut, original.TipContinut, original.NumeFisier, enableRangeProcessing: true);
     }
 
+    /// <summary>Nota importată deja cu același număr extern și aceeași dată (din orice fișier).</summary>
+    private static async Task<string?> ComandaDublataAsync(AprovizionareDbContext db, string? numarExtern, DateOnly? data, CancellationToken ct)
+    {
+        if (ClasificarePagini.CheieNumar(numarExtern) is null || data is null)
+        {
+            return null;
+        }
+
+        var existente = await db.NoteComanda.AsNoTracking()
+            .Where(n => n.NumarExtern != null && n.Data == data)
+            .Select(n => new { n.An, n.Numar, n.NumarExtern, n.Data, n.FurnizorDenumire })
+            .ToListAsync(ct);
+        return DocumentDublat.DupaNumarSiData(numarExtern, data,
+            existente.Select(n => new DocumentImportat($"nota de comandă NC/{n.An}/{n.Numar:D4} ({n.FurnizorDenumire})", n.NumarExtern, n.Data)))?.Descriere;
+    }
+
     private static async Task<string?> ComandaCuAcelasiOriginalAsync(AprovizionareDbContext db, string hash, CancellationToken ct)
     {
         var documentId = await db.DocumenteOriginale.AsNoTracking()
@@ -579,7 +623,7 @@ internal static class EndpointuriNoteComanda
         c.Observatii, c.Sursa.ToString(), c.DocumentOriginalId is not null, c.InregistrataDeNume, c.CreatLa,
         c.FurnizorAdresa, c.FurnizorTelefon, c.FurnizorEmail,
         new ConditiiComandaDto(c.Conditii.Receptie?.ToString(), c.Conditii.ClasaCalitate?.ToString(), c.Conditii.Transport?.ToString(), c.Conditii.Plata?.ToString()),
-        c.NecesarId, c.SablonId is not null, c.Stare.ToString(), c.AcceptataDeNume, c.AcceptataLa, c.MotivRespingere, c.NotaSursaId);
+        c.NecesarId, c.SablonId is not null, c.Stare.ToString(), c.AcceptataDeNume, c.AcceptataLa, c.MotivRespingere, c.NotaSursaId, DinUrma: c.DinUrma);
 
     internal static NotaComandaDto LaDto(NotaComanda c) => CaDto(c);
 

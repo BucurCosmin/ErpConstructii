@@ -1,4 +1,4 @@
-using ErpConstructii.Infrastructure.Persistenta;
+﻿using ErpConstructii.Infrastructure.Persistenta;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -10,6 +10,7 @@ public sealed class StocuriDbContext(DbContextOptions<StocuriDbContext> optiuni)
 
     protected override string Schema => NumeSchema;
 
+    public DbSet<Depozit> Depozite => Set<Depozit>();
     public DbSet<Gestiune> Gestiuni => Set<Gestiune>();
     public DbSet<ArticolStoc> Articole => Set<ArticolStoc>();
     public DbSet<AliasArticol> Aliasuri => Set<AliasArticol>();
@@ -19,8 +20,41 @@ public sealed class StocuriDbContext(DbContextOptions<StocuriDbContext> optiuni)
     public DbSet<StornoNir> StornariNir => Set<StornoNir>();
     public DbSet<CorectieNir> CorectiiNir => Set<CorectieNir>();
     public DbSet<Inventar> Inventare => Set<Inventar>();
+    public DbSet<SoldInitialStoc> SolduriInitiale => Set<SoldInitialStoc>();
+    public DbSet<SoldInitialAnulat> SolduriInitialeAnulate => Set<SoldInitialAnulat>();
     public DbSet<MiscareStoc> Miscari => Set<MiscareStoc>();
     public DbSet<SoldStoc> Solduri => Set<SoldStoc>();
+    public DbSet<ErpConstructii.SharedKernel.RenumerotareDocument> Renumerotari => Set<ErpConstructii.SharedKernel.RenumerotareDocument>();
+}
+
+/// <summary>Istoricul renumerotărilor numerelor de pe hârtie.</summary>
+internal sealed class ConfigurareRenumerotareDocument : IEntityTypeConfiguration<ErpConstructii.SharedKernel.RenumerotareDocument>
+{
+    public void Configure(EntityTypeBuilder<ErpConstructii.SharedKernel.RenumerotareDocument> b)
+    {
+        b.ToTable("renumerotari");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.DocumentNumar).HasMaxLength(30).IsRequired();
+        b.Property(x => x.NumarVechi).HasMaxLength(50);
+        b.Property(x => x.NumarNou).HasMaxLength(50).IsRequired();
+        b.Property(x => x.Motiv).HasMaxLength(500).IsRequired();
+        b.Property(x => x.UtilizatorNume).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.DocumentCorectatId);
+        b.HasIndex(x => new { x.FirmaId, x.DocumentId });
+    }
+}
+
+internal sealed class ConfigurareDepozit : IEntityTypeConfiguration<Depozit>
+{
+    public void Configure(EntityTypeBuilder<Depozit> b)
+    {
+        b.ToTable("depozite");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Cod).HasMaxLength(20).IsRequired();
+        b.Property(x => x.Denumire).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Adresa).HasMaxLength(300);
+        b.HasIndex(x => new { x.FirmaId, x.Cod }).IsUnique();
+    }
 }
 
 internal sealed class ConfigurareGestiune : IEntityTypeConfiguration<Gestiune>
@@ -32,7 +66,9 @@ internal sealed class ConfigurareGestiune : IEntityTypeConfiguration<Gestiune>
         b.Property(x => x.Cod).HasMaxLength(20).IsRequired();
         b.Property(x => x.Denumire).HasMaxLength(200).IsRequired();
         b.Property(x => x.Tip).HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.GestionarNume).HasMaxLength(200);
         b.HasIndex(x => new { x.FirmaId, x.Cod }).IsUnique();
+        b.HasIndex(x => new { x.FirmaId, x.DepozitId });
         b.HasIndex(x => new { x.FirmaId, x.ProiectId }).IsUnique().HasFilter("proiect_id IS NOT NULL"); // o gestiune de șantier pe proiect
     }
 }
@@ -46,7 +82,10 @@ internal sealed class ConfigurareArticol : IEntityTypeConfiguration<ArticolStoc>
         b.Property(x => x.Cod).HasMaxLength(30).IsRequired();
         b.Property(x => x.Denumire).HasMaxLength(300).IsRequired();
         b.Property(x => x.UnitateMasura).HasMaxLength(20).IsRequired();
+        b.Property(x => x.CodExtern).HasMaxLength(30);
+        b.Property(x => x.Categorie).HasMaxLength(100);
         b.HasIndex(x => new { x.FirmaId, x.Cod }).IsUnique();
+        b.HasIndex(x => new { x.FirmaId, x.CodExtern });
     }
 }
 
@@ -119,6 +158,7 @@ internal sealed class ConfigurareBonConsum : IEntityTypeConfiguration<BonConsum>
         b.Property(x => x.Valoare).HasPrecision(18, 2);
         b.Property(x => x.Observatii).HasMaxLength(1000);
         b.Property(x => x.EmisDeNume).HasMaxLength(200).IsRequired();
+        b.Property(x => x.NumarExtern).HasMaxLength(50);
         b.Ignore(x => x.NumarAfisat);
         b.Ignore(x => x.Linii);
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
@@ -178,6 +218,45 @@ internal sealed class ConfigurareInventar : IEntityTypeConfiguration<Inventar>
         b.Ignore(x => x.EsteBlocat);
         b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
         b.HasIndex(x => new { x.FirmaId, x.GestiuneId }).IsUnique().HasFilter("stare = 'Deschis'"); // un singur inventar deschis pe gestiune
+    }
+}
+
+internal sealed class ConfigurareSoldInitial : IEntityTypeConfiguration<SoldInitialStoc>
+{
+    public void Configure(EntityTypeBuilder<SoldInitialStoc> b)
+    {
+        b.ToTable("solduri_initiale");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.GestiuneDenumire).HasMaxLength(200).IsRequired();
+        b.Property(x => x.GestiuneExterna).HasMaxLength(50).IsRequired();
+        b.Property(x => x.Categorie).HasMaxLength(100);
+        b.Property(x => x.NumeFisier).HasMaxLength(260).IsRequired();
+        b.Property(x => x.FisierSha256).HasMaxLength(64).IsRequired();
+        b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.Valoare).HasPrecision(18, 2);
+        b.Property(x => x.ImportatDeNume).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.NumarAfisat);
+        b.Ignore(x => x.Linii);
+        b.Ignore(x => x.EsteBlocat);
+        b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
+        b.HasIndex(x => new { x.FirmaId, x.FisierSha256, x.GestiuneExterna }).IsUnique(); // același fișier o singură dată pe gestiune
+    }
+}
+
+internal sealed class ConfigurareSoldInitialAnulat : IEntityTypeConfiguration<SoldInitialAnulat>
+{
+    public void Configure(EntityTypeBuilder<SoldInitialAnulat> b)
+    {
+        b.ToTable("solduri_initiale_anulate");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.GestiuneDenumire).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Categorie).HasMaxLength(100);
+        b.Property(x => x.NumeFisier).HasMaxLength(260).IsRequired();
+        b.Property(x => x.LiniiJson).HasColumnType("jsonb").IsRequired();
+        b.Property(x => x.Valoare).HasPrecision(18, 2);
+        b.Property(x => x.AnulatDeNume).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.NumarAfisat);
+        b.HasIndex(x => new { x.FirmaId, x.An, x.Numar }).IsUnique();
     }
 }
 

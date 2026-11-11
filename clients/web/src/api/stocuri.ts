@@ -8,6 +8,33 @@ export interface Gestiune {
   tip: 'Depozit' | 'Santier'
   proiectId: string | null
   activa: boolean
+  /** Depozitul (loc fizic) din care face parte gestiunea, D-43; null la șantier. */
+  depozitId: string | null
+  depozitCod: string | null
+  depozitDenumire: string | null
+  gestionarId: string | null
+  gestionarNume: string | null
+}
+
+/** „DEP-01 · G5 — Gestiunea G5 (Ana Pop)” pentru gestiunile de depozit; „P-1 — Șantier …” pentru șantiere. */
+export const etichetaGestiune = (g: Gestiune) =>
+  g.tip === 'Depozit'
+    ? `${g.depozitCod ? `${g.depozitCod} · ` : ''}${g.cod} — ${g.denumire}${g.gestionarNume ? ` (${g.gestionarNume})` : ''}`
+    : `${g.cod} — ${g.denumire}`
+
+export interface Depozit {
+  id: string
+  cod: string
+  denumire: string
+  adresa: string | null
+  activ: boolean
+  gestiuni: Gestiune[]
+}
+
+export interface Gestionar {
+  id: string
+  nume: string
+  email: string
 }
 
 export interface ArticolStoc {
@@ -16,6 +43,9 @@ export interface ArticolStoc {
   denumire: string
   unitateMasura: string
   activ: boolean
+  /** Codul din programul de gestiune anterior (balanța preluată, D-42). */
+  codExtern?: string | null
+  categorie?: string | null
 }
 
 /** Rând de sold; `cmp` și `valoare` sunt null fără dreptul „prețuri de cost”. */
@@ -36,7 +66,7 @@ export interface SoldStoc {
 export interface MiscareStoc {
   id: string
   data: string
-  tip: 'IntrareNir' | 'IesireTransfer' | 'IntrareTransfer' | 'IesireConsum' | 'IesireStornoNir' | 'PlusInventar' | 'MinusInventar'
+  tip: 'IntrareNir' | 'IesireTransfer' | 'IntrareTransfer' | 'IesireConsum' | 'IesireStornoNir' | 'PlusInventar' | 'MinusInventar' | 'CorectieNir' | 'SoldInitial'
   documentNumar: string
   documentId: string
   cantitate: number
@@ -278,9 +308,40 @@ export const useTransfera = () => {
   })
 }
 
+export const useDepozite = () => useQuery({ queryKey: ['stocuri', 'depozite'], queryFn: () => api.get<Depozit[]>('/api/stocuri/depozite') })
+
+export const useGestionari = () => useQuery({ queryKey: ['stocuri', 'gestionari'], queryFn: () => api.get<Gestionar[]>('/api/stocuri/gestionari') })
+
 export const useCreeazaDepozit = () => {
   const qc = useQueryClient()
-  return useMutation({ mutationFn: (c: { cod: string; denumire: string }) => api.post<Gestiune>('/api/stocuri/gestiuni', c), onSuccess: () => reincarca(qc) })
+  return useMutation({
+    mutationFn: (c: { cod: string; denumire: string; adresa: string | null }) => api.post<Depozit>('/api/stocuri/depozite', c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export const useModificaDepozit = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...c }: { id: string; cod: string; denumire: string; adresa: string | null; activ: boolean }) => api.put<Depozit>(`/api/stocuri/depozite/${id}`, c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export const useCreeazaGestiune = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (c: { depozitId: string; cod: string; denumire: string; gestionarId: string | null }) => api.post<Gestiune>('/api/stocuri/gestiuni', c),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export const useModificaGestiune = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, ...c }: { id: string; denumire: string; gestionarId: string | null; activa: boolean }) => api.put<Gestiune>(`/api/stocuri/gestiuni/${id}`, c),
+    onSuccess: () => reincarca(qc),
+  })
 }
 
 export const useModificaArticol = () => {
@@ -322,6 +383,8 @@ export interface BonConsum {
   valoare: number | null
   emisDe: string
   observatii: string | null
+  /** D-48: numărul de pe bonul de hârtie (bonurile importate). */
+  numarExtern: string | null
 }
 
 export interface ConsumPeArticole {
@@ -531,7 +594,7 @@ export interface LotStoc {
   denumire: string
   unitateMasura: string
   cantitate: number
-  origine: 'NIR' | 'Inventar' | 'Transfer'
+  origine: 'NIR' | 'Inventar' | 'Transfer' | 'Sold inițial'
   documentId: string
   documentNumar: string
   dataIntrare: string
@@ -557,3 +620,149 @@ export interface FiltreTrasabilitate {
 /** Proveniența stocului: pe ce NIR / factură a intrat fiecare cantitate din gestiuni. */
 export const useTrasabilitate = (f: FiltreTrasabilitate) =>
   useQuery({ queryKey: [...chei.toate, 'trasabilitate', f], queryFn: () => api.get<LotStoc[]>(`/api/stocuri/trasabilitate${interogare({ ...f })}`) })
+
+// ---------------------------------------------------------------- sold inițial (balanța programului anterior, D-42)
+
+export interface ProblemaBalanta {
+  severitate: 'Eroare' | 'Avertisment'
+  rand: number | null
+  mesaj: string
+}
+
+export interface LinieBalanta {
+  rand: number
+  denumire: string
+  codExtern: string | null
+  unitateMasura: string
+  stocInitial: number
+  intrari: number
+  iesiri: number
+  stocFinal: number
+  cont: string | null
+  /** Materialul găsit în nomenclator; null = se creează unul nou. */
+  articolId: string | null
+  articolCod: string | null
+  articolDenumire: string | null
+  sursa: 'CodExtern' | 'Denumire' | null
+  /** Doar în „Raport rapid stoc”. */
+  pretUnitar: number | null
+  valoare: number | null
+  /** U.M. a materialului găsit (fișierul raport nu are U.M.). */
+  articolUnitateMasura: string | null
+}
+
+export interface GestiuneBalanta {
+  cod: string
+  /** Codul gestiunii în ERP („01-G5” → „G5”). */
+  codGestiunePropus: string
+  /** Gestiunea existentă cu codul propus; null = se creează în depozitul ales. */
+  gestiuneId: string | null
+  gestiuneDenumire: string | null
+  depozitDenumire: string | null
+  gestionarNume: string | null
+  areMiscari: boolean
+  dejaImportat: string | null
+  liniiCuStoc: number
+  materialeNoi: number
+  linii: LinieBalanta[]
+  /** Valoarea liniilor cu stoc (0 pentru balanța fără valori). */
+  valoare: number
+  /** Solduri inițiale din alte fișiere pe aceeași gestiune și categorie (de anulat înainte, altfel stocul se dublează). */
+  alteSolduri: string[] | null
+}
+
+export interface InterpretareBalanta {
+  numeFisier: string
+  sha256: string
+  firma: string | null
+  cif: string | null
+  altaFirma: boolean
+  categorie: string | null
+  perioadaDe: string | null
+  perioadaPanaLa: string | null
+  data: string | null
+  gestiuni: GestiuneBalanta[]
+  probleme: ProblemaBalanta[]
+  /** Depozitul în care se creează gestiunile care lipsesc. */
+  depozitIdPropus: string | null
+  /** „Raport rapid stoc”: cu valori, fără U.M. (materialele noi o primesc la import). */
+  cuValori: boolean
+}
+
+export interface LinieSoldInitial {
+  articolId: string
+  articolCod: string
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  valoare: number
+  codExtern: string | null
+}
+
+export interface SoldInitial {
+  id: string
+  numar: string
+  data: string
+  gestiuneId: string
+  gestiune: string
+  gestiuneExterna: string
+  categorie: string | null
+  numeFisier: string
+  linii: number
+  cantitate: number
+  importatDe: string
+  creatLa: string
+  detaliiLinii: LinieSoldInitial[] | null
+  valoare: number
+}
+
+export interface AsociereGestiune {
+  cod: string
+  gestiuneId: string | null
+  importa: boolean
+}
+
+export const useSolduriInitiale = () =>
+  useQuery({ queryKey: ['stocuri', 'solduri-initiale'], queryFn: () => api.get<SoldInitial[]>('/api/stocuri/solduri-initiale') })
+
+export const useInterpreteazaBalanta = () =>
+  useMutation({ mutationFn: (fisier: File) => api.postFisier<InterpretareBalanta>('/api/stocuri/solduri-initiale/interpretare', fisier) })
+
+export const useImportaSoldInitial = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fisier, data, depozitId, asocieri, unitati }: {
+      fisier: File; data: string; depozitId: string | null; asocieri: AsociereGestiune[]
+      /** Rândul din fișier → U.M., pentru materialele noi din „Raport rapid stoc”. */
+      unitati: Record<number, string>
+    }) =>
+      api.postFisier<SoldInitial[]>('/api/stocuri/solduri-initiale', fisier,
+        { data, depozitId: depozitId ?? '', asocieri: JSON.stringify(asocieri), unitati: JSON.stringify(unitati) }),
+    onSuccess: () => reincarca(qc),
+  })
+}
+
+export interface SoldInitialAnulat {
+  id: string
+  numar: string
+  data: string
+  gestiune: string
+  categorie: string | null
+  numeFisier: string
+  linii: number
+  valoare: number
+  anulatDe: string
+  anulatLa: string
+}
+
+export const useSolduriInitialeAnulate = () =>
+  useQuery({ queryKey: ['stocuri', 'solduri-initiale', 'anulate'], queryFn: () => api.get<SoldInitialAnulat[]>('/api/stocuri/solduri-initiale/anulate') })
+
+/** Anulează un sold inițial preluat greșit (doar cât timp materialele lui nu au alte mișcări). */
+export const useAnuleazaSoldInitial = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/api/stocuri/solduri-initiale/${id}`),
+    onSuccess: () => reincarca(qc),
+  })
+}

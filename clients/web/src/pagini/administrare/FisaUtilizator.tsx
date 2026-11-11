@@ -33,7 +33,7 @@ import {
 } from '../../api/administrare'
 import { usePermisiuni, useProfil, useProiecte } from '../../api/interogari'
 import type { AtribuireUtilizator, TipUtilizator } from '../../api/tipuri'
-import { formatData, tipuriUtilizator } from '../../util/format'
+import { etichetaProiect, formatData, tipuriUtilizator } from '../../util/format'
 import { ParolaTemporara } from './ParolaTemporara'
 
 const stariAtribuire: Record<AtribuireUtilizator['stare'], { eticheta: string; culoare: string }> = {
@@ -201,7 +201,7 @@ export function FisaUtilizator({ id, laInchidere }: Props) {
                       allowClear
                       style={{ width: 170 }}
                       showSearch={{ optionFilterProp: 'label' }}
-                      options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} – ${p.denumire}` }))}
+                      options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
                       popupMatchSelectWidth={360}
                     />
                   </Form.Item>

@@ -49,6 +49,8 @@
                 <!-- Documentele din fișier -->
                 <DockPanel Grid.Column="0" Background="White">
                     <TextBlock DockPanel.Dock="Top" Text="Documente în fișier" Style="{StaticResource Sectiune}" Margin="10,10,10,4" />
+                    <CheckBox DockPanel.Dock="Top" Content="Documente din urmă (import din arhivă)" IsChecked="{Binding DinUrma}" Margin="10,0,10,6"
+                              ToolTip="Documente vechi: se importă și fără documentele de dinaintea lor (necesar, notă de comandă, contract). Bifa se poate schimba pe fiecare document." />
                     <TextBlock DockPanel.Dock="Bottom" TextWrapping="Wrap" Foreground="#667085" Margin="10" FontSize="12"
                                Text="Trage un fișier peste fereastră sau apasă „Deschide fișier…”. Fiecare document se verifică lângă paginile lui, apoi se importă." />
                     <ListBox ItemsSource="{Binding Documente}" SelectedItem="{Binding DocumentSelectat}" BorderThickness="0"
@@ -175,6 +177,9 @@
                                           ToolTip="Proiectul pe care se înregistrează documentul (propus după referința / lucrarea din document)" />
                                 <TextBlock Text="{Binding Referinta, StringFormat='Referință în document: {0}'}" Foreground="#667085" FontSize="12" Margin="0,2,0,0"
                                            Visibility="{Binding Referinta, Converter={StaticResource NulAscuns}}" />
+                                <CheckBox Content="Document din urmă (import din arhivă)" IsChecked="{Binding DinUrma}" IsEnabled="{Binding ProiectEditabil}" Margin="0,6,0,0"
+                                          Visibility="{Binding PoateFiDinUrma, Converter={StaticResource Vizibil}}"
+                                          ToolTip="Factura nu mai cere nota de comandă / contractul, nota nu cere necesarul, necesarul intră aprobat fără nota „de acceptat”. Legăturile se pun ulterior în aplicația web." />
 
                                 <!-- Antetul documentului -->
                                 <StackPanel IsEnabled="{Binding Editabil}">
@@ -199,8 +204,9 @@
                                                 <TextBox Text="{Binding Moneda}" MaxLength="3" Width="80" HorizontalAlignment="Left" />
                                             </StackPanel>
                                             <StackPanel Visibility="{Binding EsteNecesar, Converter={StaticResource Vizibil}}">
-                                                <TextBlock Text="Compartiment / șantier" Style="{StaticResource Eticheta}" />
-                                                <TextBox Text="{Binding Compartiment}" />
+                                                <TextBlock Text="Șantier" Style="{StaticResource Eticheta}" />
+                                                <ComboBox ItemsSource="{Binding Locuri}" SelectedItem="{Binding Loc}" DisplayMemberPath="Eticheta" />
+                                                <TextBlock Text="{Binding CompartimentPeDocument}" Foreground="Gray" FontSize="11" TextWrapping="Wrap" Margin="0,2,0,0" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Grid>

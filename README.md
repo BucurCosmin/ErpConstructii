@@ -1,4 +1,4 @@
-# ERP pentru construcții
+﻿# ERP pentru construcții
 
 ERP pentru firme de construcții din România (după modelul Charisma ERP): devize, contracte, situații de lucrări, grafice de execuție, șantier, formulare Word, e-Factura.
 
@@ -83,8 +83,23 @@ powershell -ExecutionPolicy Bypass -File deploy\reseteaza-parola.ps1 -Email demo
 - Dacă există `productie\api` (creat de `deploy\pregateste-productie.ps1`), lucrează pe baza de producție; altfel
   compilează și folosește configurarea de dezvoltare. Aplicația poate rula în timpul resetării.
 - Comanda din spate: `ErpConstructii.Api --reseteaza-parola <email> [--reseteaza-mfa]` (`Administrare/ComandaCont.cs`).
-- Codurile TOTP depind de oră: dacă refuzul se repetă, verifică ceasul serverului (`w32tm /query /status`,
-  resincronizare cu `w32tm /resync`, ca administrator) și pe cel al telefonului (oră automată).
+- **Codurile refuzate repetat = aproape mereu ceasul serverului.** Codurile din Authenticator depind de oră, iar aplicația
+  acceptă doar ±1 minut față de telefon. Când codul e corect dar ceasul diferă, ecranul de login spune acum direct asta
+  (și `productie\loguri\api.log` scrie decalajul): atunci **nu** reseta MFA, sincronizează ora.
+  `deploy\verifica-productie.ps1` compară ceasul cu ora de pe internet. Sincronizarea permanentă (PowerShell ca administrator):
+
+  ```powershell
+  sc.exe config w32time start= auto
+  net start w32time
+  w32tm /config /manualpeerlist:"time.windows.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /update
+  w32tm /resync /force
+  ```
+
+  Pe telefon: data și ora setate automat.
+- **Fiecare server are altă cheie MFA.** Intrarea din Authenticator se numește acum după server („ERP Construcții
+  (dezvoltare)”, „ERP Construcții (sdaq.home.ro)”; configurabil cu `Autentificare:EmitentMfa`). Intrările vechi, numite
+  doar „ERP Construcții”, se puteau înlocui una pe alta la scanarea unui cod nou (dezvoltare ↔ producție). Codul refuzat
+  care nu se potrivește nici cu decalaj de ceas e semnalat pe ecran ca „cod pentru alt server”.
 
 ## Documentație
 

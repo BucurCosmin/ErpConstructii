@@ -4,8 +4,9 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useProiecte } from '../../api/interogari'
 import { useGestiuni, useReturneaza, useSoldStoc, useTransfera, useTransferuri } from '../../api/stocuri'
+import { etichetaGestiune } from '../../api/stocuri'
 import type { FacturaPentruConsum, TransferStoc } from '../../api/stocuri'
-import { formatCantitate, formatLei } from '../../util/format'
+import { etichetaProiect, formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { NumarRo } from '../../componente/NumarRo'
 import { TabelFacturiReceptionate } from './TabelFacturiReceptionate'
@@ -107,12 +108,12 @@ export function TransferSantier({ poateCrea }: { poateCrea: boolean }) {
           <Row gutter={12}>
             <Col xs={24} md={7}>
               <Form.Item name="gestiuneSursaId" label={retur ? 'În depozitul' : 'Din depozitul'} rules={[{ required: true, message: 'Alege depozitul.' }]}>
-                <Select options={depozite.map((g) => ({ value: g.id, label: `${g.cod} — ${g.denumire}` }))} loading={gestiuni.isLoading} />
+                <Select options={depozite.map((g) => ({ value: g.id, label: etichetaGestiune(g) }))} loading={gestiuni.isLoading} />
               </Form.Item>
             </Col>
             <Col xs={24} md={9}>
               <Form.Item name="proiectId" label={retur ? 'Din șantierul proiectului' : 'În șantierul proiectului'} rules={[{ required: true, message: 'Alege proiectul.' }]}>
-                <Select showSearch={{ optionFilterProp: 'label' }} options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+                <Select showSearch={{ optionFilterProp: 'label' }} options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
               </Form.Item>
             </Col>
             <Col xs={12} md={4}>

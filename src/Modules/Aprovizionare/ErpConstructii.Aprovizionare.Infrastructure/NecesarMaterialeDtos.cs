@@ -80,7 +80,8 @@ public sealed record NecesarMaterialeDto(
     string? NumarExtern,
     bool AreOriginal,
     Guid? SantierId = null,
-    Guid? CompartimentId = null);
+    Guid? CompartimentId = null,
+    bool DinUrma = false);
 
 internal static class MapareNecesarMateriale
 {
@@ -107,5 +108,6 @@ internal static class MapareNecesarMateriale
             necesar.NumarExtern,
             necesar.DocumentOriginalId is not null,
             necesar.SantierId,
-            necesar.CompartimentId);
+            necesar.CompartimentId,
+            necesar.DinUrma);
 }

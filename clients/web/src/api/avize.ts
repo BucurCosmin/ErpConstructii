@@ -23,8 +23,9 @@ export interface Aviz {
   furnizorCui: string | null
   linii: LinieAviz[]
   observatii: string | null
-  notaComandaId: string
-  notaComandaNumar: string
+  /** Null doar la avizele din urmă fără notă de comandă (D-45). */
+  notaComandaId: string | null
+  notaComandaNumar: string | null
   notaComandaGenerata: boolean
   inregistratDe: string
   inregistratLa: string
@@ -32,6 +33,8 @@ export interface Aviz {
   receptii: number
   facturat: boolean
   facturaNumar: string | null
+  /** Document din urmă (D-45). */
+  dinUrma?: boolean
 }
 
 export interface NotaComandaPropusa {
@@ -70,8 +73,10 @@ export interface ConfirmaAviz {
   furnizorCui: string | null
   linii: LinieAviz[]
   observatii: string | null
-  /** Nota de comandă emisă a mărfii; null = se generează una din aviz. */
+  /** Nota de comandă emisă a mărfii; null = se generează una din aviz (la cele din urmă, rămâne fără). */
   notaComandaId: string | null
+  /** D-45: aviz vechi din arhivă. */
+  dinUrma?: boolean
 }
 
 const cheiAvize = ['aprovizionare', 'avize'] as const

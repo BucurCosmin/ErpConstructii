@@ -197,7 +197,9 @@ internal static class EndpointuriImportDocumente
         {
             var noua = pagini.Select((p, i) => (p, i + 1)).ToDictionary(x => x.p, x => x.Item2);
             servicii.GetService<ExtractorTextOcr>()?.Memoreaza(continut, ".pdf",
-                text.Randuri.Where(r => noua.ContainsKey(r.Pagina)).Select(r => r with { Pagina = noua[r.Pagina] }));
+                text.Randuri.Where(r => noua.ContainsKey(r.Pagina)).Select(r => r with { Pagina = noua[r.Pagina] }),
+                text.LiniiOrizontale.Where(l => noua.ContainsKey(l.Pagina)).Select(l => l with { Pagina = noua[l.Pagina] }));
+
         }
 
         var nume = $"{Path.GetFileNameWithoutExtension(citit.NumeFisier)}_p{Interval(pagini)}.pdf";

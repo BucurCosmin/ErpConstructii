@@ -26,6 +26,8 @@ public sealed record DateAviz(
 /// pe aviz, dacă există, altfel una generată din aviz), apoi se recepționează în stoc prin NIR (fără valoare, sau la prețul
 /// comenzii). Factura care vine ulterior se leagă de aceeași notă de comandă, iar NIR-urile avizului primesc prețurile ei.
 /// Imuabil (regula 6); se poate șterge doar cât nu are recepții.
+/// Avizul „din urmă” (D-45, import din arhivă) poate rămâne fără notă de comandă: nu i se mai generează una; factura lui
+/// îl găsește după furnizor și proiect.
 /// </summary>
 public sealed class AvizInsotire : EntitateFirma, IDocumentCuStare
 {
@@ -48,10 +50,13 @@ public sealed class AvizInsotire : EntitateFirma, IDocumentCuStare
     public IReadOnlyList<LinieAviz> Linii => _linii ??= JsonSerializer.Deserialize<List<LinieAviz>>(LiniiJson) ?? [];
     public string? Observatii { get; private set; }
 
-    /// <summary>Nota de comandă căreia îi aparține marfa (aceeași notă leagă apoi factura).</summary>
-    public Guid NotaComandaId { get; private set; }
+    /// <summary>Nota de comandă căreia îi aparține marfa (aceeași notă leagă apoi factura). Null doar la avizele din urmă (D-45).</summary>
+    public Guid? NotaComandaId { get; private set; }
 
-    public string NotaComandaNumar { get; private set; } = string.Empty;
+    public string? NotaComandaNumar { get; private set; }
+
+    /// <summary>Document din urmă (D-45): importat din arhivă, poate lipsi nota de comandă.</summary>
+    public bool DinUrma { get; private set; }
 
     /// <summary>Nota a fost generată din aviz (nu exista o comandă pentru această marfă).</summary>
     public bool NotaComandaGenerata { get; private set; }
@@ -62,14 +67,16 @@ public sealed class AvizInsotire : EntitateFirma, IDocumentCuStare
     public bool EsteBlocat => true;
 
     public static Rezultat<AvizInsotire> Importa(
-        int an, int numar, DateAviz date, Guid notaComandaId, string notaComandaNumar, bool notaGenerata, Guid documentOriginalId,
-        Guid utilizatorId, string utilizatorNume)
+        int an, int numar, DateAviz date, Guid? notaComandaId, string? notaComandaNumar, bool notaGenerata, Guid documentOriginalId,
+        Guid utilizatorId, string utilizatorNume, bool dinUrma = false)
     {
         var probleme = Valideaza(date);
         if (an < 2000 || numar < 1)
             probleme.Add("Numărul avizului nu este valid.");
-        if (notaComandaId == Guid.Empty || string.IsNullOrWhiteSpace(notaComandaNumar))
-            probleme.Add("Nota de comandă a avizului este obligatorie.");
+        if (notaComandaId is null ? !dinUrma : notaComandaId == Guid.Empty || string.IsNullOrWhiteSpace(notaComandaNumar))
+            probleme.Add("Nota de comandă a avizului este obligatorie (lipsește doar la documentele din urmă).");
+        if (notaComandaId is null && notaGenerata)
+            probleme.Add("Nota generată din aviz lipsește.");
         if (documentOriginalId == Guid.Empty)
             probleme.Add("Documentul original este obligatoriu.");
         if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
@@ -92,8 +99,9 @@ public sealed class AvizInsotire : EntitateFirma, IDocumentCuStare
             LiniiJson = JsonSerializer.Serialize(date.Linii.Select(x => x with { Denumire = x.Denumire.Trim(), UnitateMasura = x.UnitateMasura.Trim() }).ToList()),
             Observatii = Gol(date.Observatii),
             NotaComandaId = notaComandaId,
-            NotaComandaNumar = notaComandaNumar.Trim(),
+            NotaComandaNumar = notaComandaId is null ? null : notaComandaNumar!.Trim(),
             NotaComandaGenerata = notaGenerata,
+            DinUrma = dinUrma,
             DocumentOriginalId = documentOriginalId,
             InregistratDeId = utilizatorId,
             InregistratDeNume = utilizatorNume.Trim(),
@@ -145,8 +153,8 @@ public sealed record AvizPentruReceptie(
     string FurnizorDenumire,
     Guid ProiectId,
     string ProiectCod,
-    Guid NotaComandaId,
-    string NotaComandaNumar,
+    Guid? NotaComandaId,
+    string? NotaComandaNumar,
     IReadOnlyList<LinieAvizPentruReceptie> Linii)
 {
     /// <summary>„INTFSN/20488 (AV/2026/0001)”.</summary>

@@ -33,6 +33,7 @@ public sealed class ModulIdentitate : IModul
         servicii.AddMemoryCache();
         servicii.AddScoped<IServiciuPermisiuni, ServiciuPermisiuni>();
         servicii.AddScoped<IInterogareFirma, InterogareFirma>();
+        servicii.AddScoped<IInterogareUtilizatori, InterogareUtilizatori>();
         servicii.AddScoped<IAuthorizationHandler, HandlerPermisiune>();
     }
 

@@ -74,6 +74,7 @@ public sealed class DocumentImport : Observabil
     private decimal? _totalFaraTva;
     private decimal? _totalTva;
     private decimal? _totalDePlata;
+    private bool _dinUrma;
 
     public DocumentImport(string tip, List<int> pagini, string? numar, DateOnly? data, int? zona = null)
     {
@@ -104,7 +105,7 @@ public sealed class DocumentImport : Observabil
             if (Seteaza(ref _tip, value))
             {
                 Reseteaza();
-                Notifica(nameof(Titlu), nameof(EsteFactura), nameof(EsteNota), nameof(EsteNecesar), nameof(EsteBon), nameof(AreFurnizor), nameof(Importabil), nameof(EticheteTip));
+                Notifica(nameof(Titlu), nameof(EsteFactura), nameof(EsteNota), nameof(EsteNecesar), nameof(EsteBon), nameof(AreFurnizor), nameof(Importabil), nameof(EticheteTip), nameof(PoateFiDinUrma));
             }
         }
     }
@@ -127,6 +128,15 @@ public sealed class DocumentImport : Observabil
     public bool EsteBon => Tip == "BonConsum";
     public bool AreFurnizor => EsteFactura || EsteNota;
     public bool Importabil => EsteFactura || EsteNota || EsteNecesar || EsteBon;
+
+    /// <summary>Bonul de consum nu are documente de dinainte; celelalte se pot importa „din urmă” (D-45).</summary>
+    public bool PoateFiDinUrma => EsteFactura || EsteNota || EsteNecesar;
+
+    /// <summary>
+    /// Document din urmă (D-45): vechi, din arhivă. Factura nu cere nota de comandă / contractul, nota nu cere necesarul,
+    /// necesarul intră aprobat, fără nota „de acceptat”.
+    /// </summary>
+    public bool DinUrma { get => _dinUrma; set => Seteaza(ref _dinUrma, value); }
 
     public string IntervalPagini => (Pagini.Count == 1 ? $"p. {Pagini[0]}"
         : Pagini[^1] - Pagini[0] == Pagini.Count - 1 ? $"p. {Pagini[0]}–{Pagini[^1]}" : $"p. {string.Join(", ", Pagini)}")
@@ -185,7 +195,18 @@ public sealed class DocumentImport : Observabil
     public string? FurnizorCui { get => _furnizorCui; set => Seteaza(ref _furnizorCui, value); }
     public bool AdaugaFurnizor { get => _adaugaFurnizor; set => Seteaza(ref _adaugaFurnizor, value); }
     public string? Lucrare { get => _lucrare; set => Seteaza(ref _lucrare, value); }
-    public string? Compartiment { get => _compartiment; set => Seteaza(ref _compartiment, value); }
+    /// <summary>Compartimentul / șantierul scris pe document (doar orientativ; în aplicație se alege din <see cref="Locuri"/>).</summary>
+    public string? Compartiment { get => _compartiment; set { if (Seteaza(ref _compartiment, value)) Notifica(nameof(CompartimentPeDocument)); } }
+
+    public string CompartimentPeDocument => string.IsNullOrWhiteSpace(_compartiment) ? "Nu apare în document; alege-l." : $"Pe document: „{_compartiment.Trim()}”";
+
+    /// <summary>Necesar: șantierele proiectului ales.</summary>
+    public ObservableCollection<LocSolicitant> Locuri { get; } = [];
+
+    private LocSolicitant? _loc;
+
+    /// <summary>Șantierul care cere materialele, ales din listă (propus după textul de pe document).</summary>
+    public LocSolicitant? Loc { get => _loc; set => Seteaza(ref _loc, value); }
     public string? Observatii { get => _observatii; set => Seteaza(ref _observatii, value); }
     public decimal? TotalFaraTva { get => _totalFaraTva; set { if (Seteaza(ref _totalFaraTva, value)) Notifica(nameof(VerificareTotaluri)); } }
     public decimal? TotalTva { get => _totalTva; set { if (Seteaza(ref _totalTva, value)) Notifica(nameof(VerificareTotaluri)); } }
@@ -289,6 +310,8 @@ public sealed class DocumentImport : Observabil
         Numar = null;
         Data = DataScadenta = null;
         Furnizor = FurnizorCui = Lucrare = Compartiment = Observatii = null;
+        Loc = null;
+        Locuri.Clear();
         TotalFaraTva = TotalTva = TotalDePlata = null;
         Stare = Importabil ? StareDocument.Necitit : StareDocument.Neimportabil;
         NotificaCitire();

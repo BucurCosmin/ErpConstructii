@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.Versioning;
@@ -87,6 +87,27 @@ public sealed class FereastraModel : Observabil
     public string TitluFisier => Fisier is null ? "Niciun fișier deschis" : Path.GetFileName(Fisier);
 
     public ObservableCollection<DocumentImport> Documente { get; } = [];
+
+    private bool _dinUrma;
+
+    /// <summary>
+    /// D-45: documentele din fișier sunt din arhivă. Se propune fiecărui document (și celor adăugate ulterior, la împărțire);
+    /// pe fiecare document bifa se poate schimba separat.
+    /// </summary>
+    public bool DinUrma
+    {
+        get => _dinUrma;
+        set
+        {
+            if (Seteaza(ref _dinUrma, value))
+            {
+                foreach (var d in Documente.Where(d => d.Stare is not StareDocument.Importat))
+                {
+                    d.DinUrma = value;
+                }
+            }
+        }
+    }
 
     public ObservableCollection<PaginaAfisata> PaginiAfisate { get; } = [];
 
@@ -291,6 +312,7 @@ public sealed class FereastraModel : Observabil
 
     private void Adauga(DocumentImport d, int? pozitie = null)
     {
+        d.DinUrma = DinUrma;
         d.PropertyChanged += DocumentSchimbat;
         if (pozitie is { } i)
         {
@@ -316,6 +338,10 @@ public sealed class FereastraModel : Observabil
         else if (e.PropertyName == nameof(DocumentImport.ProiectId) && d is { EsteBon: true, Stare: StareDocument.DeVerificat })
         {
             Ruleaza(() => IncarcaMaterialeAsync(d), elibereaza: false); // stocul șantierului noului proiect
+        }
+        else if (e.PropertyName == nameof(DocumentImport.ProiectId) && d is { EsteNecesar: true, Stare: StareDocument.DeVerificat })
+        {
+            Ruleaza(() => IncarcaLocuriAsync(d), elibereaza: false); // șantierele noului proiect
         }
         else if (e.PropertyName == nameof(DocumentImport.Tip) && d.Importabil)
         {
@@ -412,6 +438,10 @@ public sealed class FereastraModel : Observabil
                 d.Fisier = fisier;
                 d.NumeFisier = nume;
                 d.Incarca(n);
+                if (d is { Stare: StareDocument.DeVerificat, ProiectId: not null })
+                {
+                    await IncarcaLocuriAsync(d);
+                }
             }
         }
         catch (Exception ex) when (ex is EroareServer or IOException or System.Net.Http.HttpRequestException or TaskCanceledException)
@@ -420,6 +450,74 @@ public sealed class FereastraModel : Observabil
             d.Mesaj = ex is EroareServer ? ex.Message : $"Serverul nu răspunde: {ex.Message}";
             throw;
         }
+    }
+
+    /// <summary>
+    /// Necesar: șantierele proiectului ales, cu cel scris pe document propus, ca în
+    /// aplicația web: denumire identică sau, una singură, cuprinsă pe cuvinte întregi.
+    /// </summary>
+    private async Task IncarcaLocuriAsync(DocumentImport d)
+    {
+        if (d.ProiectId is not { } proiect)
+        {
+            d.Locuri.Clear();
+            d.Loc = null;
+            return;
+        }
+
+        var locuri = await _client!.LocuriSolicitantAsync(proiect, CancellationToken.None);
+        if (d.ProiectId != proiect)
+        {
+            return; // între timp s-a ales alt proiect
+        }
+
+        var ales = d.Loc;
+        d.Locuri.Clear();
+        foreach (var l in locuri)
+        {
+            d.Locuri.Add(l);
+        }
+
+        d.Loc = locuri.FirstOrDefault(l => l.Id == ales?.Id && l.EsteSantier == ales.EsteSantier) ?? PotrivesteLoc(d.Compartiment, locuri);
+    }
+
+    private static LocSolicitant? PotrivesteLoc(string? text, List<LocSolicitant> locuri)
+    {
+        static string Cheie(string s)
+        {
+            var fd = s.Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder(fd.Length);
+            foreach (var ch in fd)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.NonSpacingMark)
+                {
+                    continue;
+                }
+
+                sb.Append(char.IsLetterOrDigit(ch) ? char.ToUpperInvariant(ch) : ' ');
+            }
+
+            return string.Join(' ', sb.ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        var t = Cheie(text ?? string.Empty);
+        if (t.Length == 0)
+        {
+            return null;
+        }
+
+        var identice = locuri.Where(l => Cheie(l.Denumire) == t).ToList();
+        if (identice.Count > 0)
+        {
+            return identice.Count == 1 ? identice[0] : null;
+        }
+
+        var partiale = locuri.Where(l =>
+        {
+            var c = Cheie(l.Denumire);
+            return c.Length >= 3 && ($" {t} ".Contains($" {c} ", StringComparison.Ordinal) || $" {c} ".Contains($" {t} ", StringComparison.Ordinal));
+        }).ToList();
+        return partiale.Count == 1 ? partiale[0] : null;
     }
 
     /// <summary>
@@ -535,7 +633,7 @@ public sealed class FereastraModel : Observabil
                     d.Linii.Select(l => new LinieFacturaConfirmata(l.Denumire.Trim(), l.Um.Trim(), l.Cantitate ?? 0, l.Pret ?? 0,
                         l.Valoare ?? 0, (l.CotaProcent ?? 0) / 100m, l.IntraInStoc)).ToList(),
                     d.TotalFaraTva ?? 0, d.TotalTva ?? 0, d.TotalDePlata ?? 0,
-                    d.Referinta, string.IsNullOrWhiteSpace(d.Observatii) ? null : d.Observatii.Trim()), CancellationToken.None);
+                    d.Referinta, string.IsNullOrWhiteSpace(d.Observatii) ? null : d.Observatii.Trim(), d.DinUrma), CancellationToken.None);
                 d.Mesaj = $"Factura {f.Numar} ({f.FurnizorDenumire}, {f.TotalDePlata:N2} lei) înregistrată pe proiectul {f.ProiectCod}.";
             }
             else if (d.EsteNota)
@@ -543,23 +641,28 @@ public sealed class FereastraModel : Observabil
                 var n = await _client!.ImportaNotaAsync(proiect, d.Fisier!, d.NumeFisier!, new ConfirmaNotaComanda(
                     Gol(d.Numar), data, Gol(d.Lucrare), (d.Furnizor ?? string.Empty).Trim(), Gol(d.FurnizorCui), d.FurnizorAdresa, d.FurnizorTelefon,
                     d.Linii.Select(l => new LinieNotaConfirmata(l.Denumire.Trim(), l.Um.Trim(), l.Cantitate ?? 0, Gol(l.Termen))).ToList(),
-                    Gol(d.Observatii)), CancellationToken.None);
-                d.Mesaj = $"Nota de comandă {n.Numar} înregistrată pe proiectul {cod}.";
+                    Gol(d.Observatii), d.DinUrma), CancellationToken.None);
+                d.Mesaj = $"Nota de comandă {n.Numar} înregistrată pe proiectul {cod}{(d.DinUrma ? " (document din urmă)" : string.Empty)}.";
             }
             else if (d.EsteBon)
             {
                 var n = await _client!.ImportaBonAsync(proiect, new ConsumCerere(data,
                     d.Linii.Select(l => new LinieConsumCerere(l.ArticolId!.Value, l.Cantitate!.Value, l.ArticolDevizCheie)).ToList(),
-                    Gol(d.Observatii)), CancellationToken.None);
+                    Gol(d.Observatii), Gol(d.Numar)), CancellationToken.None);
                 d.Mesaj = $"Bonul de consum {n.Numar} înregistrat pe proiectul {cod}: materialele au ieșit din stocul șantierului, la CMP.";
             }
             else
             {
                 var n = await _client!.ImportaNecesarAsync(proiect, d.Fisier!, d.NumeFisier!, new ConfirmaNecesar(
                     Gol(d.Numar), data, (d.Compartiment ?? string.Empty).Trim(),
-                    d.Linii.Select(l => new LinieNecesarConfirmata(l.Denumire.Trim(), l.Um.Trim(), l.Cantitate ?? 0, Gol(l.Observatii), null)).ToList()),
+                    d.Linii.Select(l => new LinieNecesarConfirmata(l.Denumire.Trim(), l.Um.Trim(), l.Cantitate ?? 0, Gol(l.Observatii), null)).ToList(),
+                    d.DinUrma,
+                    d.Loc is { EsteSantier: true } s ? s.Id : null,
+                    d.Loc is { EsteSantier: false } c ? c.Id : null),
                     CancellationToken.None);
-                d.Mesaj = $"Necesarul {n.Numar} înregistrat pe proiectul {cod}, în așteptarea aprobării.";
+                d.Mesaj = d.DinUrma
+                    ? $"Necesarul {n.Numar} înregistrat pe proiectul {cod} ca document din urmă (aprobat)."
+                    : $"Necesarul {n.Numar} înregistrat pe proiectul {cod}, în așteptarea aprobării.";
             }
 
             d.Stare = StareDocument.Importat;
@@ -580,6 +683,7 @@ public sealed class FereastraModel : Observabil
         if (d.Data is null) l.Add(d.EsteFactura ? "Data facturii." : "Data documentului.");
         if (d.EsteFactura && string.IsNullOrWhiteSpace(d.Numar)) l.Add("Seria și numărul facturii.");
         if ((d.EsteFactura || d.EsteNota) && string.IsNullOrWhiteSpace(d.Furnizor)) l.Add("Furnizorul.");
+        if (d.EsteNecesar && d.Loc is null) l.Add("Șantierul proiectului care cere materialele.");
         if (d.Linii.Count == 0) l.Add("Cel puțin o linie.");
         foreach (var (linie, i) in d.Linii.Select((x, i) => (x, i + 1)))
         {

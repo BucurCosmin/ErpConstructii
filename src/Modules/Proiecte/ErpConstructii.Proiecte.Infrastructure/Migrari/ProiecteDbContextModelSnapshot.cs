@@ -157,6 +157,14 @@ namespace ErpConstructii.Proiecte.Infrastructure.Migrari
                         .HasColumnType("date")
                         .HasColumnName("termen_contractual");
 
+                    b.Property<string>("Tip")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Lucrare")
+                        .HasColumnName("tip");
+
                     b.HasKey("Id")
                         .HasName("pk_proiecte");
 

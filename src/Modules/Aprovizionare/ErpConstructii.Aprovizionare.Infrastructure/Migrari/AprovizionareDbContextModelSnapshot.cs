@@ -46,6 +46,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("date")
                         .HasColumnName("data");
 
+                    b.Property<bool>("DinUrma")
+                        .HasColumnType("boolean")
+                        .HasColumnName("din_urma");
+
                     b.Property<Guid>("DocumentOriginalId")
                         .HasColumnType("uuid")
                         .HasColumnName("document_original_id");
@@ -101,12 +105,11 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("boolean")
                         .HasColumnName("nota_comanda_generata");
 
-                    b.Property<Guid>("NotaComandaId")
+                    b.Property<Guid?>("NotaComandaId")
                         .HasColumnType("uuid")
                         .HasColumnName("nota_comanda_id");
 
                     b.Property<string>("NotaComandaNumar")
-                        .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("nota_comanda_numar");
@@ -153,6 +156,88 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasDatabaseName("ix_avize_firma_id_proiect_id_data");
 
                     b.ToTable("avize", "aprovizionare");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Aprovizionare.CorectieNotaComanda", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CorectatDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("corectat_de_id");
+
+                    b.Property<string>("CorectatDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("corectat_de_nume");
+
+                    b.Property<DateTimeOffset>("CorectatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("corectat_la");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("DateNoiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("date_noi_json");
+
+                    b.Property<string>("DateVechiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("date_vechi_json");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv");
+
+                    b.Property<Guid>("NotaComandaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nota_comanda_id");
+
+                    b.Property<string>("Rezumat")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("rezumat");
+
+                    b.Property<string>("Tip")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tip");
+
+                    b.HasKey("Id")
+                        .HasName("pk_corectii_note_comanda");
+
+                    b.HasIndex("FirmaId", "NotaComandaId")
+                        .HasDatabaseName("ix_corectii_note_comanda_firma_id_nota_comanda_id");
+
+                    b.ToTable("corectii_note_comanda", "aprovizionare");
                 });
 
             modelBuilder.Entity("ErpConstructii.Aprovizionare.DocumentOriginal", b =>
@@ -220,6 +305,76 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                     b.ToTable("documente_originale", "aprovizionare");
                 });
 
+            modelBuilder.Entity("ErpConstructii.Aprovizionare.MutareSantierNecesar", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<DateTimeOffset>("La")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("la");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<Guid>("NecesarId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("necesar_id");
+
+                    b.Property<string>("NecesarNumar")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("necesar_numar");
+
+                    b.Property<string>("SantierNou")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("santier_nou");
+
+                    b.Property<Guid>("SantierNouId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("santier_nou_id");
+
+                    b.Property<string>("SantierVechi")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("santier_vechi");
+
+                    b.Property<Guid?>("SantierVechiId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("santier_vechi_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_mutari_santier");
+
+                    b.HasIndex("FirmaId", "NecesarId")
+                        .HasDatabaseName("ix_mutari_santier_firma_id_necesar_id");
+
+                    b.ToTable("mutari_santier", "aprovizionare");
+                });
+
             modelBuilder.Entity("ErpConstructii.Aprovizionare.NecesarMateriale", b =>
                 {
                     b.Property<Guid>("Id")
@@ -265,6 +420,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                     b.Property<DateTimeOffset?>("DecisaLa")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("decisa_la");
+
+                    b.Property<bool>("DinUrma")
+                        .HasColumnType("boolean")
+                        .HasColumnName("din_urma");
 
                     b.Property<Guid?>("DocumentOriginalId")
                         .HasColumnType("uuid")
@@ -414,6 +573,10 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasColumnType("date")
                         .HasColumnName("data");
 
+                    b.Property<bool>("DinUrma")
+                        .HasColumnType("boolean")
+                        .HasColumnName("din_urma");
+
                     b.Property<Guid?>("DocumentOriginalId")
                         .HasColumnType("uuid")
                         .HasColumnName("document_original_id");
@@ -560,6 +723,184 @@ namespace ErpConstructii.Aprovizionare.Infrastructure.Migrari
                         .HasDatabaseName("ix_note_comanda_firma_id_proiect_id_data");
 
                     b.ToTable("note_comanda", "aprovizionare");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Aprovizionare.StergereNotaComanda", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<DateOnly>("Data")
+                        .HasColumnType("date")
+                        .HasColumnName("data");
+
+                    b.Property<string>("DateJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("date_json");
+
+                    b.Property<string>("Efect")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("efect");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<string>("FurnizorDenumire")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("furnizor_denumire");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv");
+
+                    b.Property<Guid>("NotaComandaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("nota_comanda_id");
+
+                    b.Property<string>("Numar")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("numar");
+
+                    b.Property<string>("NumarExtern")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("numar_extern");
+
+                    b.Property<string>("ProiectCod")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("proiect_cod");
+
+                    b.Property<Guid>("ProiectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proiect_id");
+
+                    b.Property<Guid>("StearsaDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stearsa_de_id");
+
+                    b.Property<string>("StearsaDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("stearsa_de_nume");
+
+                    b.Property<DateTimeOffset>("StearsaLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("stearsa_la");
+
+                    b.HasKey("Id")
+                        .HasName("pk_stergeri_note_comanda");
+
+                    b.HasIndex("FirmaId", "StearsaLa")
+                        .HasDatabaseName("ix_stergeri_note_comanda_firma_id_stearsa_la");
+
+                    b.ToTable("stergeri_note_comanda", "aprovizionare");
+                });
+
+            modelBuilder.Entity("ErpConstructii.SharedKernel.RenumerotareDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("DocumentNumar")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("document_numar");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<DateTimeOffset>("La")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("la");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motiv");
+
+                    b.Property<string>("NumarNou")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("numar_nou");
+
+                    b.Property<string>("NumarVechi")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("numar_vechi");
+
+                    b.Property<Guid>("UtilizatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("utilizator_id");
+
+                    b.Property<string>("UtilizatorNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("utilizator_nume");
+
+                    b.HasKey("Id")
+                        .HasName("pk_renumerotari");
+
+                    b.HasIndex("FirmaId", "DocumentId")
+                        .HasDatabaseName("ix_renumerotari_firma_id_document_id");
+
+                    b.ToTable("renumerotari", "aprovizionare");
                 });
 #pragma warning restore 612, 618
         }

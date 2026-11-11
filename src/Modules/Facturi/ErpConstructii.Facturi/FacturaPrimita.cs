@@ -101,6 +101,12 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
 
     public string? ContractNumar { get; private set; }
 
+    /// <summary>
+    /// Document din urmă (D-45): factură veche, importată din arhivă, care poate să nu aibă nota de comandă sau contractul în
+    /// sistem; legătura se pune ulterior prin corectură.
+    /// </summary>
+    public bool DinUrma { get; private set; }
+
     public string? Observatii { get; private set; }
     public SursaFactura Sursa { get; private set; }
 
@@ -122,7 +128,8 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
         Guid? documentXmlId,
         Guid? documentPdfId,
         Guid utilizatorId,
-        string utilizatorNume)
+        string utilizatorNume,
+        bool dinUrma = false)
     {
         if (ProblemeObligatorii(date) is { Count: > 0 } probleme)
         {
@@ -161,6 +168,7 @@ public sealed class FacturaPrimita : EntitateFirma, IDocumentCuStare
             ContractId = date.ContractId,
             ContractNumar = date.ContractId is null ? null : date.ContractNumar?.Trim(),
             Sursa = sursa,
+            DinUrma = dinUrma,
             DocumentXmlId = documentXmlId,
             DocumentPdfId = documentPdfId,
             InregistrataDeId = utilizatorId,

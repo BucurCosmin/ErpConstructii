@@ -4,7 +4,7 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { api } from '../../api/client'
-import { useComandaLaFurnizor, useEmiteNotaComanda, useNecesareMateriale } from '../../api/aprovizionare'
+import { useComandaLaFurnizor, useEmiteNotaComanda, useModificaNotaComanda, useNecesareMateriale } from '../../api/aprovizionare'
 import type { ConditiiComanda, NotaComanda } from '../../api/aprovizionare'
 import { useSabloaneFormular } from '../../api/formulare'
 import { useProiecte } from '../../api/interogari'
@@ -12,6 +12,7 @@ import { useFurnizori } from '../../api/parteneri'
 import type { Adresa } from '../../api/tipuri'
 import { NumarRo } from '../../componente/NumarRo'
 import { deschidePdf } from '../../util/pdf'
+import { etichetaProiect } from '../../util/format'
 
 interface LinieValori {
   denumire: string
@@ -26,6 +27,8 @@ interface LinieValori {
 
 interface Valori {
   proiectId: string
+  numarExtern?: string
+  motiv?: string
   data: Dayjs
   lucrare?: string
   necesarId?: string
@@ -58,9 +61,15 @@ function Bife({ nume, eticheta, optiuni }: { nume: keyof Valori; eticheta: strin
  * Notă de comandă nouă către furnizor (formularul GC 007): proiect / lucrare, furnizor (din nomenclator sau nou),
  * condițiile bifate, materialele (preluate opțional dintr-un necesar aprobat) cu termen. După emitere: Word din șablonul firmei și PDF.
  * Cu `dinNota` (D-37, „Necesar de achiziție”): materialele notei acceptate; ce se șterge sau se micșorează rămâne pe ea
- * pentru alt furnizor.
+ * pentru alt furnizor. Cu `deModificat` (D-44): modificarea notei emise, cu motiv (numărul și proiectul rămân).
  */
-export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: boolean; onEmisa?: () => void; dinNota?: NotaComanda }) {
+export function NotaComandaNoua({ poateCrea, onEmisa, dinNota, deModificat, onModificat }: {
+  poateCrea: boolean
+  onEmisa?: () => void
+  dinNota?: NotaComanda
+  deModificat?: NotaComanda
+  onModificat?: (nota: NotaComanda) => void
+}) {
   const { message } = App.useApp()
   const navigheaza = useNavigate()
   const [form] = Form.useForm<Valori>()
@@ -69,6 +78,7 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
   const sabloane = useSabloaneFormular()
   const emite = useEmiteNotaComanda()
   const comanda = useComandaLaFurnizor()
+  const modifica = useModificaNotaComanda()
   const [ramase, setRamase] = useState(0)
   const proiectId = Form.useWatch('proiectId', form)
   const necesare = useNecesareMateriale({ proiectId, stare: 'Aprobata' })
@@ -106,6 +116,33 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
   })
 
   const trimite = async (v: Valori) => {
+    if (deModificat) {
+      try {
+        const nota = await modifica.mutateAsync({
+          proiectId: deModificat.proiectId,
+          id: deModificat.id,
+          date: {
+            numarExtern: gol(v.numarExtern),
+            data: v.data.format('YYYY-MM-DD'),
+            lucrare: gol(v.lucrare),
+            furnizorDenumire: v.furnizorDenumire.trim(),
+            furnizorCui: gol(v.furnizorCui),
+            furnizorAdresa: gol(v.furnizorAdresa),
+            furnizorTelefon: gol(v.furnizorTelefon),
+            furnizorEmail: gol(v.furnizorEmail),
+            conditii: conditiiDin(v),
+            linii: v.linii.map((l) => ({ denumire: l.denumire.trim(), unitateMasura: l.unitateMasura.trim(), cantitate: l.cantitate, termen: gol(l.termen) })),
+            observatii: gol(v.observatii),
+            motiv: (v.motiv ?? '').trim(),
+          },
+        })
+        message.success(`${nota.numar} a fost modificată; modificarea apare în istoricul notei.`)
+        onModificat?.(nota)
+      } catch (e) {
+        message.error((e as Error).message)
+      }
+      return
+    }
     if (dinNota) {
       try {
         const r = await comanda.mutateAsync({
@@ -191,7 +228,13 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
   }
 
   return (
-    <Card title={dinNota ? undefined : 'Notă de comandă nouă către furnizor (GC 007)'} variant={dinNota ? 'borderless' : undefined} styles={dinNota ? { body: { padding: 0 } } : undefined}>
+    <Card title={dinNota || deModificat ? undefined : 'Notă de comandă nouă către furnizor (GC 007)'} variant={dinNota || deModificat ? 'borderless' : undefined}
+      styles={dinNota || deModificat ? { body: { padding: 0 } } : undefined}>
+      {deModificat && (
+        <Alert type="warning" showIcon style={{ marginBottom: 16 }}
+          title={`Modifici nota emisă ${deModificat.numar}.`}
+          description="Numărul și proiectul rămân. Datele de acum se păstrează în istoricul notei, cu motivul și numele tău; dacă nota a fost deja trimisă furnizorului, trimite-i varianta nouă." />
+      )}
       {dinNota && (
         <Alert type="info" showIcon style={{ marginBottom: 16 }}
           title="Comanzi la acest furnizor tot sau doar o parte."
@@ -213,7 +256,19 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
         name="notaComandaNoua"
         initialValues={{
           data: dayjs(), receptie: 'LaPrimire', clasaCalitate: 'BestComercial', transport: '', plata: '',
-          ...(dinNota
+          ...(deModificat
+            ? {
+                proiectId: deModificat.proiectId, lucrare: deModificat.lucrare ?? undefined, data: dayjs(deModificat.data),
+                numarExtern: deModificat.numarExtern ?? undefined,
+                furnizorDenumire: deModificat.furnizorDenumire, furnizorCui: deModificat.furnizorCui ?? undefined,
+                furnizorAdresa: deModificat.furnizorAdresa ?? undefined, furnizorTelefon: deModificat.furnizorTelefon ?? undefined,
+                furnizorEmail: deModificat.furnizorEmail ?? undefined,
+                receptie: deModificat.conditii.receptie ?? '', clasaCalitate: deModificat.conditii.clasaCalitate ?? '',
+                transport: deModificat.conditii.transport ?? '', plata: deModificat.conditii.plata ?? '',
+                linii: deModificat.linii.map((l) => ({ denumire: l.denumire, unitateMasura: l.unitateMasura, cantitate: l.cantitate, termen: l.termen ?? undefined })),
+                observatii: deModificat.observatii ?? undefined,
+              }
+            : dinNota
             ? {
                 proiectId: dinNota.proiectId, lucrare: dinNota.lucrare ?? undefined,
                 linii: dinNota.linii.map((l, i) => ({
@@ -227,8 +282,8 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
         <Row gutter={12}>
           <Col xs={24} md={9}>
             <Form.Item name="proiectId" label="Proiect" rules={[{ required: true, message: 'Alege proiectul.' }]}>
-              <Select showSearch={{ optionFilterProp: 'label' }} placeholder="Proiectul (sau proiectul de stoc)" loading={proiecte.isLoading} onChange={alegeProiect} disabled={!!dinNota}
-                options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+              <Select showSearch={{ optionFilterProp: 'label' }} placeholder="Proiectul (sau proiectul de stoc)" loading={proiecte.isLoading} onChange={alegeProiect} disabled={!!dinNota || !!deModificat}
+                options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
             </Form.Item>
           </Col>
           <Col xs={24} md={9}>
@@ -236,11 +291,18 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
               <Input maxLength={500} placeholder="ex. CTRF-HSJV-002, Ctr. 1891" />
             </Form.Item>
           </Col>
-          <Col xs={12} md={6}>
+          <Col xs={12} md={deModificat ? 3 : 6}>
             <Form.Item name="data" label="Data" rules={[{ required: true }]}>
               <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} allowClear={false} />
             </Form.Item>
           </Col>
+          {deModificat && (
+            <Col xs={12} md={3}>
+              <Form.Item name="numarExtern" label="Nr. pe hârtie">
+                <Input maxLength={50} />
+              </Form.Item>
+            </Col>
+          )}
         </Row>
 
         <Row gutter={12}>
@@ -293,7 +355,8 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
         <Card
           size="small"
           title="Materiale / produse"
-          extra={dinNota ? (dinNota.necesarNumar && <Typography.Text type="secondary">din necesarul {dinNota.necesarNumar}</Typography.Text>) : (
+          extra={deModificat ? (deModificat.necesarNumar && <Typography.Text type="secondary">din necesarul {deModificat.necesarNumar}</Typography.Text>)
+            : dinNota ? (dinNota.necesarNumar && <Typography.Text type="secondary">din necesarul {dinNota.necesarNumar}</Typography.Text>) : (
             <Form.Item name="necesarId" noStyle>
               <Select allowClear style={{ width: 300 }} placeholder={proiectId ? 'Preia dintr-un necesar aprobat…' : 'Alege întâi proiectul'} disabled={!proiectId}
                 loading={necesare.isLoading} onChange={alegeNecesar}
@@ -362,12 +425,20 @@ export function NotaComandaNoua({ poateCrea, onEmisa, dinNota }: { poateCrea: bo
           <Input.TextArea rows={2} maxLength={1000} />
         </Form.Item>
 
+        {deModificat && (
+          <Form.Item name="motiv" label="Motivul modificării" rules={[{ required: true, whitespace: true, message: 'Scrie de ce modifici nota.' }]}>
+            <Input.TextArea rows={2} maxLength={1000} placeholder="ex. furnizorul a confirmat altă cantitate" />
+          </Form.Item>
+        )}
+
         <Space>
-          <Button type="primary" htmlType="submit" loading={emite.isPending || comanda.isPending} disabled={!poateCrea}>
-            {dinNota ? 'Emite comanda la furnizor' : 'Emite nota de comandă'}
+          <Button type="primary" htmlType="submit" loading={emite.isPending || comanda.isPending || modifica.isPending} disabled={!poateCrea}>
+            {deModificat ? 'Salvează modificarea' : dinNota ? 'Emite comanda la furnizor' : 'Emite nota de comandă'}
           </Button>
           <Typography.Text type="secondary">
-            {dinNota ? 'Comanda emisă nu se mai modifică; restul materialelor rămâne pe notă.' : 'Numărul (NC/AAAA/NNNN) se dă la emitere; nota nu se mai modifică după aceea.'}
+            {deModificat ? 'Modificarea se înregistrează în istoricul notei și în jurnalul de modificări.'
+              : dinNota ? 'Restul materialelor rămâne pe notă; comanda emisă se poate modifica ulterior doar cu motiv.'
+              : 'Numărul (NC/AAAA/NNNN) se dă la emitere; după aceea nota se modifică doar cu motiv (istoric).'}
           </Typography.Text>
         </Space>
       </Form>

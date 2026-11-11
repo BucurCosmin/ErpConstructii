@@ -1,4 +1,4 @@
-using ErpConstructii.Devize;
+﻿using ErpConstructii.Devize;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure.Autorizare;
 using ErpConstructii.Proiecte;
@@ -17,13 +17,14 @@ public sealed record DevizReferintaDto(Guid VersiuneId, string Denumire, string 
 /// <param name="ArticolDevizCheie">Articolul de deviz; null = cheltuieli generale de șantier.</param>
 public sealed record LinieConsumCerere(Guid ArticolId, decimal Cantitate, Guid? ArticolDevizCheie);
 
-public sealed record ConsumCerere(DateOnly Data, IReadOnlyList<LinieConsumCerere> Linii, string? Observatii);
+/// <param name="NumarExtern">Numărul de pe bonul de hârtie (bonurile importate, D-48); numărul de sistem BC/AAAA/NNNN se dă automat.</param>
+public sealed record ConsumCerere(DateOnly Data, IReadOnlyList<LinieConsumCerere> Linii, string? Observatii, string? NumarExtern = null);
 
 public sealed record LinieConsumDto(string ArticolCod, string Denumire, string UnitateMasura, decimal Cantitate, decimal? PretUnitar, decimal? Valoare,
     Guid? ArticolDevizCheie, string? ArticolDevizSimbol, string? ArticolDevizDenumire);
 
 public sealed record BonConsumDto(Guid Id, string Numar, DateOnly Data, Guid ProiectId, string ProiectCod, IReadOnlyList<LinieConsumDto> Linii, decimal? Valoare,
-    string EmisDe, string? Observatii);
+    string EmisDe, string? Observatii, string? NumarExtern = null);
 
 /// <param name="Cantitate">Cât s-a recepționat din material prin NIR-urile facturii (în depozitul <paramref name="Depozit"/>).</param>
 /// <param name="InSantier">Cât e acum în șantierul proiectului (stocul din care se consumă).</param>
@@ -97,6 +98,8 @@ internal static class EndpointuriConsum
             return Results.NotFound(new { mesaj = "Proiectul nu există." });
         if (proiect.Arhivat)
             return Results.Conflict(new { mesaj = proiect.MesajArhivat });
+        if (await EndpointuriNumereBonuri.BonDublatAsync(db, cerere.NumarExtern, cerere.Data, ct) is { } dublat)
+            return Results.Conflict(new { mesaj = $"Bonul nr. {cerere.NumarExtern!.Trim()} din {cerere.Data:dd.MM.yyyy} a fost deja înregistrat: {dublat}." });
         var articoleDeviz = (await devize.DevizDeReferintaAsync(proiectId, ct))?.Articole.ToDictionary(a => a.CheieStabila) ?? [];
 
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
@@ -136,7 +139,7 @@ internal static class EndpointuriConsum
 
         var an = cerere.Data.Year;
         var numar = (await db.BonuriConsum.Where(b => b.An == an).MaxAsync(b => (int?)b.Numar, ct) ?? 0) + 1;
-        var r = BonConsum.Emite(an, numar, cerere.Data, santier, proiect.Cod, linii, cerere.Observatii, uid, utilizator.Nume);
+        var r = BonConsum.Emite(an, numar, cerere.Data, santier, proiect.Cod, linii, cerere.Observatii, uid, utilizator.Nume, cerere.NumarExtern);
         if (r.Esec)
             return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
         var bc = r.Valoare;
@@ -298,8 +301,8 @@ internal static class EndpointuriConsum
             Bani(randuri.Sum(x => x.Consumat))));
     }
 
-    private static BonConsumDto Dto(BonConsum b, bool preturi) => new(b.Id, b.NumarAfisat, b.Data, b.ProiectId, b.ProiectCod,
+    internal static BonConsumDto Dto(BonConsum b, bool preturi) => new(b.Id, b.NumarAfisat, b.Data, b.ProiectId, b.ProiectCod,
         b.Linii.Select(l => new LinieConsumDto(l.ArticolCod, l.Denumire, l.UnitateMasura, l.Cantitate, preturi ? l.PretUnitar : null, preturi ? l.Valoare : null,
             l.ArticolDevizCheie, l.ArticolDevizSimbol, l.ArticolDevizDenumire)).ToList(),
-        preturi ? b.Valoare : null, b.EmisDeNume, b.Observatii);
+        preturi ? b.Valoare : null, b.EmisDeNume, b.Observatii, b.NumarExtern);
 }

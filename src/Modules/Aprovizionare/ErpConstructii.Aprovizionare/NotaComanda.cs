@@ -93,7 +93,8 @@ public sealed record DateNotaComanda(
 /// Notă de comandă către furnizor (formularul GC 007): ce materiale se cer, cui și pentru ce lucrare. Urmează necesarului
 /// de materiale aprobat și deschide lanțul notă de comandă → recepție (NIR) → factură, folosit la potrivirea în 3 puncte (REQ-FCT-09).
 /// Se emite în sistem (număr NC/AAAA/NNNN, document Word din șablonul firmei) sau se importă cea emisă pe hârtie
-/// (scanare / Word), care își păstrează numărul de pe document. Imuabilă după înregistrare (regula 6).
+/// (scanare / Word), care își păstrează numărul de pe document. Blocată după emitere (regula 6): se modifică doar cu o
+/// corectură (CorectieNotaComanda) și se șterge cu înregistrarea ștergerii (StergereNotaComanda), D-44.
 /// </summary>
 public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
 {
@@ -130,6 +131,12 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
     public SursaDocument Sursa { get; private set; }
     public Guid? DocumentOriginalId { get; private set; }
     public Guid? NecesarId { get; private set; }
+
+    /// <summary>
+    /// Document din urmă (D-45): comandă veche importată din arhivă, care poate să nu aibă necesarul de materiale în sistem
+    /// (neimportat încă sau pierdut). Nu e semnalată ca „fără necesar”; necesarul se poate lega și mai târziu.
+    /// </summary>
+    public bool DinUrma { get; private set; }
 
     /// <summary>Șablonul Word al firmei activ la emitere (documentul se regenerează mereu cu aceeași versiune).</summary>
     public Guid? SablonId { get; private set; }
@@ -298,6 +305,111 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
         return Rezultat.Ok(emisa);
     }
 
+    /// <summary>
+    /// Modifică nota emisă (D-44): orice dată în afară de număr, proiect, sursă și legături (necesar, nota sursă). Întoarce
+    /// corectura (de salvat în aceeași tranzacție), cu datele dinainte / după și rezumatul diferențelor.
+    /// </summary>
+    public Rezultat<CorectieNotaComanda> Corecteaza(DateNotaComanda date, string motiv, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (Stare != StareNotaComanda.Emisa)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Se modifică doar notele de comandă emise către furnizori."));
+        if (date.ProiectId != ProiectId)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Proiectul notei de comandă nu se schimbă; șterge nota și emite-o pe proiectul corect."));
+        if (string.IsNullOrWhiteSpace(motiv) || motiv.Trim().Length > 1000)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Motivul modificării este obligatoriu (cel mult 1000 de caractere)."));
+        var probleme = Valideaza(An, Numar, date, utilizatorId, utilizatorNume);
+        if (probleme.Count > 0)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare(string.Join(" ", probleme)));
+
+        var nou = Construieste(An, Numar, date with { ProiectCod = ProiectCod }, Sursa, DocumentOriginalId, InregistrataDeId, InregistrataDeNume);
+        var vechi = InstantaneuNotaComanda.Din(this);
+        var dupa = InstantaneuNotaComanda.Din(nou) with { Stare = Stare.ToString() };
+        var rezumat = InstantaneuNotaComanda.Diferente(vechi, dupa);
+        if (rezumat.Length == 0)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Nu ai schimbat nimic pe nota de comandă."));
+
+        NumarExtern = nou.NumarExtern;
+        Data = nou.Data;
+        Lucrare = nou.Lucrare;
+        FurnizorId = nou.FurnizorId;
+        FurnizorDenumire = nou.FurnizorDenumire;
+        FurnizorCui = nou.FurnizorCui;
+        FurnizorAdresa = nou.FurnizorAdresa;
+        FurnizorTelefon = nou.FurnizorTelefon;
+        FurnizorEmail = nou.FurnizorEmail;
+        LiniiJson = nou.LiniiJson;
+        _linii = null;
+        ConditiiJson = nou.ConditiiJson;
+        Observatii = nou.Observatii;
+        return Rezultat.Ok(CorectieNotaComanda.Creeaza(Id, TipCorectieNotaComanda.Modificare, motiv, JsonSerializer.Serialize(vechi),
+            JsonSerializer.Serialize(dupa), rezumat, utilizatorId, utilizatorNume, moment));
+    }
+
+    /// <summary>
+    /// Nota acceptată din necesar și comandată în întregime la un furnizor (fără notă sursă) nu se șterge: comanda se anulează
+    /// și nota revine la achiziții, cu aceleași materiale, fără furnizor (necesarul rămâne aprobat).
+    /// </summary>
+    public bool RevineLaAchizitiiLaStergere => Stare == StareNotaComanda.Emisa && AcceptataDeId is not null && NotaSursaId is null;
+
+    public Rezultat<CorectieNotaComanda> AnuleazaComanda(string motiv, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (!RevineLaAchizitiiLaStergere)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Doar comanda emisă dintr-o notă acceptată revine la achiziții."));
+        if (string.IsNullOrWhiteSpace(motiv) || motiv.Trim().Length > 1000)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Motivul este obligatoriu (cel mult 1000 de caractere)."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Utilizatorul este obligatoriu."));
+
+        var vechi = InstantaneuNotaComanda.Din(this);
+        var furnizor = FurnizorDenumire;
+        (FurnizorId, FurnizorDenumire, FurnizorCui, FurnizorAdresa, FurnizorTelefon, FurnizorEmail) = (null, string.Empty, null, null, null, null);
+        (ConditiiJson, SablonId, VersiuneSablon) = (null, null, null);
+        LiniiJson = JsonSerializer.Serialize(Linii.Select(l => l with { Termen = null, PretUnitar = null }).ToList());
+        _linii = null;
+        Stare = StareNotaComanda.Acceptata;
+        return Rezultat.Ok(CorectieNotaComanda.Creeaza(Id, TipCorectieNotaComanda.ComandaAnulata, motiv, JsonSerializer.Serialize(vechi),
+            JsonSerializer.Serialize(InstantaneuNotaComanda.Din(this)),
+            $"Comanda la {furnizor} a fost anulată; materialele au revenit în „Necesar de achiziție”.", utilizatorId, utilizatorNume, moment));
+    }
+
+    /// <summary>
+    /// Nota acceptată (încă la achiziții) primește înapoi materialele unei comenzi desprinse din ea și șterse: același
+    /// material (denumire + UM) își adună cantitatea, altfel apare ca linie nouă.
+    /// </summary>
+    public Rezultat PrimesteInapoi(IReadOnlyList<LinieNotaComanda> linii)
+    {
+        if (Stare != StareNotaComanda.Acceptata)
+            return Rezultat.Esuat(Eroare.Validare("Materialele revin doar pe o notă acceptată, încă la achiziții."));
+        var actuale = Linii.ToList();
+        foreach (var l in linii)
+        {
+            var i = actuale.FindIndex(x => string.Equals(x.Denumire, l.Denumire, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(x.UnitateMasura, l.UnitateMasura, StringComparison.OrdinalIgnoreCase));
+            if (i >= 0)
+                actuale[i] = actuale[i] with { Cantitate = actuale[i].Cantitate + l.Cantitate };
+            else
+                actuale.Add(l with { Termen = null, PretUnitar = null });
+        }
+
+        LiniiJson = JsonSerializer.Serialize(actuale);
+        _linii = null;
+        return Rezultat.Ok();
+    }
+
+    /// <summary>Înregistrarea ștergerii notei emise (cine, când, de ce, ce conținea); nota însăși se scoate din bază.</summary>
+    public Rezultat<StergereNotaComanda> Sterge(string motiv, string? efect, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (Stare != StareNotaComanda.Emisa)
+            return Rezultat.Esuat<StergereNotaComanda>(Eroare.Validare("Se șterg doar notele de comandă emise către furnizori."));
+        if (RevineLaAchizitiiLaStergere)
+            return Rezultat.Esuat<StergereNotaComanda>(Eroare.Validare("Comanda emisă dintr-o notă acceptată nu se șterge: revine la achiziții."));
+        if (string.IsNullOrWhiteSpace(motiv) || motiv.Trim().Length > 1000)
+            return Rezultat.Esuat<StergereNotaComanda>(Eroare.Validare("Motivul ștergerii este obligatoriu (cel mult 1000 de caractere)."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat<StergereNotaComanda>(Eroare.Validare("Utilizatorul este obligatoriu."));
+        return Rezultat.Ok(StergereNotaComanda.Creeaza(this, motiv, efect, utilizatorId, utilizatorNume, moment));
+    }
+
     /// <summary>Notă de comandă emisă în sistem; Word-ul se generează din șablonul firmei (dacă există).</summary>
     public static Rezultat<NotaComanda> Emite(
         int an, int numar, DateNotaComanda date, Guid? sablonId, int? versiuneSablon, Guid utilizatorId, string utilizatorNume)
@@ -314,9 +426,9 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
         return Rezultat.Ok(nota);
     }
 
-    /// <summary>Notă de comandă emisă în afara sistemului, cu originalul arhivat.</summary>
+    /// <summary>Notă de comandă emisă în afara sistemului, cu originalul arhivat; <paramref name="dinUrma"/> = din arhivă (D-45).</summary>
     public static Rezultat<NotaComanda> Importa(
-        int an, int numar, DateNotaComanda date, Guid documentOriginalId, Guid utilizatorId, string utilizatorNume)
+        int an, int numar, DateNotaComanda date, Guid documentOriginalId, Guid utilizatorId, string utilizatorNume, bool dinUrma = false)
     {
         var probleme = Valideaza(an, numar, date, utilizatorId, utilizatorNume);
         if (documentOriginalId == Guid.Empty)
@@ -324,7 +436,52 @@ public sealed class NotaComanda : EntitateFirma, IDocumentCuStare
         if (probleme.Count > 0)
             return Rezultat.Esuat<NotaComanda>(Eroare.Validare(string.Join(" ", probleme)));
 
-        return Rezultat.Ok(Construieste(an, numar, date, SursaDocument.Import, documentOriginalId, utilizatorId, utilizatorNume));
+        var nota = Construieste(an, numar, date, SursaDocument.Import, documentOriginalId, utilizatorId, utilizatorNume);
+        nota.DinUrma = dinUrma;
+        return Rezultat.Ok(nota);
+    }
+
+    /// <summary>
+    /// Marchează (sau demarchează) nota importată ca document din urmă (D-45), ex. notele importate înainte de această bifă.
+    /// Nota e blocată: schimbarea se înregistrează ca o corectură (istoricul notei).
+    /// </summary>
+    public Rezultat<CorectieNotaComanda> SchimbaDinUrma(bool dinUrma, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (Stare != StareNotaComanda.Emisa || Sursa != SursaDocument.Import)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Doar notele de comandă importate se marchează ca documente din urmă."));
+        if (DinUrma == dinUrma)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare(dinUrma ? $"Nota {NumarAfisat} e deja document din urmă." : $"Nota {NumarAfisat} nu e document din urmă."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Utilizatorul este obligatoriu."));
+
+        var instantaneu = JsonSerializer.Serialize(InstantaneuNotaComanda.Din(this));
+        DinUrma = dinUrma;
+        return Rezultat.Ok(CorectieNotaComanda.Creeaza(Id, TipCorectieNotaComanda.Modificare,
+            dinUrma ? "Marcată document din urmă (comandă veche, din arhivă)." : "Nu mai e document din urmă.",
+            instantaneu, instantaneu, dinUrma ? "Document din urmă: nu → da" : "Document din urmă: da → nu", utilizatorId, utilizatorNume, moment));
+    }
+
+    /// <summary>
+    /// Nota importată fără necesar primește necesarul de materiale din care provine (D-45), de obicei importat ulterior.
+    /// Nota e blocată: legătura se înregistrează ca o corectură (istoricul notei).
+    /// </summary>
+    public Rezultat<CorectieNotaComanda> LeagaDeNecesar(NecesarMateriale necesar, Guid utilizatorId, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (Stare != StareNotaComanda.Emisa || Sursa != SursaDocument.Import)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Doar notele de comandă importate se leagă ulterior de un necesar."));
+        if (NecesarId is not null)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare($"Nota {NumarAfisat} are deja necesarul ei."));
+        if (necesar.ProiectId != ProiectId)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare($"Necesarul {necesar.NumarAfisat} e pe proiectul {necesar.ProiectCod}, nota pe {ProiectCod}."));
+        if (necesar.Stare == StareNecesarMateriale.Respinsa)
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare($"Necesarul {necesar.NumarAfisat} a fost respins."));
+        if (utilizatorId == Guid.Empty || string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat<CorectieNotaComanda>(Eroare.Validare("Utilizatorul este obligatoriu."));
+
+        var instantaneu = JsonSerializer.Serialize(InstantaneuNotaComanda.Din(this));
+        NecesarId = necesar.Id;
+        return Rezultat.Ok(CorectieNotaComanda.Creeaza(Id, TipCorectieNotaComanda.NecesarLegat, $"Legată de necesarul {necesar.NumarAfisat}.",
+            instantaneu, instantaneu, $"Necesar: — → {necesar.NumarAfisat}", utilizatorId, utilizatorNume, moment));
     }
 
     private static List<string> Valideaza(int an, int numar, DateNotaComanda date, Guid utilizatorId, string utilizatorNume)

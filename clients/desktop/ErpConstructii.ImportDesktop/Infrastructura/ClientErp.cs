@@ -97,6 +97,14 @@ public sealed class ClientErp : IDisposable
     public Task<InterpretareBonConsum> InterpreteazaBonAsync(byte[] fisier, string nume, int zona, CancellationToken ct) =>
         TrimiteAsync<InterpretareBonConsum>(() => CuFisier($"/api/stocuri/bonuri-consum/import/interpretare?zona={zona}", fisier, nume, null), ct);
 
+    /// <summary>Șantierele active ale proiectului: cine poate cere materialele (necesarul se emite pe un șantier al proiectului).</summary>
+    public async Task<List<LocSolicitant>> LocuriSolicitantAsync(Guid proiectId, CancellationToken ct)
+    {
+        var santiere = await GetAsync<List<Santier>>($"/api/proiecte/{proiectId}/santiere", ct);
+        return [.. santiere.Where(s => s.Activ).Select(s => new LocSolicitant(s.Id, true, s.Denumire, s.Adresa))];
+    }
+
+
     /// <summary>Materialele din stocul șantierului proiectului, cu propunerea pentru fiecare linie a bonului.</summary>
     public Task<PotrivireBon> PotrivesteBonAsync(Guid proiectId, IEnumerable<(string Denumire, string? Um)> linii, CancellationToken ct) =>
         TrimiteAsync<PotrivireBon>(() => CuJson($"/api/stocuri/proiecte/{proiectId}/bonuri-consum/import/potrivire",

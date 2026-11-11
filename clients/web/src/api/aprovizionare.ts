@@ -32,6 +32,8 @@ export interface NecesarMateriale {
   /** D-38: cine cere materialele (exact unul la necesarele noi; amândouă null la cele vechi, doar textul). */
   santierId: string | null
   compartimentId: string | null
+  /** Document din urmă (D-45): importat din arhivă, aprobat pe hârtie. */
+  dinUrma?: boolean
 }
 
 export interface LinieNecesarMaterialeCerere {
@@ -58,8 +60,9 @@ export const cheiAprovizionare = {
   necesareMateriale: ['aprovizionare', 'necesare-materiale'] as const,
 }
 
-export const useNecesareMateriale = (filtre: FiltreNecesareMateriale) =>
+export const useNecesareMateriale = (filtre: FiltreNecesareMateriale, activ = true) =>
   useQuery({
+    enabled: activ,
     queryKey: [...cheiAprovizionare.necesareMateriale, filtre] as const,
     queryFn: () => {
       const parametri = new URLSearchParams()
@@ -162,6 +165,10 @@ export interface ConfirmaImportNecesar {
   santierId: string | null
   compartimentId: string | null
   linii: LinieNecesarMaterialeCerere[]
+  /** D-45: necesar vechi din arhivă: intră aprobat, fără nota „de acceptat”. */
+  dinUrma?: boolean
+  /** D-45 (doar cu `dinUrma`): notele de comandă importate deja, care se leagă de acest necesar. */
+  noteComandaIds?: string[]
 }
 
 /** Citește documentul (OCR pentru scanări) și propune datele; nu salvează nimic. */
@@ -222,6 +229,10 @@ export interface NotaComanda {
   motivRespingere: string | null
   notaSursaId: string | null
   necesarNumar: string | null
+  /** Câte modificări are nota emisă (D-44). */
+  corectii?: number
+  /** Document din urmă (D-45): importată din arhivă, poate lipsi necesarul. */
+  dinUrma?: boolean
 }
 
 /** Condițiile bifate pe formularul GC 007; null = nebifat. */
@@ -269,8 +280,9 @@ export const useEmiteNotaComanda = () => {
   })
 }
 
-export const useNoteComanda = (filtre: FiltreNoteComanda) =>
+export const useNoteComanda = (filtre: FiltreNoteComanda, activ = true) =>
   useQuery({
+    enabled: activ,
     queryKey: ['aprovizionare', 'note-comanda', filtre] as const,
     queryFn: () => {
       const p = new URLSearchParams()
@@ -307,6 +319,10 @@ export interface ConfirmaNotaComanda {
   furnizorTelefon: string | null
   linii: LinieNotaComanda[]
   observatii: string | null
+  /** Necesarul din care provine comanda (opțional). */
+  necesarId?: string | null
+  /** D-45: comandă veche din arhivă (poate lipsi necesarul). */
+  dinUrma?: boolean
 }
 
 /** Citește nota de comandă (OCR pentru scanări) și propune datele; nu salvează nimic. */
@@ -372,3 +388,98 @@ export const useComandaLaFurnizor = () => {
     onSuccess: () => invalideazaFlux(qc),
   })
 }
+
+// ---------------------------------------------------------------- modificarea și ștergerea notelor emise (D-44)
+
+export interface ModificaNotaComanda {
+  numarExtern: string | null
+  data: string
+  lucrare: string | null
+  furnizorDenumire: string
+  furnizorCui: string | null
+  furnizorAdresa: string | null
+  furnizorTelefon: string | null
+  furnizorEmail: string | null
+  conditii: ConditiiComanda
+  linii: LinieNotaComanda[]
+  observatii: string | null
+  motiv: string
+}
+
+export interface CorectieNotaComanda {
+  id: string
+  tip: 'Modificare' | 'ComandaAnulata' | 'NecesarLegat'
+  motiv: string
+  rezumat: string
+  corectatDe: string
+  corectatLa: string
+}
+
+export interface StergereNotaComanda {
+  id: string
+  notaComandaId: string
+  numar: string
+  numarExtern: string | null
+  data: string
+  proiectId: string
+  proiectCod: string
+  furnizorDenumire: string
+  motiv: string
+  efect: string | null
+  stearsaDe: string
+  stearsaLa: string
+}
+
+export const useModificaNotaComanda = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, date }: { proiectId: string; id: string; date: ModificaNotaComanda }) =>
+      api.put<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}`, date),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
+/** Șterge nota emisă; cea comandată dintr-o notă acceptată revine la achiziții (`rezultat` = „RevenitaLaAchizitii”). */
+export const useStergeNotaComanda = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, motiv }: { proiectId: string; id: string; motiv: string }) =>
+      api.delete<{ rezultat: 'Stearsa' | 'RevenitaLaAchizitii'; mesaj: string }>(
+        `/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}?motiv=${encodeURIComponent(motiv)}`),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
+/** Leagă nota importată fără necesar de necesarul ei (D-45); apare în istoricul notei. */
+export const useLeagaNotaDeNecesar = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, necesarId }: { proiectId: string; id: string; necesarId: string }) =>
+      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}/necesar`, { necesarId }),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
+/** Marchează nota importată ca document din urmă (fără necesar) sau scoate marcajul (D-45). */
+export const useNotaDinUrma = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, dinUrma }: { proiectId: string; id: string; dinUrma: boolean }) =>
+      api.post<NotaComanda>(`/api/aprovizionare/proiecte/${proiectId}/note-comanda/${id}/din-urma`, { dinUrma }),
+    onSuccess: () => invalideazaFlux(qc),
+  })
+}
+
+export const useIstoricNotaComanda = (nota?: { proiectId: string; id: string }) =>
+  useQuery({
+    queryKey: ['aprovizionare', 'note-comanda', 'istoric', nota?.id],
+    queryFn: () => api.get<CorectieNotaComanda[]>(`/api/aprovizionare/proiecte/${nota!.proiectId}/note-comanda/${nota!.id}/istoric`),
+    enabled: !!nota,
+  })
+
+export const useNoteComandaSterse = (activ: boolean) =>
+  useQuery({
+    queryKey: ['aprovizionare', 'note-comanda', 'sterse'],
+    queryFn: () => api.get<StergereNotaComanda[]>('/api/aprovizionare/note-comanda/sterse'),
+    enabled: activ,
+  })

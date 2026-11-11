@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useNoteComanda } from '../../api/aprovizionare'
 import type { LinieNotaComanda, NotaComanda } from '../../api/aprovizionare'
 import { useProiecte } from '../../api/interogari'
-import { formatData } from '../../util/format'
+import { etichetaProiect, formatData } from '../../util/format'
 import { NotaComandaNoua } from './NotaComandaNoua'
 
 const cantitate = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigits: 4 })
@@ -33,7 +33,7 @@ export function NecesarAchizitie({ poateCrea }: { poateCrea: boolean }) {
         description="Alegi furnizorul și emiți comanda (Word GC 007 / PDF). Poți comanda la un furnizor doar o parte din materiale: restul rămâne aici, pentru alt furnizor." />
       <Space wrap>
         <Select allowClear placeholder="Toate proiectele" style={{ width: 260 }} showSearch={{ optionFilterProp: 'label' }} value={proiectId} onChange={setProiectId}
-          options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+          options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
         <Input.Search allowClear placeholder="Material sau număr (NC / NM)" style={{ width: 260 }} onSearch={setCauta} onChange={(e) => !e.target.value && setCauta('')} />
       </Space>
       {note.error && <Alert type="error" showIcon title={(note.error as Error).message} />}

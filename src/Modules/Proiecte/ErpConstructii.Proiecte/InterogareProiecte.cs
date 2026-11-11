@@ -1,4 +1,4 @@
-namespace ErpConstructii.Proiecte;
+﻿namespace ErpConstructii.Proiecte;
 
 /// <summary>Informațiile de proiect necesare documentelor din alte module.</summary>
 /// <param name="Arhivat">Proiectul arhivat (D-39) nu mai primește documente noi: verifică <see cref="MesajArhivat"/>.</param>
@@ -9,6 +9,19 @@ public sealed record DateProiectPentruDocument(Guid Id, string Cod, string Denum
 
 /// <summary>Cine cere materialele (D-38): un șantier al proiectului sau un compartiment al firmei.</summary>
 public sealed record LocSolicitant(Guid Id, bool EsteSantier, string Denumire, bool Activ);
+
+/// <summary>
+/// Documentele altor module emise pe un șantier (ex. necesarele de materiale, Aprovizionare). La ștergerea șantierului, Proiecte
+/// le numără și le mută pe alt șantier al proiectului, fără să cunoască modulele.
+/// </summary>
+public interface IUtilizariSantier
+{
+    /// <summary>Câte documente sunt emise pe șantier.</summary>
+    Task<int> NumaraAsync(Guid santierId, CancellationToken ct = default);
+
+    /// <summary>Mută documentele de pe <paramref name="santierId"/> pe șantierul <paramref name="tinta"/> (același proiect).</summary>
+    Task MutaAsync(Guid santierId, LocSolicitant tinta, CancellationToken ct = default);
+}
 
 /// <summary>Contract public pentru citirea proiectelor fără dependență de infrastructura Proiecte.</summary>
 public interface IInterogareProiecte

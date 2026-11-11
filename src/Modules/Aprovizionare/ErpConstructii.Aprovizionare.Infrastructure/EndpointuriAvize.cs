@@ -19,8 +19,8 @@ public sealed record LinieAvizDto(string Denumire, string UnitateMasura, decimal
 /// <param name="Receptii">Câte NIR-uri active are; <paramref name="Facturat"/> = recepțiile au primit factura (prețurile ei).</param>
 public sealed record AvizDto(
     Guid Id, string Numar, string NumarExtern, DateOnly Data, Guid ProiectId, string ProiectCod, string? Lucrare, Guid? FurnizorId, string FurnizorDenumire,
-    string? FurnizorCui, IReadOnlyList<LinieAvizDto> Linii, string? Observatii, Guid NotaComandaId, string NotaComandaNumar, bool NotaComandaGenerata,
-    string InregistratDe, DateTimeOffset InregistratLa, int Receptii = 0, bool Facturat = false, string? FacturaNumar = null);
+    string? FurnizorCui, IReadOnlyList<LinieAvizDto> Linii, string? Observatii, Guid? NotaComandaId, string? NotaComandaNumar, bool NotaComandaGenerata,
+    string InregistratDe, DateTimeOffset InregistratLa, int Receptii = 0, bool Facturat = false, string? FacturaNumar = null, bool DinUrma = false);
 
 public sealed record LinieAvizCititaDto(int Rand, CampTextDto Denumire, CampTextDto UnitateMasura, CampNumarDto Cantitate);
 
@@ -45,7 +45,8 @@ public sealed record InterpretareAvizDto(
     string? AvizExistent,
     IReadOnlyList<int> Pagini);
 
-/// <param name="NotaComandaId">Nota de comandă (emisă) căreia îi aparține marfa; lipsă = se generează una din aviz.</param>
+/// <param name="NotaComandaId">Nota de comandă (emisă) căreia îi aparține marfa; lipsă = se generează una din aviz (la cele din urmă, nu).</param>
+/// <param name="DinUrma">Document din urmă (D-45): importat din arhivă; fără notă rămâne fără (factura îl găsește după furnizor și proiect).</param>
 public sealed record ConfirmaAvizCerere(
     string NumarExtern,
     DateOnly Data,
@@ -54,7 +55,8 @@ public sealed record ConfirmaAvizCerere(
     string? FurnizorCui,
     IReadOnlyList<LinieAvizDto> Linii,
     string? Observatii,
-    Guid? NotaComandaId);
+    Guid? NotaComandaId,
+    bool DinUrma = false);
 
 /// <summary>
 /// Avizele de însoțire a mărfii (D-40): import din scanare / PDF / Word (interpretare → verificare → aviz AV/AAAA/NNNN cu originalul
@@ -116,7 +118,7 @@ internal static class EndpointuriAvize
         if (!string.IsNullOrWhiteSpace(cauta))
         {
             var t = $"%{cauta.Trim()}%";
-            q = q.Where(a => EF.Functions.ILike(a.NumarExtern, t) || EF.Functions.ILike(a.FurnizorDenumire, t) || EF.Functions.ILike(a.NotaComandaNumar, t));
+            q = q.Where(a => EF.Functions.ILike(a.NumarExtern, t) || EF.Functions.ILike(a.FurnizorDenumire, t) || (a.NotaComandaNumar != null && EF.Functions.ILike(a.NotaComandaNumar, t)));
         }
 
         var avize = await q.OrderByDescending(a => a.Data).ThenByDescending(a => a.Numar).Take(2000).ToListAsync(ct);
@@ -153,7 +155,8 @@ internal static class EndpointuriAvize
             probleme.Add(new ProblemaImport(Severitate.Informare, "comandă",
                 $"Avizul pomenește comanda „{refc}”, dar nu găsesc o notă de comandă emisă cu acest număr la acest furnizor; alege-o sau se generează una din aviz."));
 
-        var existent = await AvizCuAcelasiOriginalAsync(db, DocumentOriginal.Amprenta(sursa!.Continut), ct);
+        var existent = await AvizCuAcelasiOriginalAsync(db, DocumentOriginal.Amprenta(sursa!.Continut), ct)
+            ?? await AvizDublatAsync(db, aviz.NumarExtern.Valoare, furnizor?.Id, aviz.FurnizorDenumire.Valoare, ct);
         return Results.Ok(new InterpretareAvizDto(
             sursa.NumeFisier, aviz.DinOcr, Text(aviz.NumarExtern),
             new CampDataDto(aviz.Data.Certitudine == Certitudine.Lipsa ? null : aviz.Data.Valoare, aviz.Data.Certitudine.ToString(), aviz.Data.TextSursa),
@@ -228,13 +231,17 @@ internal static class EndpointuriAvize
         }
 
         dateAviz = dateAviz with { FurnizorId = furnizor.Id, FurnizorDenumire = furnizor.Denumire, FurnizorCui = furnizor.Cui ?? cui };
+
+        // Același aviz dintr-un alt fișier (altă scanare): același număr de la același furnizor.
+        if (await AvizDublatAsync(db, cerere.NumarExtern, furnizor.Id, furnizor.Denumire, ct) is { } dublat)
+            return Results.Conflict(new { mesaj = $"Avizul nr. {cerere.NumarExtern?.Trim()} de la {furnizor.Denumire} a fost deja importat: {dublat}." });
         var numarExtern = dateAviz.NumarExtern.Trim();
         if (await db.Avize.AsNoTracking().FirstOrDefaultAsync(a => a.FurnizorId == furnizor.Id && a.NumarExtern == numarExtern, ct) is { } dublura)
             return Results.Conflict(new { mesaj = $"Avizul {numarExtern} de la {furnizor.Denumire} e deja înregistrat ({dublura.NumarAfisat})." });
 
         var azi = ceas.Azi;
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
-        NotaComanda nota;
+        NotaComanda? nota = null;
         var generata = false;
         if (cerere.NotaComandaId is { } notaId)
         {
@@ -247,11 +254,11 @@ internal static class EndpointuriAvize
                 return Results.Conflict(new { mesaj = $"Nota de comandă {existenta.NumarAfisat} e pe proiectul {existenta.ProiectCod}; avizul se înregistrează pe același proiect." });
             nota = existenta;
         }
-        else
+        else if (!cerere.DinUrma)
         {
             // Marfa a venit fără comandă în sistem: nota de comandă se generează din aviz, deja emisă (furnizorul a livrat).
             await ModulAprovizionare.BlocheazaSecventaAsync(db, tranzactie, firmaId, azi.Year, ct, FluxNotaComanda.SecventaComenzi);
-            var numarNota = (await db.NoteComanda.Where(c => c.An == azi.Year).MaxAsync(c => (int?)c.Numar, ct) ?? 0) + 1;
+            var numarNota = await FluxNotaComanda.UrmatorulNumarAsync(db, azi.Year, ct);
             var rn = NotaComanda.Emite(azi.Year, numarNota,
                 new DateNotaComanda(null, dateAviz.Data, proiect.Id, proiect.Cod, dateAviz.Lucrare, furnizor.Id, furnizor.Denumire, dateAviz.FurnizorCui,
                     AvizInsotire.LiniiNota(dateAviz), $"Generată din avizul {numarExtern} (marfă livrată fără comandă în sistem)"),
@@ -266,7 +273,7 @@ internal static class EndpointuriAvize
         await ModulAprovizionare.BlocheazaSecventaAsync(db, tranzactie, firmaId, azi.Year, ct, SecventaAvize);
         var numar = (await db.Avize.Where(a => a.An == azi.Year).MaxAsync(a => (int?)a.Numar, ct) ?? 0) + 1;
         var original = new DocumentOriginal(sursa.NumeFisier, ImportNecesarMateriale.TipContinut(sursa.Extensie), sursa.Continut);
-        var r = AvizInsotire.Importa(azi.Year, numar, dateAviz, nota.Id, nota.NumarAfisat, generata, original.Id, uid, utilizator.Nume);
+        var r = AvizInsotire.Importa(azi.Year, numar, dateAviz, nota?.Id, nota?.NumarAfisat, generata, original.Id, uid, utilizator.Nume, cerere.DinUrma);
         if (r.Esec)
             return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
 
@@ -298,9 +305,9 @@ internal static class EndpointuriAvize
         if (await db.DocumenteOriginale.FirstOrDefaultAsync(d => d.Id == aviz.DocumentOriginalId, ct) is { } original)
             db.DocumenteOriginale.Remove(original);
         // Nota generată din aviz pleacă odată cu el, dacă nu o mai folosește nimic (alt aviz, o factură).
-        if (aviz.NotaComandaGenerata && !await db.Avize.AnyAsync(a => a.NotaComandaId == aviz.NotaComandaId && a.Id != aviz.Id, ct)
-            && (facturi.FirstOrDefault() is not { } f || await f.FacturiAsync(aviz.NotaComandaId, ct) == 0)
-            && await db.NoteComanda.FirstOrDefaultAsync(n => n.Id == aviz.NotaComandaId, ct) is { } nota)
+        if (aviz.NotaComandaGenerata && aviz.NotaComandaId is { } notaAviz && !await db.Avize.AnyAsync(a => a.NotaComandaId == notaAviz && a.Id != aviz.Id, ct)
+            && (facturi.FirstOrDefault() is not { } f || await f.FacturiAsync(notaAviz, ct) == 0)
+            && await db.NoteComanda.FirstOrDefaultAsync(n => n.Id == notaAviz, ct) is { } nota)
         {
             db.NoteComanda.Remove(nota);
         }
@@ -324,7 +331,22 @@ internal static class EndpointuriAvize
             ((furnizorId is not null && n.FurnizorId == furnizorId) || (cheieFurnizor is not null && DenumireFirma.Cheie(n.FurnizorDenumire) == cheieFurnizor)));
     }
 
+    /// <summary>Avizul importat deja cu același număr de la același furnizor (din orice fișier).</summary>
+    private static async Task<string?> AvizDublatAsync(AprovizionareDbContext db, string? numarExtern, Guid? furnizorId, string? furnizorDenumire, CancellationToken ct)
+    {
+        var cheieFurnizor = string.IsNullOrWhiteSpace(furnizorDenumire) ? null : DenumireFirma.Cheie(furnizorDenumire);
+        if (ClasificarePagini.CheieNumar(numarExtern) is null || (furnizorId is null && cheieFurnizor is null))
+            return null;
+
+        var existente = await db.Avize.AsNoTracking()
+            .Select(a => new { a.An, a.Numar, a.NumarExtern, a.Data, a.FurnizorId, a.FurnizorDenumire })
+            .ToListAsync(ct);
+        return DocumentDublat.DupaNumarSiFurnizor(numarExtern, furnizorId, cheieFurnizor, existente.Select(a =>
+            new DocumentImportat($"avizul AV/{a.An}/{a.Numar:D4} din {a.Data:dd.MM.yyyy}", a.NumarExtern, a.Data, a.FurnizorId, DenumireFirma.Cheie(a.FurnizorDenumire))))?.Descriere;
+    }
+
     private static async Task<string?> AvizCuAcelasiOriginalAsync(AprovizionareDbContext db, string hash, CancellationToken ct)
+
     {
         var documentId = await db.DocumenteOriginale.AsNoTracking().Where(d => d.HashSha256 == hash).Select(d => (Guid?)d.Id).FirstOrDefaultAsync(ct);
         if (documentId is null)
@@ -337,7 +359,7 @@ internal static class EndpointuriAvize
         a.Id, a.NumarAfisat, a.NumarExtern, a.Data, a.ProiectId, a.ProiectCod, a.Lucrare, a.FurnizorId, a.FurnizorDenumire, a.FurnizorCui,
         a.Linii.Select(l => new LinieAvizDto(l.Denumire, l.UnitateMasura, l.Cantitate)).ToList(), a.Observatii,
         a.NotaComandaId, a.NotaComandaNumar, a.NotaComandaGenerata, a.InregistratDeNume, a.CreatLa,
-        stare?.Receptii ?? 0, stare?.Facturat ?? false, stare?.FacturaNumar);
+        stare?.Receptii ?? 0, stare?.Facturat ?? false, stare?.FacturaNumar, a.DinUrma);
 
     private static CampTextDto Text(CampCitit<string> c) => new(c.Valoare, c.Certitudine.ToString(), c.TextSursa);
 }

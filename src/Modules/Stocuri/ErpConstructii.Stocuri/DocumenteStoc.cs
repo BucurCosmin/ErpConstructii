@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Stocuri;
@@ -374,6 +374,9 @@ public enum TipMiscare
 
     /// <summary>Corectura unui NIR (D-35): diferența de cantitate / valoare față de recepția inițială, pe același NIR (DocumentId = NIR-ul).</summary>
     CorectieNir,
+
+    /// <summary>Stocul preluat din programul de gestiune anterior (D-42), DocumentId = <see cref="SoldInitialStoc"/>.</summary>
+    SoldInitial,
 }
 
 /// <param name="ArticolDevizCheie">Cheia stabilă a articolului de deviz pe care se consumă (D-05); null = cheltuieli generale de șantier.</param>
@@ -406,11 +409,15 @@ public sealed class BonConsum : EntitateFirma, IDocumentCuStare
     public string EmisDeNume { get; private set; } = string.Empty;
     public bool EsteBlocat => true;
 
+    /// <summary>Numărul de pe bonul de hârtie (bonurile importate), lângă numărul de sistem BC/AAAA/NNNN.</summary>
+    public string? NumarExtern { get; private set; }
+
     public static Rezultat<BonConsum> Emite(
         int an, int numar, DateOnly data, Gestiune santier, string proiectCod, IReadOnlyList<LinieConsum> linii, string? observatii,
-        Guid utilizatorId, string utilizatorNume)
+        Guid utilizatorId, string utilizatorNume, string? numarExtern = null)
     {
         var probleme = new List<string>();
+        if (numarExtern?.Trim().Length > 50) probleme.Add("Numărul de pe bonul de hârtie nu poate depăși 50 de caractere.");
         if (an < 2000 || numar < 1) probleme.Add("Numărul bonului de consum nu este valid.");
         if (santier.Tip != TipGestiune.Santier || santier.ProiectId is null) probleme.Add("Consumul se face din gestiunea de șantier a unui proiect.");
         if (linii.Count == 0) probleme.Add("Bonul de consum trebuie să conțină cel puțin un material.");
@@ -434,7 +441,20 @@ public sealed class BonConsum : EntitateFirma, IDocumentCuStare
             Observatii = string.IsNullOrWhiteSpace(observatii) ? null : observatii.Trim(),
             EmisDeId = utilizatorId,
             EmisDeNume = utilizatorNume.Trim(),
+            NumarExtern = string.IsNullOrWhiteSpace(numarExtern) ? null : numarExtern.Trim(),
         });
+    }
+
+    /// <summary>
+    /// Renumerotarea numărului de pe hârtie (bonul are deja numărul altui bon din același an sau nu avea număr).
+    /// Numărul de sistem și mișcările de stoc rămân; istoricul stă în <see cref="RenumerotareDocument"/>.
+    /// </summary>
+    public Rezultat Renumeroteaza(RenumerotareDocument renumerotare)
+    {
+        if (renumerotare.DocumentId != Id)
+            return Rezultat.Esuat(Eroare.Validare("Renumerotarea este pentru alt document."));
+        NumarExtern = renumerotare.NumarNou;
+        return Rezultat.Ok();
     }
 }
 

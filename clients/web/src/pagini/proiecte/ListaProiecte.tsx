@@ -51,7 +51,7 @@ export function ListaProiecte() {
     <>
       <AntetPagina
         titlu="Proiecte"
-        subtitlu="Șantierele firmei: fiecare cost și venit se leagă de un proiect."
+        subtitlu="Lucrările și sediile firmei: fiecare cost și venit se leagă de un proiect (cheltuielile de sediu, de sediul lor)."
         cale={[{ titlu: 'Acasă', la: '/' }, { titlu: 'Proiecte' }]}
         actiuni={
           <>
@@ -107,8 +107,14 @@ export function ListaProiecte() {
               defaultSortOrder: 'descend',
               render: (v) => <Typography.Text strong>{v}</Typography.Text>,
             },
-            { title: 'Denumire', dataIndex: 'denumire', ellipsis: true, sorter: (a, b) => a.denumire.localeCompare(b.denumire) },
-            { title: 'Beneficiar', dataIndex: 'beneficiar', ellipsis: true, sorter: (a, b) => a.beneficiar.localeCompare(b.beneficiar) },
+            {
+              title: 'Denumire', dataIndex: 'denumire', ellipsis: true, sorter: (a, b) => a.denumire.localeCompare(b.denumire),
+              render: (v: string, p) => (p.tip === 'Sediu' ? <>{v} <Tag color="purple">sediu</Tag></> : v),
+            },
+            {
+              title: 'Beneficiar', dataIndex: 'beneficiar', ellipsis: true, sorter: (a, b) => a.beneficiar.localeCompare(b.beneficiar),
+              render: (v: string, p) => (p.tip === 'Sediu' ? <Typography.Text type="secondary">sediul firmei</Typography.Text> : v),
+            },
             { title: 'Amplasament', dataIndex: 'adresaSantier', ellipsis: true, responsive: ['xl'] },
             {
               title: 'Stare',

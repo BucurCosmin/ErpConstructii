@@ -29,7 +29,9 @@ import { useImportaAviz, useInterpreteazaAviz } from '../../api/avize'
 import type { Aviz, InterpretareAviz } from '../../api/avize'
 import { useProiecte } from '../../api/interogari'
 import { NumarRo } from '../../componente/NumarRo'
+import { CampDinUrma } from '../../componente/DocumentDinUrma'
 import { eticheteCertitudine, stareCamp, UNITATI } from './campuriCitite'
+import { etichetaProiect } from '../../util/format'
 
 interface LinieFormular {
   denumire?: string
@@ -49,6 +51,8 @@ interface ValoriFormular {
   furnizorDenumire?: string
   furnizorCui?: string
   notaComanda?: string
+  /** D-45: aviz vechi din arhivă (fără notă: nu se generează una). */
+  dinUrma?: boolean
   linii: LinieFormular[]
 }
 
@@ -59,9 +63,15 @@ const cheieFirma = (s: string | undefined | null) =>
 /**
  * Importul unui aviz de însoțire a mărfii (D-40): marfa a venit înaintea facturii. Sistemul citește avizul (scanare, PDF,
  * Word), propune proiectul și nota de comandă pomenită pe el; la confirmare avizul se leagă de nota aleasă sau de una
- * generată din el, iar marfa apare în Stocuri → Recepții, de recepționat pe aviz.
+ * generată din el, iar marfa apare în Stocuri → Recepții, de recepționat pe aviz. Avizul din urmă (D-45) poate rămâne fără notă.
  */
-export function ImportAviz({ poateCrea, fisierInitial, onImportat }: { poateCrea: boolean; fisierInitial?: File; onImportat?: (descriere: string) => void }) {
+export function ImportAviz({ poateCrea, fisierInitial, onImportat, dinUrma }: {
+  poateCrea: boolean
+  fisierInitial?: File
+  onImportat?: (descriere: string) => void
+  /** Bifa „din urmă” propusă (din centrul de import). */
+  dinUrma?: boolean
+}) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const interpreteaza = useInterpreteazaAviz()
@@ -115,6 +125,7 @@ export function ImportAviz({ poateCrea, fisierInitial, onImportat }: { poateCrea
         furnizorDenumire: r.furnizorGasit?.denumire ?? r.furnizorDenumire.valoare ?? undefined,
         furnizorCui: r.furnizorGasit?.cui ?? r.furnizorCui.valoare ?? undefined,
         notaComanda: r.notaComandaPropusa?.id ?? NOTA_NOUA,
+        dinUrma: !!dinUrma,
         linii: r.linii.length
           ? r.linii.map((l) => ({
               denumire: l.denumire.valoare ?? undefined,
@@ -155,6 +166,7 @@ export function ImportAviz({ poateCrea, fisierInitial, onImportat }: { poateCrea
           linii: v.linii.map((l) => ({ denumire: (l.denumire ?? '').trim(), unitateMasura: (l.unitateMasura ?? '').trim(), cantitate: Number(l.cantitate) })),
           observatii: null,
           notaComandaId: !v.notaComanda || v.notaComanda === NOTA_NOUA ? null : v.notaComanda,
+          dinUrma: !!v.dinUrma,
         },
       })
       setCreat(aviz)
@@ -171,9 +183,12 @@ export function ImportAviz({ poateCrea, fisierInitial, onImportat }: { poateCrea
         status="success"
         title={`Avizul ${creat.numarExtern} a fost înregistrat (${creat.numar})`}
         subTitle={
-          `${creat.furnizorDenumire} · ${creat.linii.length} materiale · nota de comandă ${creat.notaComandaNumar}` +
-          `${creat.notaComandaGenerata ? ' (generată din aviz)' : ''}. Marfa apare în Stocuri → Recepții, de recepționat pe aviz; ` +
-          'factura care vine se leagă de aceeași notă de comandă.'
+          creat.notaComandaNumar
+            ? `${creat.furnizorDenumire} · ${creat.linii.length} materiale · nota de comandă ${creat.notaComandaNumar}` +
+              `${creat.notaComandaGenerata ? ' (generată din aviz)' : ''}. Marfa apare în Stocuri → Recepții, de recepționat pe aviz; ` +
+              'factura care vine se leagă de aceeași notă de comandă.'
+            : `${creat.furnizorDenumire} · ${creat.linii.length} materiale · document din urmă, fără notă de comandă. Marfa apare în Stocuri → Recepții; ` +
+              'factura furnizorului pe același proiect îl găsește la „Leagă de avize”.'
         }
         extra={<Button type="primary" onClick={reseteaza}>Importă alt aviz</Button>}
       />
@@ -309,7 +324,7 @@ export function ImportAviz({ poateCrea, fisierInitial, onImportat }: { poateCrea
                       showSearch={{ optionFilterProp: 'label' }}
                       placeholder="Alege proiectul"
                       loading={proiecte.isLoading}
-                      options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                      options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
                       onChange={() => form.setFieldValue('notaComanda', NOTA_NOUA)}
                     />
                   </Form.Item>
@@ -351,7 +366,12 @@ export function ImportAviz({ poateCrea, fisierInitial, onImportat }: { poateCrea
                   showSearch={{ optionFilterProp: 'label' }}
                   loading={note.isLoading}
                   options={[
-                    { value: NOTA_NOUA, label: 'Generează o notă de comandă din aviz (marfă fără comandă în sistem)' },
+                    {
+                      value: NOTA_NOUA,
+                      label: valori?.dinUrma
+                        ? 'Fără notă de comandă (document din urmă)'
+                        : 'Generează o notă de comandă din aviz (marfă fără comandă în sistem)',
+                    },
                     ...optiuniNote.map((n) => ({
                       value: n.id,
                       label: `${n.numar}${n.numarExtern ? ` (nr. ${n.numarExtern})` : ''} · ${n.furnizorDenumire} · ${dayjs(n.data).format('DD.MM.YYYY')} · ${n.linii.map((l) => l.denumire).join(', ')}`,
@@ -359,6 +379,7 @@ export function ImportAviz({ poateCrea, fisierInitial, onImportat }: { poateCrea
                   ]}
                 />
               </Form.Item>
+              <CampDinUrma explicatie="Aviz vechi, adus din arhivă: fără notă de comandă aleasă, nu se mai generează una; factura lui îl găsește după furnizor și proiect." />
             </Card>
 
             <Card size="small" title="Materiale" style={{ marginBottom: 16 }}>

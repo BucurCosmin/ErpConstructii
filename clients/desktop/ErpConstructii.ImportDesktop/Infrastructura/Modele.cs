@@ -1,4 +1,4 @@
-namespace ErpConstructii.ImportDesktop.Infrastructura;
+﻿namespace ErpConstructii.ImportDesktop.Infrastructura;
 
 // Contractele JSON ale API-ului (aceleași ca în clients/web/src/api). Nume camelCase prin JsonSerializerDefaults.Web.
 
@@ -13,9 +13,10 @@ public sealed record Firma(Guid Id, string Denumire, string? Cui);
 
 public sealed record Profil(Guid Id, string Email, string Nume, Guid? FirmaActiva, List<Firma> Firme);
 
-public sealed record Proiect(Guid Id, string Cod, string Denumire, string Stare)
+/// <param name="Tip">„Lucrare” sau „Sediu” (D-47: sediul firmei, pentru cheltuielile de sediu).</param>
+public sealed record Proiect(Guid Id, string Cod, string Denumire, string Stare, string? Tip = null)
 {
-    public string Eticheta => $"{Cod} — {Denumire}";
+    public string Eticheta => $"{Cod} — {Denumire}{(Tip == "Sediu" ? " (sediu)" : string.Empty)}";
 }
 
 public sealed record ProiectPropus(Guid Id, string Cod, string Denumire, decimal Scor, string Certitudine);
@@ -73,7 +74,8 @@ public sealed record ConfirmaFactura(
     decimal TotalTva,
     decimal TotalDePlata,
     string? Referinta,
-    string? Observatii);
+    string? Observatii,
+    bool DinUrma = false);
 
 public sealed record FacturaInregistrata(Guid Id, string Numar, string FurnizorDenumire, string ProiectCod, decimal TotalDePlata);
 
@@ -101,7 +103,7 @@ public sealed record LinieNotaConfirmata(string Denumire, string UnitateMasura, 
 
 public sealed record ConfirmaNotaComanda(
     string? NumarExtern, DateOnly Data, string? Lucrare, string FurnizorDenumire, string? FurnizorCui, string? FurnizorAdresa,
-    string? FurnizorTelefon, List<LinieNotaConfirmata> Linii, string? Observatii);
+    string? FurnizorTelefon, List<LinieNotaConfirmata> Linii, string? Observatii, bool DinUrma = false);
 
 // ------------------------------------------------------------------ necesare de materiale
 
@@ -121,7 +123,20 @@ public sealed record InterpretareNecesar(
 
 public sealed record LinieNecesarConfirmata(string Denumire, string UnitateMasura, decimal Cantitate, string? Observatii, Guid? ArticolDevizId);
 
-public sealed record ConfirmaNecesar(string? NumarExtern, DateOnly DataDocument, string CompartimentSantier, List<LinieNecesarConfirmata> Linii);
+/// <param name="DinUrma">D-45: document vechi din arhivă (necesarul intră aprobat, fără nota „de acceptat”).</param>
+/// <param name="SantierId">D-38: șantierul proiectului care cere materialele (sau <paramref name="CompartimentId"/>, nu amândouă).</param>
+public sealed record ConfirmaNecesar(string? NumarExtern, DateOnly DataDocument, string CompartimentSantier, List<LinieNecesarConfirmata> Linii, bool DinUrma = false,
+    Guid? SantierId = null, Guid? CompartimentId = null);
+
+/// <summary>Șantierele proiectului (GET /api/proiecte/{id}/santiere).</summary>
+public sealed record Santier(Guid Id, Guid ProiectId, string Denumire, string? Adresa, bool Activ);
+
+/// <summary>Cine cere materialele: un șantier al proiectului ales, dintr-o listă.</summary>
+public sealed record LocSolicitant(Guid Id, bool EsteSantier, string Denumire, string? Adresa)
+{
+    public string Eticheta => string.IsNullOrWhiteSpace(Adresa) ? Denumire : $"{Denumire} · {Adresa}";
+}
+
 
 /// <summary>Răspunsul la confirmarea unei note de comandă / unui necesar: numărul de sistem.</summary>
 public sealed record DocumentInregistrat(Guid Id, string Numar);
@@ -170,4 +185,5 @@ public sealed record DevizReferinta(Guid VersiuneId, string Denumire, string Tip
 
 public sealed record LinieConsumCerere(Guid ArticolId, decimal Cantitate, Guid? ArticolDevizCheie);
 
-public sealed record ConsumCerere(DateOnly Data, List<LinieConsumCerere> Linii, string? Observatii);
+/// <param name="NumarExtern">Numărul de pe bonul de hârtie (D-48); numărul de sistem BC/AAAA/NNNN se dă automat.</param>
+public sealed record ConsumCerere(DateOnly Data, List<LinieConsumCerere> Linii, string? Observatii, string? NumarExtern = null);

@@ -187,6 +187,41 @@ public class InterpretareNecesarScanatTeste
         Rand(cuvinte) with { Y0 = y0, Y1 = y1 };
 
     [Fact]
+    public void Observatiile_pe_mai_multe_randuri_raman_la_materialul_lor()
+    {
+        // Pozițiile din formularul GC-043 tipărit: antetul „Observații” e centrat (X 1793), textul observațiilor începe la
+        // stânga coloanei (X 1575), mai aproape de antetul „Cantitate” (1330–1530) decât de al lui. Materialul stă pe rândul
+        // din mijloc al celulei, cu un rând de observație deasupra și unul dedesubt.
+        var antet = RandY(1251, 1275, ("Denumire", 498, 680, 96), ("material", 741, 880, 96), ("UM", 1172, 1215, 96),
+            ("Cantitate", 1330, 1530, 96), ("Observații", 1793, 2010, 96));
+        var doc = Scanare(
+            antet,
+            RandY(1345, 1365, ("Livrat", 1575, 1670, 99), ("29.10.2026;", 1686, 1890, 99), ("FURNIZOR-A.", 1912, 2140, 99)),
+            RandY(1365, 1385, ("1", 254, 266, 99), ("Sârmă", 350, 470, 99), ("fierar", 483, 580, 99), ("kg", 1184, 1215, 99), ("175", 1395, 1460, 99)),
+            RandY(1389, 1409, ("Com.", 1575, 1660, 99), ("391;", 1678, 1750, 99), ("fact.", 1769, 1840, 99), ("65327/29.07.2026.", 1859, 2140, 99)),
+            RandY(1458, 1478, ("Livrat", 1575, 1670, 99), ("29.10.2026;", 1686, 1890, 99), ("FURNIZOR-B.", 1912, 2060, 99), ("Fact.", 2078, 2160, 99)),
+            RandY(1477, 1497, ("2", 254, 266, 99), ("Saci", 350, 425, 99), ("rafie", 439, 520, 99), ("buc", 1174, 1220, 99), ("3", 1417, 1435, 99)),
+            RandY(1502, 1522, ("23744/15.10.2026.", 1575, 1860, 99)),
+            RandY(1570, 1590, ("Livrat", 1575, 1670, 99), ("29.10.2026;", 1686, 1890, 99), ("FURNIZOR-C.", 1912, 2050, 99), ("Aviz", 2068, 2140, 99)),
+            RandY(1613, 1633, ("3", 254, 266, 99), ("Foarfecă", 350, 510, 99), ("buc", 1174, 1220, 99), ("1", 1417, 1430, 99),
+                ("310008065/21.10.2026", 1575, 1990, 99), ("[număr", 2003, 2130, 99), ("de", 2144, 2180, 99)),
+            RandY(1658, 1678, ("verificat].", 1575, 1740, 99)),
+            RandY(2267, 2287, ("4", 254, 266, 99)), // rând gol al formularului
+            RandY(2893, 2913, ("Compartiment", 204, 470, 99), ("Aprovizionare", 487, 740, 99), ("-", 757, 770, 99), ("depozit", 783, 920, 99)));
+
+        var nota = InterpretorNecesarMateriale.Interpreteaza(doc);
+
+        Assert.DoesNotContain(nota.Probleme, p => p.Mesaj.Contains("Cantitatea", StringComparison.Ordinal));
+        Assert.Equal(
+            [
+                ("Sârmă fierar", "kg", 175m, "Livrat 29.10.2026; FURNIZOR-A. Com. 391; fact. 65327/29.07.2026."),
+                ("Saci rafie", "buc", 3m, "Livrat 29.10.2026; FURNIZOR-B. Fact. 23744/15.10.2026."),
+                ("Foarfecă", "buc", 1m, "Livrat 29.10.2026; FURNIZOR-C. Aviz 310008065/21.10.2026 [număr de verificat]."),
+            ],
+            nota.Linii.Select(l => (l.Denumire.Valoare!, l.UnitateMasura.Valoare!, l.Cantitate.Valoare, l.Observatii.Valoare!)));
+    }
+
+    [Fact]
     public void Valorile_scrise_mai_jos_in_celula_se_unesc_cu_denumirea_iar_randul_urmator_e_material_nou()
     {
         // Înălțimea textului 35 px. „buc 70” e cu 10 px sub denumire (< 2 × 35) → același rând de tabel.
@@ -203,6 +238,57 @@ public class InterpretareNecesarScanatTeste
         Assert.Equal(2, linii.Count);
         Assert.Equal((1, "Plasa expandata", "buc", 70m), (linii[0].Rand, linii[0].Denumire.Valoare, linii[0].UnitateMasura.Valoare, linii[0].Cantitate.Valoare));
         Assert.Equal((2, "Tub vaselina", "buc", 2m), (linii[1].Rand, linii[1].Denumire.Valoare, linii[1].UnitateMasura.Valoare, linii[1].Cantitate.Valoare));
+    }
+
+    // Denumire pe două rânduri, cu numărul, UM și cantitatea centrate pe verticală: ajung pe al doilea rând de text,
+    // iar primul rând are doar începutul denumirii. Înălțimea textului 35 px.
+    private static RandText[] DenumirePeDouaRanduri() =>
+    [
+        AntetTabel with { Y0 = 900, Y1 = 935 },
+        RandY(1000, 1035, ("1", 118, 125, 95), ("Plasa", 152, 190, 94), ("sudata", 193, 260, 93), ("buc", 486, 510, 95), ("70", 566, 582, 97)),
+        RandY(1080, 1115, ("Teava", 152, 200, 95), ("rectangulara", 205, 320, 95)), // primul rând al celulei, fără date
+        RandY(1123, 1158, ("2", 118, 125, 95), ("40x40x2", 152, 250, 95), ("ml", 486, 505, 95), ("120", 560, 590, 96)),
+        RandY(1240, 1275, ("3", 118, 125, 95), ("Tub", 152, 180, 96), ("vaselina", 183, 250, 96), ("buc", 486, 510, 96), ("2", 570, 578, 96)),
+    ];
+
+    [Fact]
+    public void Denumirea_pe_doua_randuri_cu_datele_pe_al_doilea_e_un_singur_material_intre_liniile_tabelului()
+    {
+        // Liniile orizontale ale tabelului: sub antet (970), după fiecare rând fizic (1060, 1190) și jos (1300).
+        LinieOrizontala Linie(int y) => new(1, 100, y, 800, y + 2);
+        var doc = Scanare(DenumirePeDouaRanduri()) with { Linii = [Linie(880), Linie(970), Linie(1060), Linie(1190), Linie(1300)] };
+
+        var linii = InterpretorNecesarMateriale.Interpreteaza(doc).Linii;
+
+        Assert.Equal(
+            [(1, "Plasa sudata", "buc", 70m), (2, "Teava rectangulara 40x40x2", "ml", 120m), (3, "Tub vaselina", "buc", 2m)],
+            linii.Select(l => (l.Rand, l.Denumire.Valoare!, l.UnitateMasura.Valoare!, l.Cantitate.Valoare)));
+    }
+
+    [Fact]
+    public void Fara_linii_randul_doar_cu_denumire_tine_de_randul_cu_date_cel_mai_apropiat()
+    {
+        // „Teava rectangulara” e la 8 px deasupra rândului cu nr. 2 și la 45 px sub materialul 1 → începutul denumirii lui 2.
+        var linii = InterpretorNecesarMateriale.Interpreteaza(Scanare(DenumirePeDouaRanduri())).Linii;
+
+        Assert.Equal(
+            [(1, "Plasa sudata"), (2, "Teava rectangulara 40x40x2"), (3, "Tub vaselina")],
+            linii.Select(l => (l.Rand, l.Denumire.Valoare!)));
+    }
+
+    [Fact]
+    public void Fara_linii_continuarea_denumirii_sub_randul_cu_date_ramane_la_el()
+    {
+        // „rectangulara 40x40x2” e la 8 px sub rândul cu date al materialului 2 și la 82 px deasupra materialului 3.
+        var doc = Scanare(
+            AntetTabel with { Y0 = 900, Y1 = 935 },
+            RandY(1000, 1035, ("2", 118, 125, 95), ("Teava", 152, 200, 95), ("ml", 486, 505, 95), ("120", 560, 590, 96)),
+            RandY(1043, 1078, ("rectangulara", 152, 270, 95), ("40x40x2", 275, 350, 95)),
+            RandY(1160, 1195, ("3", 118, 125, 95), ("Tub", 152, 180, 96), ("vaselina", 183, 250, 96), ("buc", 486, 510, 96), ("2", 570, 578, 96)));
+
+        var linii = InterpretorNecesarMateriale.Interpreteaza(doc).Linii;
+
+        Assert.Equal([(2, "Teava rectangulara 40x40x2"), (3, "Tub vaselina")], linii.Select(l => (l.Rand, l.Denumire.Valoare!)));
     }
 
     [Fact]

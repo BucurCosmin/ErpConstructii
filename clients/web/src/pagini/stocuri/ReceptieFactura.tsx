@@ -2,6 +2,7 @@ import { Alert, App, AutoComplete, Button, Checkbox, DatePicker, Flex, Form, Inp
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { useArticoleStoc, useGestiuni, usePropunereReceptie, useReceptioneaza } from '../../api/stocuri'
+import { etichetaGestiune } from '../../api/stocuri'
 import { formatCantitate, formatLei } from '../../util/format'
 import { PrevizualizareAviz, PrevizualizareFactura } from './PrevizualizareFactura'
 import { NumarRo } from '../../componente/NumarRo'
@@ -185,7 +186,7 @@ export function ReceptieFactura({ facturaId, mod = 'tot', tip = 'Factura', onInc
               />
               <Space size="large" wrap align="end">
                 <Form.Item name="gestiuneId" label="Depozit" rules={[{ required: true }]} style={{ minWidth: 260 }}>
-                  <Select options={depozite.map((g) => ({ value: g.id, label: `${g.cod} — ${g.denumire}` }))} />
+                  <Select options={depozite.map((g) => ({ value: g.id, label: etichetaGestiune(g) }))} />
                 </Form.Item>
                 <Form.Item name="data" label="Data recepției" rules={[{ required: true }]}>
                   <DatePicker format="DD.MM.YYYY" disabledDate={(d) => d.isAfter(dayjs(), 'day') || d.isBefore(dayjs(p.data), 'day')} />

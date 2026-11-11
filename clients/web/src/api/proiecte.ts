@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import { chei } from './interogari'
-import type { Proiect, StareProiect } from './tipuri'
+import type { Proiect, StareProiect, TipProiect } from './tipuri'
 
 /** Un punct de lucru al proiectului (D-38). */
 export interface Santier {
@@ -20,9 +20,10 @@ export interface Compartiment {
 }
 
 export interface ModificaProiect {
+  tip: TipProiect
   cod: string
   denumire: string
-  beneficiar: string
+  beneficiar: string | null
   cuiBeneficiar: string | null
   adresaSantier: string | null
   stare: StareProiect
@@ -58,6 +59,19 @@ export const useSalveazaSantier = () => {
     mutationFn: ({ proiectId, id, date }: { proiectId: string; id?: string; date: { denumire: string; adresa: string | null; activ: boolean } }) =>
       id ? api.put<Santier>(`/api/proiecte/${proiectId}/santiere/${id}`, date) : api.post<Santier>(`/api/proiecte/${proiectId}/santiere`, date),
     onSuccess: (_, v) => qc.invalidateQueries({ queryKey: cheiSantiere(v.proiectId) }),
+  })
+}
+
+/** Șterge un șantier pus din greșeală; cu necesare emise pe el, `mutaPe` = șantierul pe care se mută (altfel 409 cu `documente`). */
+export const useStergeSantier = () => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ proiectId, id, mutaPe }: { proiectId: string; id: string; mutaPe?: string }) =>
+      api.delete<void>(`/api/proiecte/${proiectId}/santiere/${id}${mutaPe ? `?mutaPe=${mutaPe}` : ''}`),
+    onSuccess: (_, v) => {
+      void qc.invalidateQueries({ queryKey: cheiSantiere(v.proiectId) })
+      void qc.invalidateQueries({ queryKey: ['aprovizionare'] })
+    },
   })
 }
 

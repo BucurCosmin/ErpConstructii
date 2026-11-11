@@ -10,6 +10,9 @@ export const formatLei = (v: number) => lei.format(v)
 export const formatLeiCompact = (v: number) => `${leiCompact.format(v)} lei`
 export const formatCantitate = (v: number) => cantitate.format(v)
 export const formatProcent = (v: number) => procent.format(v)
+/** Proiectul în liste și alegeri: „COD — Denumire”, cu „(sediu)” pentru sediile firmei (D-47). */
+export const etichetaProiect = (p: { cod: string; denumire: string; tip?: string }) =>
+  `${p.cod} — ${p.denumire}${p.tip === 'Sediu' ? ' (sediu)' : ''}`
 export const formatData = (v: string | null | undefined) => (v ? dayjs(v).format('DD.MM.YYYY') : '—')
 
 export const stariProiect: Record<StareProiect, { eticheta: string; culoare: string }> = {

@@ -3,6 +3,7 @@ import { Alert, Button, Card, Form, Input, Select, Space, Table, Tag, Typography
 import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
 import { useGestiuni, useTrasabilitate } from '../../api/stocuri'
+import { etichetaGestiune } from '../../api/stocuri'
 import type { FiltreTrasabilitate, LotStoc } from '../../api/stocuri'
 import { LinkFactura } from '../../componente/LinkFactura'
 import { formatCantitate, formatLei } from '../../util/format'
@@ -24,7 +25,7 @@ interface GrupMaterial {
 
 /** Cum a venit marfa (D-40): cu aviz și factură, doar cu factură, cu aviz încă nefacturat, sau altfel (inventar). */
 export const venitCu = (l: LotStoc) =>
-  l.origine !== 'NIR' ? (l.origine === 'Inventar' ? 'plus inventar' : 'transfer')
+  l.origine !== 'NIR' ? (l.origine === 'Inventar' ? 'plus inventar' : l.origine === 'Sold inițial' ? 'sold inițial (program anterior)' : 'transfer')
     : l.avizNumar ? (l.facturaNumar ? 'aviz + factură' : 'aviz, fără factură') : 'factură'
 
 /** Raportul pentru Excel: o linie pe lot, separator „;” și BOM (Excel în română îl deschide direct). */
@@ -97,7 +98,7 @@ export function ProvenientaStoc() {
         </Form.Item>
         <Form.Item name="gestiuneId">
           <Select allowClear placeholder="Toate gestiunile" style={{ width: 260 }} showSearch={{ optionFilterProp: 'label' }}
-            options={gestiuni.data?.map((g) => ({ value: g.id, label: `${g.cod} — ${g.denumire}` }))} />
+            options={gestiuni.data?.map((g) => ({ value: g.id, label: etichetaGestiune(g) }))} />
         </Form.Item>
         <Form.Item name="material">
           <Input allowClear prefix={<SearchOutlined />} placeholder="Material (denumire sau cod)" style={{ width: 240 }} />
@@ -134,7 +135,7 @@ export function ProvenientaStoc() {
                 {
                   title: 'Document', width: 170,
                   render: (_, l) => l.origine === 'NIR' ? l.documentNumar
-                    : <>{l.documentNumar} <Tag color={l.origine === 'Inventar' ? 'purple' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : 'transfer'}</Tag></>,
+                    : <>{l.documentNumar} <Tag color={l.origine === 'Inventar' ? 'purple' : l.origine === 'Sold inițial' ? 'geekblue' : 'default'}>{l.origine === 'Inventar' ? 'plus inventar' : l.origine === 'Sold inițial' ? 'sold inițial' : 'transfer'}</Tag></>,
                 },
                 {
                   title: 'Venit cu', width: 150,

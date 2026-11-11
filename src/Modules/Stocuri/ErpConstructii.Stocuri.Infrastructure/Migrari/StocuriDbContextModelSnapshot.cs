@@ -23,6 +23,83 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ErpConstructii.SharedKernel.RenumerotareDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("DocumentNumar")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("document_numar");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<DateTimeOffset>("La")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("la");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motiv");
+
+                    b.Property<string>("NumarNou")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("numar_nou");
+
+                    b.Property<string>("NumarVechi")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("numar_vechi");
+
+                    b.Property<Guid>("UtilizatorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("utilizator_id");
+
+                    b.Property<string>("UtilizatorNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("utilizator_nume");
+
+                    b.HasKey("Id")
+                        .HasName("pk_renumerotari");
+
+                    b.HasIndex("FirmaId", "DocumentId")
+                        .HasDatabaseName("ix_renumerotari_firma_id_document_id");
+
+                    b.ToTable("renumerotari", "stocuri");
+                });
+
             modelBuilder.Entity("ErpConstructii.Stocuri.AliasArticol", b =>
                 {
                     b.Property<Guid>("Id")
@@ -87,11 +164,21 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                         .HasColumnType("boolean")
                         .HasColumnName("activ");
 
+                    b.Property<string>("Categorie")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("categorie");
+
                     b.Property<string>("Cod")
                         .IsRequired()
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("cod");
+
+                    b.Property<string>("CodExtern")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("cod_extern");
 
                     b.Property<Guid?>("CreatDe")
                         .HasColumnType("uuid")
@@ -131,6 +218,9 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                     b.HasIndex("FirmaId", "Cod")
                         .IsUnique()
                         .HasDatabaseName("ix_articole_firma_id_cod");
+
+                    b.HasIndex("FirmaId", "CodExtern")
+                        .HasDatabaseName("ix_articole_firma_id_cod_extern");
 
                     b.ToTable("articole", "stocuri");
                 });
@@ -192,6 +282,11 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                     b.Property<int>("Numar")
                         .HasColumnType("integer")
                         .HasColumnName("numar");
+
+                    b.Property<string>("NumarExtern")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("numar_extern");
 
                     b.Property<string>("Observatii")
                         .HasMaxLength(1000)
@@ -315,16 +410,21 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                     b.ToTable("corectii_nir", "stocuri");
                 });
 
-            modelBuilder.Entity("ErpConstructii.Stocuri.Gestiune", b =>
+            modelBuilder.Entity("ErpConstructii.Stocuri.Depozit", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<bool>("Activa")
+                    b.Property<bool>("Activ")
                         .HasColumnType("boolean")
-                        .HasColumnName("activa");
+                        .HasColumnName("activ");
+
+                    b.Property<string>("Adresa")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("adresa");
 
                     b.Property<string>("Cod")
                         .IsRequired()
@@ -358,6 +458,72 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
+                    b.HasKey("Id")
+                        .HasName("pk_depozite");
+
+                    b.HasIndex("FirmaId", "Cod")
+                        .IsUnique()
+                        .HasDatabaseName("ix_depozite_firma_id_cod");
+
+                    b.ToTable("depozite", "stocuri");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Stocuri.Gestiune", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Activa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("activa");
+
+                    b.Property<string>("Cod")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("cod");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("Denumire")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("denumire");
+
+                    b.Property<Guid?>("DepozitId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("depozit_id");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid?>("GestionarId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gestionar_id");
+
+                    b.Property<string>("GestionarNume")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("gestionar_nume");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
                     b.Property<Guid?>("ProiectId")
                         .HasColumnType("uuid")
                         .HasColumnName("proiect_id");
@@ -374,6 +540,9 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                     b.HasIndex("FirmaId", "Cod")
                         .IsUnique()
                         .HasDatabaseName("ix_gestiuni_firma_id_cod");
+
+                    b.HasIndex("FirmaId", "DepozitId")
+                        .HasDatabaseName("ix_gestiuni_firma_id_depozit_id");
 
                     b.HasIndex("FirmaId", "ProiectId")
                         .IsUnique()
@@ -690,6 +859,210 @@ namespace ErpConstructii.Stocuri.Infrastructure.Migrari
                         .HasDatabaseName("ix_nir_firma_id_an_numar");
 
                     b.ToTable("nir", "stocuri");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Stocuri.SoldInitialAnulat", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("An")
+                        .HasColumnType("integer")
+                        .HasColumnName("an");
+
+                    b.Property<Guid>("AnulatDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("anulat_de_id");
+
+                    b.Property<string>("AnulatDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("anulat_de_nume");
+
+                    b.Property<DateTimeOffset>("AnulatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anulat_la");
+
+                    b.Property<string>("Categorie")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("categorie");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<DateOnly>("Data")
+                        .HasColumnType("date")
+                        .HasColumnName("data");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<string>("GestiuneDenumire")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("gestiune_denumire");
+
+                    b.Property<Guid>("GestiuneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gestiune_id");
+
+                    b.Property<string>("LiniiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("linii_json");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<int>("Numar")
+                        .HasColumnType("integer")
+                        .HasColumnName("numar");
+
+                    b.Property<string>("NumeFisier")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("nume_fisier");
+
+                    b.Property<Guid>("SoldInitialId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sold_initial_id");
+
+                    b.Property<decimal>("Valoare")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("valoare");
+
+                    b.HasKey("Id")
+                        .HasName("pk_solduri_initiale_anulate");
+
+                    b.HasIndex("FirmaId", "An", "Numar")
+                        .IsUnique()
+                        .HasDatabaseName("ix_solduri_initiale_anulate_firma_id_an_numar");
+
+                    b.ToTable("solduri_initiale_anulate", "stocuri");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Stocuri.SoldInitialStoc", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("An")
+                        .HasColumnType("integer")
+                        .HasColumnName("an");
+
+                    b.Property<string>("Categorie")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("categorie");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<DateOnly>("Data")
+                        .HasColumnType("date")
+                        .HasColumnName("data");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<string>("FisierSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("fisier_sha256");
+
+                    b.Property<string>("GestiuneDenumire")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("gestiune_denumire");
+
+                    b.Property<string>("GestiuneExterna")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("gestiune_externa");
+
+                    b.Property<Guid>("GestiuneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("gestiune_id");
+
+                    b.Property<Guid>("ImportatDeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("importat_de_id");
+
+                    b.Property<string>("ImportatDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("importat_de_nume");
+
+                    b.Property<string>("LiniiJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("linii_json");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<int>("Numar")
+                        .HasColumnType("integer")
+                        .HasColumnName("numar");
+
+                    b.Property<string>("NumeFisier")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("nume_fisier");
+
+                    b.Property<decimal>("Valoare")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("valoare");
+
+                    b.HasKey("Id")
+                        .HasName("pk_solduri_initiale");
+
+                    b.HasIndex("FirmaId", "An", "Numar")
+                        .IsUnique()
+                        .HasDatabaseName("ix_solduri_initiale_firma_id_an_numar");
+
+                    b.HasIndex("FirmaId", "FisierSha256", "GestiuneExterna")
+                        .IsUnique()
+                        .HasDatabaseName("ix_solduri_initiale_firma_id_fisier_sha256_gestiune_externa");
+
+                    b.ToTable("solduri_initiale", "stocuri");
                 });
 
             modelBuilder.Entity("ErpConstructii.Stocuri.SoldStoc", b =>

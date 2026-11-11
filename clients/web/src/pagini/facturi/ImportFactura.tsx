@@ -31,8 +31,9 @@ import type { FacturaPrimita, InterpretareFactura, PaginaDocument, TipPagina } f
 import { ImportNecesarExtern } from '../aprovizionare/ImportNecesarExtern'
 import { ImportNotaComanda } from '../aprovizionare/ImportNotaComanda'
 import { useProiecte } from '../../api/interogari'
-import { formatLei } from '../../util/format'
+import { etichetaProiect, formatLei } from '../../util/format'
 import { NumarRo } from '../../componente/NumarRo'
+import { CampDinUrma } from '../../componente/DocumentDinUrma'
 
 const UNITATI = ['buc', 'kg', 't', 'm', 'ml', 'mp', 'mc', 'l', 'set', 'sac', 'cut', 'rola', 'pac', 'palet', 'ora', 'zi', 'forfetar']
 
@@ -63,6 +64,8 @@ interface ValoriFormular {
   notaComandaId?: string
   /** Contractul cu partenerul, la facturile de servicii (D-41). */
   contractId?: string
+  /** D-45: factură veche din arhivă (nota de comandă / contractul nu sunt obligatorii). */
+  dinUrma?: boolean
   linii: LinieFormular[]
   totalFaraTva?: number | null
   totalTva?: number | null
@@ -87,8 +90,10 @@ const rotunjeste = (v: number) => Math.round(v * 100) / 100
  * Importul unei facturi primite: XML e-Factura / ZIP din SPV (citit exact) sau PDF / scanare (citit automat, verificat).
  * Factura se înregistrează pe un proiect, cu originalul arhivat; furnizorul se adaugă în nomenclator dacă lipsește.
  */
-export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
+export function ImportFactura({ poateCrea, fisierInitial, onImportat, dinUrma }: {
   poateCrea: boolean
+  /** Bifa „din urmă” propusă (din centrul de import). */
+  dinUrma?: boolean
   /** Fișierul dat de centrul de import (un document tăiat dintr-un fișier cu mai multe documente). */
   fisierInitial?: File
   onImportat?: (descriere: string) => void
@@ -161,6 +166,7 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
       if (r.paginiFactura.length > 0 && r.pagini.length > 1) setPagina(r.paginiFactura[0])
       form.setFieldsValue({
         proiectId: r.proiectPropus?.id,
+        dinUrma: !!dinUrma,
         numar: r.numar.valoare ?? undefined,
         dataEmitere: r.dataEmitere.valoare ? dayjs(r.dataEmitere.valoare) : null,
         dataScadenta: r.dataScadenta.valoare ? dayjs(r.dataScadenta.valoare) : null,
@@ -235,6 +241,7 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
           observatii: v.observatii?.trim() || null,
           notaComandaId: v.notaComandaId ?? null,
           contractId: v.contractId ?? null,
+          dinUrma: !!v.dinUrma,
         },
       })
       setCreata(f)
@@ -384,7 +391,7 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                   placeholder="Alege proiectul"
                   disabled={!poateCrea}
                   loading={proiecte.isLoading}
-                  options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                  options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
                   onChange={() => form.setFieldsValue({ notaComandaId: undefined, contractId: undefined })}
                 />
               </Form.Item>
@@ -392,10 +399,11 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                 name="notaComandaId"
                 label="Nota de comandă a achiziției"
                 style={{ marginTop: 12, marginBottom: 0 }}
-                rules={[{ required: cuMateriale, message: 'Factura are materiale de stoc: alege nota de comandă (sau emite-o / importă avizul întâi).' }]}
+                rules={[{ required: cuMateriale && !valori?.dinUrma, message: 'Factura are materiale de stoc: alege nota de comandă (sau emite-o / importă avizul întâi), ori bifează „Document din urmă”.' }]}
                 extra={notaAleasa && notaAleasa.avize > 0
                   ? `Nota are ${notaAleasa.avize} aviz(e): marfa a fost deja livrată; după înregistrare leagă factura de recepțiile pe aviz (Stocuri → Recepții).`
-                  : !cuMateriale ? 'Opțională: factura nu are materiale de stoc.' : undefined}
+                  : !cuMateriale ? 'Opțională: factura nu are materiale de stoc.'
+                  : valori?.dinUrma && !valori?.notaComandaId ? 'Opțională la documentele din urmă; se poate lega ulterior prin corectura facturii.' : undefined}
               >
                 <Select
                   allowClear
@@ -413,13 +421,14 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                 name="contractId"
                 label="Contractul cu partenerul (servicii, subantreprenoriat)"
                 style={{ marginTop: 12, marginBottom: 0 }}
-                rules={[{ required: doarServicii, message: 'Factura e doar de servicii: alege contractul cu partenerul (adaugă-l în Proiect → Contracte dacă lipsește).' }]}
+                rules={[{ required: doarServicii && !valori?.dinUrma, message: 'Factura e doar de servicii: alege contractul cu partenerul (adaugă-l în Proiect → Contracte dacă lipsește), ori bifează „Document din urmă”.' }]}
                 {...(contractAles && totalFactura > contractAles.rest
                   ? { validateStatus: 'warning' as const, help: `Factura (${formatLei(totalFactura)}) depășește restul de facturat din contract (${formatLei(contractAles.rest)} ${contractAles.moneda}): e nevoie de un act adițional.` }
                   : {})}
                 extra={contractAles
                   ? `Rest de facturat: ${formatLei(contractAles.rest)} ${contractAles.moneda} din ${formatLei(contractAles.valoareActualizata)}${contractAles.procentGarantie > 0 ? ` · garanție reținută ${formatLei(Math.round(totalFactura * contractAles.procentGarantie * 100) / 100)} (${(contractAles.procentGarantie * 100).toLocaleString('ro-RO')}%)` : ''}${contractAles.taxareInversa ? ' · taxare inversă' : ''}`
-                  : !doarServicii ? 'Opțional: factura are și materiale de stoc.' : undefined}
+                  : !doarServicii ? 'Opțional: factura are și materiale de stoc.'
+                  : valori?.dinUrma ? 'Opțional la documentele din urmă; se poate lega ulterior prin corectura facturii.' : undefined}
               >
                 <Select
                   allowClear
@@ -433,6 +442,12 @@ export function ImportFactura({ poateCrea, fisierInitial, onImportat }: {
                   }))}
                 />
               </Form.Item>
+              <div style={{ marginTop: 12 }}>
+                <CampDinUrma
+                  disabled={!poateCrea}
+                  explicatie="Factură veche, adusă din arhivă: se înregistrează și fără notă de comandă sau contract; legătura se pune ulterior, prin corectura facturii."
+                />
+              </div>
             </Card>
 
             <Card size="small" title="Furnizor și factură" style={{ marginBottom: 16 }}>

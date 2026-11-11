@@ -1,6 +1,7 @@
-using ErpConstructii.Identitate;
+﻿using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure.Autorizare;
 using ErpConstructii.Proiecte;
+using ErpConstructii.SharedKernel;
 using ErpConstructii.SharedKernel.Import;
 using ErpConstructii.Stocuri.Import;
 using Microsoft.AspNetCore.Builder;
@@ -22,8 +23,9 @@ public sealed record ProiectPropusBonDto(Guid Id, string Cod, string Denumire, d
 public sealed record ProblemaBonDto(string Severitate, string Locatie, string Mesaj);
 
 /// <param name="Zona">Al câtelea bon din fișier (de la 1); <paramref name="NumarBonuri"/> = câte sunt în fișier.</param>
-/// <param name="ObservatiiPropuse">Textul pus la observațiile bonului din aplicație (numărul de pe hârtie, primitorul,
-/// lucrarea); începutul lui identifică bonul deja importat.</param>
+/// <param name="Numar">Numărul de pe hârtie; lipsă pe document = primul număr liber din an, propus (D-48). Se trimite ca
+/// <c>NumarExtern</c> la confirmare.</param>
+/// <param name="ObservatiiPropuse">Textul pus la observațiile bonului din aplicație (primitorul, lucrarea).</param>
 public sealed record InterpretareBonConsumDto(
     string NumeFisier,
     bool DinOcr,
@@ -59,7 +61,7 @@ public sealed record PotrivireBonDto(Guid? GestiuneId, IReadOnlyList<MaterialSan
 /// Importul bonurilor de consum de pe hârtie (formularul GC-087, câte două pe pagină): citirea (InterpretorBonConsum),
 /// apoi, după alegerea proiectului, materialele din stocul șantierului propuse pentru fiecare linie. Confirmarea trece
 /// prin bonul de consum obișnuit (POST /proiecte/{proiectId}/consumuri): consumul se evaluează la CMP-ul din stoc, iar
-/// numărul de pe hârtie rămâne în observații.
+/// numărul de pe hârtie devine numărul extern al bonului.
 /// </summary>
 internal static class EndpointuriImportBonConsum
 {
@@ -83,11 +85,8 @@ internal static class EndpointuriImportBonConsum
             .CerePermisiune(creare);
     }
 
-    /// <summary>Începutul observațiilor bonului importat: identifică bonul de pe hârtie (ziua + numărul).</summary>
-    public static string Prefix(string numar, DateOnly data) => $"Bon de consum nr. {numar} din {data:dd.MM.yyyy} (import)";
-
     private static async Task<IResult> Interpreteaza(
-        IFormFile fisier, int? zona, IEnumerable<IExtractorText> extractori, IInterogareProiecte proiecte, StocuriDbContext db, CancellationToken ct)
+        IFormFile fisier, int? zona, IEnumerable<IExtractorText> extractori, IInterogareProiecte proiecte, StocuriDbContext db, ICeas ceas, CancellationToken ct)
     {
         if (fisier is null || fisier.Length == 0)
             return Results.BadRequest(new { mesaj = "Alege fișierul." });
@@ -116,19 +115,9 @@ internal static class EndpointuriImportBonConsum
         var candidati = (await proiecte.ListaActiveAsync(ct)).Select(p => new ProiectCandidat(p.Id, p.Cod, p.Denumire)).ToList();
         var propunere = PotrivireProiect.Propune(b.Lucrare.Valoare, candidati) ?? PotrivireProiect.Propune(b.Gestiune.Valoare, candidati);
 
-        string? existent = null;
+        var data = b.Data.Certitudine == Certitudine.Lipsa ? (DateOnly?)null : b.Data.Valoare;
+        var existent = await EndpointuriNumereBonuri.BonDublatAsync(db, b.Numar.Valoare, data, ct);
         var observatii = "Bon de consum importat din document";
-        if (b.Numar.Valoare is { Length: > 0 } nr && b.Data.Certitudine != Certitudine.Lipsa)
-        {
-            var prefix = Prefix(nr, b.Data.Valoare);
-            observatii = prefix;
-            var gasit = await db.BonuriConsum.AsNoTracking()
-                .Where(x => x.Observatii != null && x.Observatii.StartsWith(prefix))
-                .Select(x => new { x.An, x.Numar, x.ProiectCod })
-                .FirstOrDefaultAsync(ct);
-            existent = gasit is null ? null : $"BC/{gasit.An}/{gasit.Numar:D4} pe proiectul {gasit.ProiectCod}";
-        }
-
         observatii += string.Concat(
             b.Primitor is { } pr ? $". Primitor: {pr}" : string.Empty,
             b.Lucrare.Valoare is { } lu ? $". Lucrare: {lu}" : string.Empty);
@@ -139,9 +128,31 @@ internal static class EndpointuriImportBonConsum
         if (existent is not null)
             probleme.Insert(0, new ProblemaImport(Severitate.Eroare, "bon", $"Bonul a fost deja importat: {existent}."));
 
+        // D-48: seria de hârtie e pe proiect și an. Fără număr pe bon, se propune primul număr liber din seria proiectului propus;
+        // un număr folosit deja în serie e semnalat. Fără proiect propus, nu se poate propune nimic.
+        var numar = Camp(b.Numar);
+        var an = data?.Year ?? ceas.Azi.Year;
+        if (propunere is not null)
+        {
+            var serie = await EndpointuriNumereBonuri.DocumenteAsync(db, propunere.Proiect.Id, an, ct);
+            if (NumerotareExterna.Valoare(b.Numar.Valoare) is not > 0)
+            {
+                var liber = NumerotareExterna.NumarLiber(serie.Select(d => d.NumarExtern)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                numar = new CampBonDto<string>(liber, Certitudine.Nesigur.ToString(), $"propus: primul număr liber pe {propunere.Proiect.Cod} în {an}");
+                probleme.Insert(0, new ProblemaImport(Severitate.Informare, "numar",
+                    $"Bonul nu are număr; propun nr. {liber}, primul liber pe proiectul {propunere.Proiect.Cod} în {an} (îl poți schimba)."));
+            }
+            else if (existent is null && NumerotareExterna.Folosit(b.Numar.Valoare, propunere.Proiect.Id, an, serie) is { Count: > 0 } folosit)
+            {
+                probleme.Insert(0, new ProblemaImport(Severitate.Avertisment, "numar",
+                    $"Nr. {b.Numar.Valoare} e folosit deja pe proiectul {propunere.Proiect.Cod} în {an} de " +
+                    $"{string.Join(", ", folosit.Select(d => $"{d.NumarSistem} din {d.Data:dd.MM.yyyy}"))}. Poți importa și renumerota apoi din „Verifică numerele”."));
+            }
+        }
+
         return Results.Ok(new InterpretareBonConsumDto(
             sursa.NumeFisier, document.DinOcr, bonuri.Count, index, b.Gol,
-            Camp(b.Numar), Data(b.Data), Camp(b.Lucrare), Camp(b.Gestiune), b.Primitor, b.Gestionar, b.SefCompartiment,
+            numar, Data(b.Data), Camp(b.Lucrare), Camp(b.Gestiune), b.Primitor, b.Gestionar, b.SefCompartiment,
             b.Linii.Select(l => new LinieBonCititaDto(l.Rand, Camp(l.Denumire), l.Cod, Camp(l.UnitateMasura), Numar(l.Cantitate), Numar(l.PretUnitar), Numar(l.Valoare))).ToList(),
             Numar(b.Total),
             propunere is null ? null : new ProiectPropusBonDto(propunere.Proiect.Id, propunere.Proiect.Cod, propunere.Proiect.Denumire, propunere.Scor, propunere.Certitudine.ToString()),

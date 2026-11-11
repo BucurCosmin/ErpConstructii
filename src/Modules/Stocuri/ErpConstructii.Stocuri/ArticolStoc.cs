@@ -18,6 +18,21 @@ public sealed class ArticolStoc : EntitateFirma
     public string UnitateMasura { get; private set; } = string.Empty;
     public bool Activ { get; private set; } = true;
 
+    /// <summary>Codul din programul de gestiune anterior (preluat din balanța de stoc, D-42).</summary>
+    public string? CodExtern { get; private set; }
+
+    /// <summary>Categoria de stoc („Materii prime”, „Materiale consumabile”, „Obiecte de inventar în magazie”).</summary>
+    public string? Categorie { get; private set; }
+
+    /// <summary>Completează codul extern și categoria dacă lipsesc (nu le suprascrie).</summary>
+    public void CompleteazaDinImport(string? codExtern, string? categorie)
+    {
+        if (CodExtern is null && !string.IsNullOrWhiteSpace(codExtern))
+            CodExtern = codExtern.Trim().Length > 30 ? codExtern.Trim()[..30] : codExtern.Trim();
+        if (Categorie is null && !string.IsNullOrWhiteSpace(categorie))
+            Categorie = categorie.Trim().Length > 100 ? categorie.Trim()[..100] : categorie.Trim();
+    }
+
     public static Rezultat<ArticolStoc> Creeaza(string cod, string denumire, string unitateMasura)
     {
         var r = Valideaza(denumire, unitateMasura);

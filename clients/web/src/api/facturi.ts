@@ -51,6 +51,8 @@ export interface FacturaPrimita {
   /** Contractul cu partenerul, la facturile de servicii (D-41). */
   contractId: string | null
   contractNumar: string | null
+  /** Document din urmă (D-45): importată din arhivă, poate lipsi nota / contractul. */
+  dinUrma?: boolean
 }
 
 /** Contractul propus pentru o factură de servicii (D-41); cele cu furnizorul facturii sunt primele. */
@@ -189,6 +191,8 @@ export interface ConfirmaFactura {
   notaComandaId: string | null
   /** Obligatoriu la facturile doar de servicii (D-41); lipsă = singurul contract activ cu furnizorul pe proiect, dacă există. */
   contractId: string | null
+  /** D-45: factură veche din arhivă: nota de comandă / contractul nu sunt obligatorii. */
+  dinUrma?: boolean
 }
 
 export const cheiFacturi = { primite: ['facturi', 'primite'] as const }

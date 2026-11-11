@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -69,6 +69,10 @@ public static class CatalogJurnal
         ["inventare"] = "Inventar",
         ["necesare_materiale"] = "Necesar de materiale",
         ["note_comanda"] = "Notă de comandă",
+        ["corectii_note_comanda"] = "Modificare notă de comandă",
+        ["stergeri_note_comanda"] = "Ștergere notă de comandă",
+        ["depozite"] = "Depozit",
+        ["solduri_initiale"] = "Sold inițial (preluare stoc)",
         ["documente_originale"] = "Document original",
         ["parteneri"] = "Partener",
     };
@@ -151,10 +155,15 @@ public static class CatalogJurnal
             return string.Join("; ", parti);
         }
 
-        if (actiune == "Sters")
-            return "șters";
-
         var campuri = radacina.EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
+        if (actiune == "Sters")
+        {
+            // Ștergerile mai vechi nu au valorile înregistrării; cele noi le au (ce conținea înainte de ștergere).
+            if (campuri.Count == 0)
+                return "șters";
+            parti.Add("șters");
+        }
+
         if (campuri.TryGetValue("Motiv", out var motiv))
         {
             parti.Add($"Motiv: {Text(motiv)}");

@@ -7,6 +7,8 @@ import { useAvize, useStergeAviz } from '../../api/avize'
 import type { Aviz } from '../../api/avize'
 import { api } from '../../api/client'
 import { useProiecte } from '../../api/interogari'
+import { TagDinUrma } from '../../componente/DocumentDinUrma'
+import { etichetaProiect } from '../../util/format'
 
 const cantitate = (v: number) => v.toLocaleString('ro-RO', { maximumFractionDigits: 4 })
 
@@ -54,7 +56,7 @@ export function ListaAvize({ poateCrea, onImport }: { poateCrea: boolean; onImpo
           style={{ width: 280 }}
           value={proiectId}
           onChange={setProiectId}
-          options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+          options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
         />
         <Input.Search allowClear placeholder="Număr aviz, furnizor sau notă de comandă" style={{ width: 320 }} onSearch={(v) => setCauta(v.trim() || undefined)} />
       </Flex>
@@ -89,6 +91,7 @@ export function ListaAvize({ poateCrea, onImport }: { poateCrea: boolean; onImpo
                 <Typography.Text strong>{a.numarExtern}</Typography.Text>
                 <br />
                 <Typography.Text type="secondary">{a.numar}</Typography.Text>
+                {a.dinUrma && <> <TagDinUrma /></>}
               </>
             ),
           },
@@ -101,7 +104,7 @@ export function ListaAvize({ poateCrea, onImport }: { poateCrea: boolean; onImpo
             width: 170,
             render: (_, a) => (
               <>
-                {a.notaComandaNumar}
+                {a.notaComandaNumar ?? <Typography.Text type="secondary">— (din urmă)</Typography.Text>}
                 {a.notaComandaGenerata && (
                   <Tooltip title="Generată din aviz: marfa a venit fără comandă în sistem">
                     <Tag style={{ marginInlineStart: 6 }}>din aviz</Tag>

@@ -1,15 +1,16 @@
-import { App, Button, Col, DatePicker, Drawer, Form, Input, Row, Select, Space } from 'antd'
+import { App, Button, Col, DatePicker, Drawer, Form, Input, Radio, Row, Select, Space } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect } from 'react'
 import { EroareApi } from '../../api/client'
 import { useModificaProiect } from '../../api/proiecte'
-import type { Proiect, StareProiect } from '../../api/tipuri'
+import type { Proiect, StareProiect, TipProiect } from '../../api/tipuri'
 import { stariProiect } from '../../util/format'
 
 interface Valori {
+  tip: TipProiect
   cod: string
   denumire: string
-  beneficiar: string
+  beneficiar?: string
   cuiBeneficiar?: string
   adresaSantier?: string
   stare: StareProiect
@@ -22,11 +23,13 @@ export function EditareProiect({ proiect, deschis, laInchidere }: { proiect?: Pr
   const [form] = Form.useForm<Valori>()
   const modifica = useModificaProiect()
   const { message } = App.useApp()
+  const sediu = (Form.useWatch('tip', form) ?? proiect?.tip) === 'Sediu'
 
   useEffect(() => {
     if (deschis && proiect)
       form.setFieldsValue({
         ...proiect,
+        tip: proiect.tip ?? 'Lucrare',
         cuiBeneficiar: proiect.cuiBeneficiar ?? undefined,
         dataInceput: proiect.dataInceput ? dayjs(proiect.dataInceput) : null,
         termenContractual: proiect.termenContractual ? dayjs(proiect.termenContractual) : null,
@@ -40,7 +43,8 @@ export function EditareProiect({ proiect, deschis, laInchidere }: { proiect?: Pr
       await modifica.mutateAsync({
         id: proiect.id,
         date: {
-          cod: v.cod.trim(), denumire: v.denumire.trim(), beneficiar: v.beneficiar.trim(), cuiBeneficiar: v.cuiBeneficiar?.trim() || null,
+          tip: v.tip, cod: v.cod.trim(), denumire: v.denumire.trim(),
+          beneficiar: sediu ? null : v.beneficiar?.trim() ?? null, cuiBeneficiar: sediu ? null : v.cuiBeneficiar?.trim() || null,
           adresaSantier: v.adresaSantier?.trim() || null, stare: v.stare,
           dataInceput: v.dataInceput?.format('YYYY-MM-DD') ?? null, termenContractual: v.termenContractual?.format('YYYY-MM-DD') ?? null,
         },
@@ -57,6 +61,9 @@ export function EditareProiect({ proiect, deschis, laInchidere }: { proiect?: Pr
     <Drawer title={`Editează proiectul ${proiect?.cod ?? ''}`} open={deschis} onClose={laInchidere} size={600} destroyOnHidden
       extra={<Space><Button onClick={laInchidere}>Renunță</Button><Button type="primary" loading={modifica.isPending} onClick={() => void salveaza()}>Salvează</Button></Space>}>
       <Form form={form} layout="vertical" requiredMark="optional">
+        <Form.Item name="tip" label="Tip" tooltip="Sediul firmei (D-47): centru de cost pentru cheltuielile de sediu, fără beneficiar.">
+          <Radio.Group optionType="button" buttonStyle="solid" options={[{ value: 'Lucrare', label: 'Lucrare' }, { value: 'Sediu', label: 'Sediu al firmei' }]} />
+        </Form.Item>
         <Row gutter={16}>
           <Col span={10}>
             <Form.Item name="cod" label="Cod proiect" rules={[{ required: true, whitespace: true, message: 'Codul este obligatoriu.' }, { max: 40 }]}
@@ -73,7 +80,7 @@ export function EditareProiect({ proiect, deschis, laInchidere }: { proiect?: Pr
         <Form.Item name="denumire" label="Denumire" rules={[{ required: true, whitespace: true, message: 'Denumirea este obligatorie.' }, { max: 300 }]}>
           <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
         </Form.Item>
-        <Row gutter={16}>
+        {!sediu && <Row gutter={16}>
           <Col span={14}>
             <Form.Item name="beneficiar" label="Beneficiar" rules={[{ required: true, whitespace: true, message: 'Beneficiarul este obligatoriu.' }, { max: 300 }]}>
               <Input />
@@ -84,11 +91,11 @@ export function EditareProiect({ proiect, deschis, laInchidere }: { proiect?: Pr
               <Input />
             </Form.Item>
           </Col>
-        </Row>
-        <Form.Item name="adresaSantier" label="Amplasament (adresa proiectului)" rules={[{ max: 500 }]}>
+        </Row>}
+        <Form.Item name="adresaSantier" label={sediu ? 'Adresa sediului' : 'Amplasament (adresa proiectului)'} rules={[{ max: 500 }]}>
           <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
         </Form.Item>
-        <Row gutter={16}>
+        {!sediu && <Row gutter={16}>
           <Col span={12}>
             <Form.Item name="dataInceput" label="Data începerii">
               <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} />
@@ -105,7 +112,7 @@ export function EditareProiect({ proiect, deschis, laInchidere }: { proiect?: Pr
               <DatePicker format="DD.MM.YYYY" style={{ width: '100%' }} />
             </Form.Item>
           </Col>
-        </Row>
+        </Row>}
       </Form>
     </Drawer>
   )

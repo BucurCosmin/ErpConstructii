@@ -26,6 +26,18 @@ function Raspunde([string] $gazda) {
 if (Raspunde "127.0.0.1") { Ok "aplicația răspunde pe https://127.0.0.1:$port" }
 else { Problema "aplicația nu răspunde pe portul $port" "pornește-o: deploy\porneste-productie.ps1; vezi productie\loguri\api.log"; return }
 
+# Ceasul: codurile din aplicația de autentificare (MFA) sunt refuzate dacă ora serverului diferă cu peste ~1 minut de a telefonului.
+$oraInternet = try { [DateTimeOffset]::Parse((Invoke-WebRequest "https://www.google.com" -Method Head -UseBasicParsing -TimeoutSec 10).Headers["Date"]) } catch { $null }
+if ($oraInternet) {
+    $decalaj = [int]([DateTimeOffset]::UtcNow - $oraInternet.ToUniversalTime()).TotalSeconds
+    if ([Math]::Abs($decalaj) -le 30) { Ok "ceasul serverului e sincronizat (diferență $decalaj s)" }
+    else {
+        Problema "ceasul serverului diferă cu $decalaj s de ora reală: codurile MFA din Authenticator vor fi refuzate" `
+            "ca administrator: sc.exe config w32time start= auto; w32tm /config /manualpeerlist:""time.windows.com,0x9 pool.ntp.org,0x9"" /syncfromflags:manual /update; net start w32time; w32tm /resync /force"
+    }
+}
+else { Info "nu am putut afla ora de pe internet (verifică manual: w32tm /query /status)" }
+
 $sanatate = try { & curl.exe -s -k --max-time 6 "https://127.0.0.1:$port/sanatate" | ConvertFrom-Json } catch { $null }
 if ($sanatate.stare -eq "migrari-lipsa") {
     Problema "baza de date nu e la zi (de aici vin erorile „error processing your request”): $($sanatate.migrariLipsa -join '; ')" `

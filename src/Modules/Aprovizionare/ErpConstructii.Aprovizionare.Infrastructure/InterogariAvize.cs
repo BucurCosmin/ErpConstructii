@@ -14,13 +14,13 @@ internal sealed class InterogareAvize(AprovizionareDbContext db) : IInterogareAv
     public async Task<IReadOnlyList<AvizPentruReceptie>> AleNotelorAsync(IReadOnlyCollection<Guid> noteComandaIds, CancellationToken ct = default)
     {
         var ids = noteComandaIds.Distinct().ToList();
-        return ids.Count == 0 ? [] : await PentruReceptieAsync(db.Avize.AsNoTracking().Where(a => ids.Contains(a.NotaComandaId)), ct);
+        return ids.Count == 0 ? [] : await PentruReceptieAsync(db.Avize.AsNoTracking().Where(a => a.NotaComandaId != null && ids.Contains(a.NotaComandaId.Value)), ct);
     }
 
     private async Task<IReadOnlyList<AvizPentruReceptie>> PentruReceptieAsync(IQueryable<AvizInsotire> q, CancellationToken ct)
     {
         var avize = await q.ToListAsync(ct);
-        var noteIds = avize.Select(a => a.NotaComandaId).Distinct().ToList();
+        var noteIds = avize.Where(a => a.NotaComandaId != null).Select(a => a.NotaComandaId!.Value).Distinct().ToList();
         // Prețul din comandă (dacă are) pentru același material: NIR-ul pe aviz intră la el până vine factura.
         var preturi = (await db.NoteComanda.AsNoTracking().Where(n => noteIds.Contains(n.Id)).ToListAsync(ct))
             .ToDictionary(n => n.Id, n => n.Linii.Where(l => l.PretUnitar is > 0)
@@ -28,7 +28,7 @@ internal sealed class InterogareAvize(AprovizionareDbContext db) : IInterogareAv
         return avize.Select(a => new AvizPentruReceptie(
             a.Id, a.NumarAfisat, a.NumarExtern, a.Data, a.FurnizorId, a.FurnizorDenumire, a.ProiectId, a.ProiectCod, a.NotaComandaId, a.NotaComandaNumar,
             a.Linii.Select((l, i) => new LinieAvizPentruReceptie(i, l.Denumire, l.UnitateMasura, l.Cantitate,
-                preturi.GetValueOrDefault(a.NotaComandaId)?.GetValueOrDefault(RaportNoteComanda.CheieMaterial(l.Denumire)))).ToList())).ToList();
+                (a.NotaComandaId is { } nc ? preturi.GetValueOrDefault(nc) : null)?.GetValueOrDefault(RaportNoteComanda.CheieMaterial(l.Denumire)))).ToList())).ToList();
     }
 }
 
@@ -50,7 +50,7 @@ internal sealed class InterogareNoteComanda(AprovizionareDbContext db) : IIntero
     {
         var note = await q.ToListAsync(ct);
         var ids = note.Select(n => n.Id).ToList();
-        var avize = await db.Avize.AsNoTracking().Where(a => ids.Contains(a.NotaComandaId)).GroupBy(a => a.NotaComandaId)
+        var avize = await db.Avize.AsNoTracking().Where(a => a.NotaComandaId != null && ids.Contains(a.NotaComandaId.Value)).GroupBy(a => a.NotaComandaId!.Value)
             .Select(g => new { g.Key, Numar = g.Count() }).ToDictionaryAsync(x => x.Key, x => x.Numar, ct);
         return note.Select(n => new NotaComandaPentruFactura(
             n.Id, n.NumarAfisat, n.NumarExtern, n.Data, n.ProiectId, n.ProiectCod, n.FurnizorId, n.FurnizorDenumire, n.FurnizorCui,

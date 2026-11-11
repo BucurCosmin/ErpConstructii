@@ -23,11 +23,13 @@ import {
 } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
-import { useImportaNotaComanda, useInterpreteazaNotaComanda } from '../../api/aprovizionare'
+import { useImportaNotaComanda, useInterpreteazaNotaComanda, useNecesareMateriale } from '../../api/aprovizionare'
 import type { CampCitit, Certitudine, InterpretareNotaComanda, NotaComanda } from '../../api/aprovizionare'
 import { useProiecte } from '../../api/interogari'
 import { eticheteCertitudine, stareCamp, UNITATI } from './campuriCitite'
 import { NumarRo } from '../../componente/NumarRo'
+import { CampDinUrma } from '../../componente/DocumentDinUrma'
+import { etichetaProiect } from '../../util/format'
 
 interface LinieFormular {
   denumire?: string
@@ -46,14 +48,25 @@ interface ValoriFormular {
   furnizorCui?: string
   furnizorAdresa?: string
   furnizorTelefon?: string
+  /** Necesarul din care provine comanda (opțional). */
+  necesarId?: string
+  /** D-45: comandă veche din arhivă. */
+  dinUrma?: boolean
   linii: LinieFormular[]
 }
 
 /**
  * Importul unei note de comandă către furnizor emise pe hârtie (formularul GC 007; PDF scanat, poză, Word):
  * sistemul citește documentul, caută furnizorul în nomenclator și propune proiectul; utilizatorul verifică și înregistrează.
+ * Necesarul de materiale se alege dacă există; comenzile vechi (din urmă, D-45) pot rămâne fără el și se leagă mai târziu.
  */
-export function ImportNotaComanda({ poateCrea, fisierInitial, onImportat }: { poateCrea: boolean; fisierInitial?: File; onImportat?: (descriere: string) => void }) {
+export function ImportNotaComanda({ poateCrea, fisierInitial, onImportat, dinUrma }: {
+  poateCrea: boolean
+  fisierInitial?: File
+  onImportat?: (descriere: string) => void
+  /** Bifa „din urmă” propusă (din centrul de import). */
+  dinUrma?: boolean
+}) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const interpreteaza = useInterpreteazaNotaComanda()
@@ -67,6 +80,7 @@ export function ImportNotaComanda({ poateCrea, fisierInitial, onImportat }: { po
 
   const valori = Form.useWatch([], form) as ValoriFormular | undefined
   const linii = Form.useWatch('linii', form) as LinieFormular[] | undefined
+  const necesare = useNecesareMateriale({ proiectId: valori?.proiectId }, !!valori?.proiectId)
 
   useEffect(() => () => {
     if (urlCurent.current) URL.revokeObjectURL(urlCurent.current)
@@ -96,6 +110,7 @@ export function ImportNotaComanda({ poateCrea, fisierInitial, onImportat }: { po
       setRezultat(r)
       form.setFieldsValue({
         proiectId: r.proiectPropus?.id,
+        dinUrma: !!dinUrma,
         numarExtern: r.numarExtern.valoare ?? undefined,
         data: r.data.valoare ? dayjs(r.data.valoare) : null,
         lucrare: r.lucrare.valoare ?? undefined,
@@ -150,6 +165,8 @@ export function ImportNotaComanda({ poateCrea, fisierInitial, onImportat }: { po
             termen: l.termen?.trim() || null,
           })),
           observatii: null,
+          necesarId: v.necesarId ?? null,
+          dinUrma: !!v.dinUrma,
         },
       })
       setCreata(nota)
@@ -299,9 +316,32 @@ export function ImportNotaComanda({ poateCrea, fisierInitial, onImportat }: { po
                       showSearch={{ optionFilterProp: 'label' }}
                       placeholder="Alege proiectul"
                       loading={proiecte.isLoading}
-                      options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                      options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
+                      onChange={() => form.setFieldValue('necesarId', undefined)}
                     />
                   </Form.Item>
+                </Col>
+                <Col xs={24}>
+                  <Form.Item
+                    name="necesarId"
+                    label="Necesarul de materiale din care provine comanda"
+                    extra={valori?.necesarId ? undefined : valori?.dinUrma
+                      ? 'Opțional la documentele din urmă: necesarul se poate lega mai târziu, după ce îl imporți (din lista notelor sau la importul necesarului).'
+                      : 'Opțional. Fără necesar, nota apare în listă ca „fără necesar”; dacă e o comandă veche, bifează „Document din urmă”.'}
+                  >
+                    <Select
+                      allowClear
+                      showSearch={{ optionFilterProp: 'label' }}
+                      disabled={!valori?.proiectId}
+                      loading={necesare.isLoading}
+                      placeholder={valori?.proiectId ? (necesare.data?.some((n) => n.stare !== 'Respinsa') ? 'Fără necesar' : 'Proiectul nu are necesare') : 'Alege întâi proiectul'}
+                      options={necesare.data?.filter((n) => n.stare !== 'Respinsa').map((n) => ({
+                        value: n.id,
+                        label: `${n.numar}${n.numarExtern ? ` (nr. ${n.numarExtern})` : ''} · ${dayjs(n.data).format('DD.MM.YYYY')} · ${n.compartimentSantier} · ${n.linii.map((l) => l.denumire).join(', ')}`,
+                      }))}
+                    />
+                  </Form.Item>
+                  <CampDinUrma explicatie="Comandă veche, adusă din arhivă: se înregistrează și fără necesar de materiale (neimportat încă sau pierdut)." />
                 </Col>
               </Row>
             </Card>

@@ -1,4 +1,4 @@
-import { DownloadOutlined, EditOutlined, EyeOutlined, FilePdfOutlined, LinkOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons'
+import { ApartmentOutlined, DownloadOutlined, EditOutlined, EyeOutlined, FilePdfOutlined, LinkOutlined, SearchOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Drawer, Flex, Form, Input, Modal, Row, Select, Space, Statistic, Switch, Table, Tabs, Tag, Tooltip, Typography } from 'antd'
 import dayjs from 'dayjs'
 import { useMemo, useState } from 'react'
@@ -6,7 +6,6 @@ import { useSearchParams } from 'react-router'
 import { usePermisiuni, useProiecte } from '../../api/interogari'
 import {
   useArticoleStoc,
-  useCreeazaDepozit,
   useFacturiDeReceptionat,
   useFisaMagazie,
   useGestiuni,
@@ -15,10 +14,11 @@ import {
   useSoldStoc,
   useTrasabilitate,
 } from '../../api/stocuri'
+import { etichetaGestiune } from '../../api/stocuri'
 import type { ArticolStoc, FacturaDeReceptionat, FiltreReceptii, LotStoc, MiscareStoc, SoldStoc } from '../../api/stocuri'
 import { deschidePdf } from '../../util/pdf'
 import { AntetPagina } from '../../layout/AntetPagina'
-import { formatCantitate, formatLei } from '../../util/format'
+import { etichetaProiect, formatCantitate, formatLei } from '../../util/format'
 import { LinkFactura } from '../../componente/LinkFactura'
 import { FacturareAviz } from './FacturareAviz'
 import { PrevizualizareAviz, PrevizualizareFactura } from './PrevizualizareFactura'
@@ -27,6 +27,8 @@ import { RegistruNir } from './RegistruNir'
 import { ReceptieFactura, type ModReceptie } from './ReceptieFactura'
 import { ConsumPeArticoleRaport, ConsumSantier } from './ConsumSantier'
 import { InventarGestiune } from './InventarGestiune'
+import { DepoziteGestiuni } from './DepoziteGestiuni'
+import { SoldInitial } from './SoldInitial'
 import { TransferSantier } from './TransferSantier'
 
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
@@ -38,6 +40,8 @@ const tipMiscare: Record<MiscareStoc['tip'], { text: string; culoare: string }> 
   IesireStornoNir: { text: 'Storno NIR', culoare: 'volcano' },
   PlusInventar: { text: 'Plus inventar', culoare: 'cyan' },
   MinusInventar: { text: 'Minus inventar', culoare: 'magenta' },
+  CorectieNir: { text: 'Corectură NIR', culoare: 'gold' },
+  SoldInitial: { text: 'Sold inițial', culoare: 'geekblue' },
 }
 
 /** Loturile unui material (factura → NIR de origine), la prețul de intrare. */
@@ -187,41 +191,24 @@ function TabelSold({ randuri, incarcare, cuGestiune, filtre }: {
 }
 
 function StocDepozite({ poateEdita }: { poateEdita: boolean }) {
-  const { message } = App.useApp()
   const gestiuni = useGestiuni()
   const [gestiuneId, setGestiuneId] = useState<string>()
   const [cauta, setCauta] = useState<string>()
   const sold = useSoldStoc({ tip: 'Depozit', gestiuneId, cauta })
-  const creeaza = useCreeazaDepozit()
-  const [depozitNou, setDepozitNou] = useState(false)
-  const [form] = Form.useForm<{ cod: string; denumire: string }>()
+  const [administrare, setAdministrare] = useState(false)
 
   return (
     <Card
       title="Stoc în depozite"
-      extra={poateEdita && <Button icon={<PlusOutlined />} onClick={() => setDepozitNou(true)}>Depozit nou</Button>}
+      extra={<Button icon={<ApartmentOutlined />} onClick={() => setAdministrare(true)}>Depozite și gestiuni</Button>}
     >
       <Space wrap style={{ marginBottom: 12 }}>
-        <Select allowClear placeholder="Toate depozitele" style={{ width: 280 }} value={gestiuneId} onChange={setGestiuneId}
-          options={(gestiuni.data ?? []).filter((g) => g.tip === 'Depozit').map((g) => ({ value: g.id, label: `${g.cod} — ${g.denumire}` }))} />
+        <Select allowClear showSearch={{ optionFilterProp: 'label' }} placeholder="Toate gestiunile din depozite" style={{ width: 380 }} value={gestiuneId} onChange={setGestiuneId}
+          options={(gestiuni.data ?? []).filter((g) => g.tip === 'Depozit').map((g) => ({ value: g.id, label: etichetaGestiune(g) }))} />
         <Input.Search allowClear placeholder="Caută material" style={{ width: 280 }} onSearch={(v) => setCauta(v || undefined)} />
       </Space>
       <TabelSold randuri={sold.data} incarcare={sold.isLoading} cuGestiune={!gestiuneId} filtre={{ tip: 'Depozit', gestiuneId, material: cauta }} />
-      <Modal open={depozitNou} title="Depozit nou" okText="Adaugă" cancelText="Renunță" onCancel={() => setDepozitNou(false)} onOk={() => form.submit()}
-        confirmLoading={creeaza.isPending} destroyOnHidden>
-        <Form form={form} layout="vertical" name="depozitNou" onFinish={async (v) => {
-          try {
-            await creeaza.mutateAsync(v)
-            message.success('Depozitul a fost adăugat.')
-            setDepozitNou(false)
-          } catch (e) {
-            message.error((e as Error).message)
-          }
-        }}>
-          <Form.Item name="cod" label="Cod" rules={[{ required: true, whitespace: true }]}><Input maxLength={20} placeholder="DEP-02" /></Form.Item>
-          <Form.Item name="denumire" label="Denumire" rules={[{ required: true, whitespace: true }]}><Input maxLength={200} placeholder="Depozit Constanța" /></Form.Item>
-        </Form>
-      </Modal>
+      {administrare && <DepoziteGestiuni poateEdita={poateEdita} onInchide={() => setAdministrare(false)} />}
     </Card>
   )
 }
@@ -235,7 +222,7 @@ function MaterialeInSantier() {
     <Card title="Materiale în șantier">
       <Space wrap style={{ marginBottom: 12 }}>
         <Select allowClear showSearch={{ optionFilterProp: 'label' }} placeholder="Toate proiectele" style={{ width: 360 }} value={proiectId} onChange={setProiectId}
-          options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+          options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
         <Input.Search allowClear placeholder="Caută material" style={{ width: 280 }} onSearch={(v) => setCauta(v || undefined)} />
       </Space>
       {sold.data?.length === 0 && !sold.isLoading && (
@@ -422,6 +409,8 @@ function Nomenclator({ poateEdita }: { poateEdita: boolean }) {
           { title: 'Cod', dataIndex: 'cod', width: 120 },
           { title: 'Denumire', dataIndex: 'denumire' },
           { title: 'UM', dataIndex: 'unitateMasura', width: 80 },
+          { title: 'Cod extern', dataIndex: 'codExtern', width: 120, render: (c?: string | null) => c ?? '—' },
+          { title: 'Categorie', dataIndex: 'categorie', width: 190, render: (c?: string | null) => c ?? '—' },
           { title: 'Stare', dataIndex: 'activ', width: 100, render: (a: boolean) => (a ? <Tag color="green">activ</Tag> : <Tag>inactiv</Tag>) },
           {
             title: '', width: 60,
@@ -480,6 +469,7 @@ export function Stocuri() {
           { key: 'consum-articole', label: 'Consum pe articole', children: <ConsumPeArticoleRaport /> },
           { key: 'inventar', label: 'Inventar', children: <InventarGestiune poateEdita={poateEdita} poateAproba={poateAproba} /> },
           { key: 'nomenclator', label: 'Nomenclator materiale', children: <Nomenclator poateEdita={poateEdita} /> },
+          { key: 'sold-initial', label: 'Sold inițial (preluare)', children: <SoldInitial poateAproba={poateAproba} /> },
         ]}
       />
     </>

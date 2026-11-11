@@ -1,16 +1,74 @@
-import { DeleteOutlined, FileDoneOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Checkbox, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd'
+import { DeleteOutlined, EditOutlined, FileDoneOutlined, FilePdfOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, App, Button, Card, Checkbox, Col, DatePicker, Form, Input, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useMemo, useState } from 'react'
-import { useProiecte } from '../../api/interogari'
+import { usePermisiuni, useProiecte } from '../../api/interogari'
 import { useBonuriConsum, useConsuma, useConsumPeArticole, useDevizReferinta, useSoldStoc, useTransfera } from '../../api/stocuri'
 import type { BonConsum, ConsumPeArticole, FacturaPentruConsum } from '../../api/stocuri'
-import { formatCantitate, formatLei } from '../../util/format'
+import { etichetaProiect, formatCantitate, formatLei } from '../../util/format'
 import { deschidePdf } from '../../util/pdf'
 import { NumarRo } from '../../componente/NumarRo'
+import { ButonRaport, ModalRenumerotare, VerificareNumere } from '../../componente/NumereHartie'
+import type { DocumentDeRenumerotat, SerieNumere } from '../../componente/NumereHartie'
 import { TabelFacturiReceptionate } from './TabelFacturiReceptionate'
 
 const GENERALE = '__generale__'
+
+/** D-48: numerele de pe hârtie ale bonurilor de consum. */
+const serieBonuri: SerieNumere = {
+  denumire: 'bonurile de consum',
+  verificare: '/api/stocuri/consumuri/numere',
+  istoric: '/api/stocuri/consumuri/renumerotari',
+  renumerotare: (d) => `/api/stocuri/proiecte/${d.proiectId}/consumuri/${d.id}/renumerotare`,
+  invalideaza: [['stocuri', 'consumuri']],
+}
+
+interface FiltreBonuri {
+  proiectId?: string
+  perioada?: [Dayjs | null, Dayjs | null] | null
+  numar?: string
+  material?: string
+}
+
+function descriereFiltre(f: FiltreBonuri, cod?: string) {
+  const p: string[] = []
+  const [de, panaLa] = f.perioada ?? []
+  if (de || panaLa) p.push(`perioada ${de ? de.format('DD.MM.YYYY') : '…'} – ${panaLa ? panaLa.format('DD.MM.YYYY') : '…'}`)
+  if (cod) p.push(`proiectul ${cod}`)
+  if (f.numar?.trim()) p.push(`numărul „${f.numar.trim()}”`)
+  if (f.material?.trim()) p.push(`materialul „${f.material.trim()}”`)
+  return p.join(', ')
+}
+
+function filtreaza(bonuri: BonConsum[], f: FiltreBonuri) {
+  const [de, panaLa] = f.perioada ?? []
+  const numar = f.numar?.trim().toLowerCase()
+  const material = f.material?.trim().toLowerCase()
+  return bonuri.filter((b) =>
+    (!f.proiectId || b.proiectId === f.proiectId) &&
+    (!de || !dayjs(b.data).isBefore(de, 'day')) &&
+    (!panaLa || !dayjs(b.data).isAfter(panaLa, 'day')) &&
+    (!numar || b.numar.toLowerCase().includes(numar) || (b.numarExtern ?? '').toLowerCase().includes(numar)) &&
+    (!material || b.linii.some((l) => l.denumire.toLowerCase().includes(material) || l.articolCod.toLowerCase().includes(material))))
+}
+
+function csvMateriale(bonuri: BonConsum[]) {
+  const camp = (v: string | number | null) => {
+    const t = v === null ? '' : typeof v === 'number' ? String(v).replace('.', ',') : v
+    return /[;"\r\n]/.test(t) ? `"${t.replaceAll('"', '""')}"` : t
+  }
+  const randuri = [
+    ['Bon', 'Nr. hârtie', 'Data', 'Proiect', 'Cod', 'Material', 'UM', 'Cantitate', 'Valoare', 'Articol deviz'],
+    ...bonuri.flatMap((b) => b.linii.map((l) => [b.numar, b.numarExtern, dayjs(b.data).format('DD.MM.YYYY'), b.proiectCod, l.articolCod, l.denumire,
+      l.unitateMasura, l.cantitate, l.valoare, l.articolDevizSimbol ?? 'cheltuieli generale'])),
+  ]
+  const url = URL.createObjectURL(new Blob(['\ufeff' + randuri.map((r) => r.map(camp).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }))
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `bonuri-consum-materiale-${dayjs().format('YYYY-MM-DD')}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 const bani = (v: number | null) => (v === null ? '—' : formatLei(v))
 
 interface Valori {
@@ -30,6 +88,12 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
   const proiecte = useProiecte()
   const consuma = useConsuma()
   const bonuri = useBonuriConsum()
+  const permisiuni = usePermisiuni()
+  const poateRenumerota = permisiuni.data?.includes('aprovizionare.editare') ?? false
+  const [formFiltre] = Form.useForm<FiltreBonuri>()
+  const [filtre, setFiltre] = useState<FiltreBonuri>({})
+  const bonuriFiltrate = useMemo(() => filtreaza(bonuri.data ?? [], filtre), [bonuri.data, filtre])
+  const [deRenumerotat, setDeRenumerotat] = useState<DocumentDeRenumerotat>()
   const proiectId = Form.useWatch('proiectId', form) as string | undefined
   const linii = Form.useWatch('linii', form) as Valori['linii'] | undefined
   const sold = useSoldStoc({ tip: 'Santier', proiectId })
@@ -135,7 +199,7 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
           <Row gutter={12}>
             <Col xs={24} md={10}>
               <Form.Item name="proiectId" label="Proiect (șantier)" rules={[{ required: true, message: 'Alege proiectul.' }]}>
-                <Select showSearch={{ optionFilterProp: 'label' }} options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+                <Select showSearch={{ optionFilterProp: 'label' }} options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
               </Form.Item>
             </Col>
             <Col xs={12} md={4}>
@@ -258,12 +322,36 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
         )}
       </Modal>
 
-      <Card title="Bonuri de consum">
+      <Card title="Bonuri de consum" extra={
+        <Space wrap>
+          <VerificareNumere serie={serieBonuri} poateEdita={poateRenumerota} />
+          <ButonRaport url="/api/stocuri/consumuri/raport/pdf" ids={bonuriFiltrate.map((b) => b.id)}
+            filtre={descriereFiltre(filtre, proiecte.data?.find((p) => p.id === filtre.proiectId)?.cod)} csv={() => csvMateriale(bonuriFiltrate)} />
+        </Space>
+      }>
+        <Form<FiltreBonuri> form={formFiltre} layout="inline" style={{ rowGap: 8, marginBottom: 12 }} onValuesChange={(_, v) => setFiltre(v)}>
+          <Form.Item name="proiectId">
+            <Select allowClear showSearch optionFilterProp="label" placeholder="Toate proiectele" style={{ width: 260 }}
+              options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
+          </Form.Item>
+          <Form.Item name="perioada">
+            <DatePicker.RangePicker format="DD.MM.YYYY" allowEmpty={[true, true]} placeholder={['De la', 'Până la']} />
+          </Form.Item>
+          <Form.Item name="numar">
+            <Input allowClear placeholder="BC/… sau nr. hârtie" style={{ width: 170 }} />
+          </Form.Item>
+          <Form.Item name="material">
+            <Input allowClear placeholder="Material (denumire / cod)" style={{ width: 220 }} />
+          </Form.Item>
+          <Form.Item>
+            <Button onClick={() => { formFiltre.resetFields(); setFiltre({}) }}>Resetează</Button>
+          </Form.Item>
+        </Form>
         <Table<BonConsum>
           rowKey="id"
           size="small"
           loading={bonuri.isLoading}
-          dataSource={bonuri.data}
+          dataSource={bonuriFiltrate}
           pagination={{ pageSize: 15, hideOnSinglePage: true }}
           expandable={{
             expandedRowRender: (b) => (
@@ -278,6 +366,20 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
           }}
           columns={[
             { title: 'Număr', dataIndex: 'numar', width: 140 },
+            {
+              title: 'Nr. hârtie', dataIndex: 'numarExtern', width: 120,
+              render: (v: string | null, b) => (
+                <Space size={4}>
+                  {v ?? <Typography.Text type="secondary">—</Typography.Text>}
+                  {poateRenumerota && (
+                    <Tooltip title="Renumerotează (numărul de pe hârtie)">
+                      <Button size="small" type="text" icon={<EditOutlined />}
+                        onClick={() => setDeRenumerotat({ id: b.id, proiectId: b.proiectId, numarSistem: b.numar, numarExtern: b.numarExtern, data: b.data })} />
+                    </Tooltip>
+                  )}
+                </Space>
+              ),
+            },
             { title: 'Data', dataIndex: 'data', width: 110, render: (d: string) => dayjs(d).format('DD.MM.YYYY') },
             { title: 'Proiect', dataIndex: 'proiectCod', width: 140 },
             {
@@ -297,6 +399,7 @@ export function ConsumSantier({ poateCrea }: { poateCrea: boolean }) {
             },
           ]}
         />
+        <ModalRenumerotare serie={serieBonuri} document={deRenumerotat} onInchide={() => setDeRenumerotat(undefined)} />
       </Card>
     </Space>
   )
@@ -313,7 +416,7 @@ export function ConsumPeArticoleRaport() {
   return (
     <Card title="Consum real de materiale pe articolele devizului">
       <Select allowClear showSearch={{ optionFilterProp: 'label' }} placeholder="Alege proiectul" style={{ width: 420, marginBottom: 16, display: 'block' }} value={proiectId}
-        onChange={setProiectId} options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))} />
+        onChange={setProiectId} options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))} />
       {r && (
         <>
           {!cuValori && <Alert type="info" showIcon style={{ marginBottom: 12 }} title="Valorile se văd doar cu dreptul „prețuri de cost”; mai jos sunt cantitățile consumate." />}

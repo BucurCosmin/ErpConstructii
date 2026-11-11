@@ -23,13 +23,15 @@ import {
 } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useEffect, useRef, useState } from 'react'
-import { useImportaNecesar, useInterpreteazaNecesar } from '../../api/aprovizionare'
+import { useImportaNecesar, useInterpreteazaNecesar, useNoteComanda } from '../../api/aprovizionare'
 import type { CampCitit, Certitudine, InterpretareNecesar, NecesarMateriale } from '../../api/aprovizionare'
 import { useProiecte } from '../../api/interogari'
 import { eticheteCertitudine, stareCamp, UNITATI } from './campuriCitite'
 import { NumarRo } from '../../componente/NumarRo'
-import { useCompartimente, useSantiere } from '../../api/proiecte'
+import { CampDinUrma } from '../../componente/DocumentDinUrma'
+import { useSantiere } from '../../api/proiecte'
 import { potrivesteSolicitant, SelectSolicitant, solicitantDin } from '../../componente/SelectSolicitant'
+import { etichetaProiect } from '../../util/format'
 
 interface LinieFormular {
   denumire?: string
@@ -52,14 +54,25 @@ interface ValoriFormular {
   compartimentSantier?: string
   /** D-38: șantierul proiectului / compartimentul firmei, propus după textul citit. */
   solicitant?: string
+  /** D-45: necesar vechi din arhivă (intră aprobat, fără nota „de acceptat”). */
+  dinUrma?: boolean
+  /** D-45: notele de comandă importate deja, de legat de acest necesar. */
+  noteComandaIds?: string[]
   linii: LinieFormular[]
 }
 
 /**
  * Importul unui necesar de materiale emis în afara sistemului (PDF scanat, poză, Word):
  * sistemul citește documentul, propune datele, iar utilizatorul le verifică și le completează înainte de creare.
+ * Necesarul din urmă (D-45) intră aprobat și se poate lega de notele de comandă importate înaintea lui.
  */
-export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { poateCrea: boolean; fisierInitial?: File; onImportat?: (descriere: string) => void }) {
+export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat, dinUrma }: {
+  poateCrea: boolean
+  fisierInitial?: File
+  onImportat?: (descriere: string) => void
+  /** Bifa „din urmă” propusă (din centrul de import). */
+  dinUrma?: boolean
+}) {
   const { message } = App.useApp()
   const proiecte = useProiecte()
   const interpreteaza = useInterpreteazaNecesar()
@@ -73,15 +86,17 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
 
   const valori = Form.useWatch([], form) as ValoriFormular | undefined
   const linii = Form.useWatch('linii', form) as LinieFormular[] | undefined
+  // Notele importate fără necesar, pe proiect: candidatele de legat de un necesar din urmă.
+  const note = useNoteComanda({ proiectId: valori?.proiectId, sursa: 'Import' }, !!valori?.proiectId && !!valori?.dinUrma)
+  const noteFaraNecesar = (note.data ?? []).filter((n) => n.stare === 'Emisa' && !n.necesarId)
 
-  // Șantierul / compartimentul propus după textul de pe document, odată ales proiectul (D-38).
+  // Șantierul proiectului ales, propus după textul de pe document (D-38).
   const santiere = useSantiere(valori?.proiectId)
-  const compartimente = useCompartimente()
   useEffect(() => {
-    if (!rezultat || form.getFieldValue('solicitant') || !santiere.data || !compartimente.data) return
-    const propus = potrivesteSolicitant(rezultat.compartimentSantier.valoare, santiere.data, compartimente.data)
+    if (!rezultat || form.getFieldValue('solicitant') || !santiere.data) return
+    const propus = potrivesteSolicitant(rezultat.compartimentSantier.valoare, santiere.data)
     if (propus) form.setFieldValue('solicitant', propus)
-  }, [rezultat, santiere.data, compartimente.data, form])
+  }, [rezultat, santiere.data, form])
 
   // Previzualizarea originalului se eliberează la plecarea din pagină.
   useEffect(() => () => {
@@ -112,6 +127,7 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
       setRezultat(r)
       form.setFieldsValue({
         proiectId: r.proiectPropus?.id,
+        dinUrma: !!dinUrma,
         numarExtern: r.numarExtern.valoare ?? undefined,
         dataDocument: r.data.valoare ? dayjs(r.data.valoare) : null,
         compartimentSantier: r.compartimentSantier.valoare ?? undefined,
@@ -160,11 +176,15 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
             observatii: l.observatii?.trim() || null,
             articolDevizId: null,
           })),
+          dinUrma: !!v.dinUrma,
+          noteComandaIds: v.dinUrma ? v.noteComandaIds ?? [] : [],
         },
       })
       setCreata(necesar)
       onImportat?.(`Necesarul ${necesar.numar}`)
-      message.success(`Necesarul ${necesar.numar} a fost creat și trimis spre aprobare.`)
+      message.success(necesar.dinUrma
+        ? `Necesarul ${necesar.numar} a fost înregistrat ca document din urmă (aprobat)${v.noteComandaIds?.length ? `, legat de ${v.noteComandaIds.length} notă(e) de comandă` : ''}.`
+        : `Necesarul ${necesar.numar} a fost creat și trimis spre aprobare.`)
     } catch (e) {
       message.error((e as Error).message)
     }
@@ -176,7 +196,7 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
       <Result
         status="success"
         title={`Necesarul ${creata.numar} a fost creat`}
-        subTitle={`Număr pe document: ${creata.numarExtern ?? '—'} · ${creata.linii.length} materiale · trimis spre aprobare. Originalul este atașat necesarului.`}
+        subTitle={`Număr pe document: ${creata.numarExtern ?? '—'} · ${creata.linii.length} materiale · ${creata.dinUrma ? 'document din urmă, aprobat' : 'trimis spre aprobare'}. Originalul este atașat necesarului.`}
         extra={<Button type="primary" onClick={reseteaza}>Importă alt document</Button>}
       />
     )
@@ -299,7 +319,8 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
                       showSearch={{ optionFilterProp: 'label' }}
                       placeholder="Alege proiectul"
                       loading={proiecte.isLoading}
-                      options={proiecte.data?.map((p) => ({ value: p.id, label: `${p.cod} — ${p.denumire}` }))}
+                      options={proiecte.data?.map((p) => ({ value: p.id, label: etichetaProiect(p) }))}
+                      onChange={() => form.setFieldValue('noteComandaIds', [])}
                     />
                   </Form.Item>
                 </Col>
@@ -324,13 +345,36 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
                   <Form.Item name="compartimentSantier" hidden><Input /></Form.Item>
                   <Form.Item
                     name="solicitant"
-                    label="Șantier / compartiment"
-                    rules={[{ required: true, message: 'Alege șantierul sau compartimentul care cere materialele.' }]}
+                    label="Șantier"
+                    rules={[{ required: true, message: 'Alege șantierul proiectului care cere materialele.' }]}
                     help={rezultat.compartimentSantier.valoare ? `Pe document: „${rezultat.compartimentSantier.valoare}”` : 'Nu apare în document; alege-l.'}
                     validateStatus={valori?.solicitant ? undefined : 'warning'}
                   >
                     <SelectSolicitant proiectId={valori?.proiectId} />
                   </Form.Item>
+                </Col>
+                <Col xs={24}>
+                  <CampDinUrma explicatie="Necesar vechi, adus din arhivă: intră direct aprobat (aprobarea s-a dat pe hârtie) și nu mai generează nota de comandă „de acceptat”, fiindcă materialele s-au comandat deja." />
+                  {valori?.dinUrma && (
+                    <Form.Item
+                      name="noteComandaIds"
+                      label="Notele de comandă ale acestui necesar, importate deja"
+                      extra="Opțional: notele importate pe proiect fără necesar. Legătura apare în istoricul fiecărei note."
+                    >
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        showSearch={{ optionFilterProp: 'label' }}
+                        disabled={!valori?.proiectId}
+                        loading={note.isLoading}
+                        placeholder={valori?.proiectId ? (noteFaraNecesar.length ? 'Alege notele' : 'Nicio notă importată fără necesar pe proiect') : 'Alege întâi proiectul'}
+                        options={noteFaraNecesar.map((n) => ({
+                          value: n.id,
+                          label: `${n.numar}${n.numarExtern ? ` (nr. ${n.numarExtern})` : ''} · ${n.furnizorDenumire} · ${dayjs(n.data).format('DD.MM.YYYY')} · ${n.linii.map((l) => l.denumire).join(', ')}`,
+                        }))}
+                      />
+                    </Form.Item>
+                  )}
                 </Col>
               </Row>
             </Card>
@@ -405,7 +449,9 @@ export function ImportNecesarExtern({ poateCrea, fisierInitial, onImportat }: { 
 
             <Flex justify="space-between" align="center" wrap gap={8}>
               <Typography.Text type="secondary">
-                Necesarul primește număr de sistem, păstrează numărul de pe document și intră în fluxul de aprobare.
+                {valori?.dinUrma
+                  ? 'Necesarul primește număr de sistem, păstrează numărul de pe document și intră aprobat (document din urmă).'
+                  : 'Necesarul primește număr de sistem, păstrează numărul de pe document și intră în fluxul de aprobare.'}
               </Typography.Text>
               <Space>
                 <Button onClick={reseteaza}>Renunță</Button>

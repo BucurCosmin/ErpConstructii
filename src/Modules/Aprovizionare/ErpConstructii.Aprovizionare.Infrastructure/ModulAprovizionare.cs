@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using ErpConstructii.Aprovizionare;
 using ErpConstructii.Formulare;
@@ -29,6 +29,7 @@ public sealed partial class ModulAprovizionare : IModul
         servicii.AdaugaDbContextModul<AprovizionareDbContext>(configurare, Nume);
         servicii.AddScoped<IInterogareAvize, InterogareAvize>();
         servicii.AddScoped<IInterogareNoteComanda, InterogareNoteComanda>();
+        servicii.AddScoped<IUtilizariSantier, UtilizariSantierNecesare>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
@@ -107,6 +108,8 @@ public sealed partial class ModulAprovizionare : IModul
 
         // Necesare emise în afara sistemului: interpretare (OCR / Word) → verificare → necesar cu originalul arhivat.
         ImportNecesarMateriale.Mapeaza(grup);
+        // Numerele de pe hârtie (verificare, renumerotare) și rapoartele necesarelor (D-48).
+        EndpointuriNumereNecesare.Mapeaza(grup);
 
         // Note de comandă către furnizori (GC 007) emise pe hârtie: import cu originalul arhivat.
         EndpointuriNoteComanda.Mapeaza(grup);
@@ -114,6 +117,8 @@ public sealed partial class ModulAprovizionare : IModul
 
         // Necesar → notă de comandă de acceptat → achiziții (furnizor, emitere), D-37.
         FluxNotaComanda.Mapeaza(grup);
+        // Modificarea și ștergerea notelor emise, cu istoric (D-44).
+        EndpointuriCorectieNoteComanda.Mapeaza(grup);
 
         // Avize de însoțire a mărfii (marfa venită înaintea facturii), D-40.
         EndpointuriAvize.Mapeaza(grup);
@@ -204,9 +209,13 @@ public sealed partial class ModulAprovizionare : IModul
                 interogare = interogare.Where(n => n.An == an && n.Numar == numarAnual);
             else if (segmente.Length == 1 &&
                      int.TryParse(segmente[0], NumberStyles.None, CultureInfo.InvariantCulture, out numarAnual))
-                interogare = interogare.Where(n => n.Numar == numarAnual);
+            {
+                // NNNN: numărul de sistem sau cel de pe hârtie (D-48).
+                var text = numarAnual.ToString(CultureInfo.InvariantCulture);
+                interogare = interogare.Where(n => n.Numar == numarAnual || (n.NumarExtern != null && EF.Functions.ILike(n.NumarExtern, $"%{text}%")));
+            }
             else
-                return Results.BadRequest(new { mesaj = "Numărul trebuie să fie de forma NM/AAAA/NNNN sau NNNN." });
+                interogare = interogare.Where(n => n.NumarExtern != null && EF.Functions.ILike(n.NumarExtern, $"%{filtre.Numar.Trim()}%"));
         }
 
         var necesare = await interogare
@@ -317,11 +326,19 @@ public sealed partial class ModulAprovizionare : IModul
     /// D-38: cine cere materialele — șantierul proiectului sau compartimentul firmei, ales după Id; fără Id (clienți vechi,
     /// aplicația Windows) textul se potrivește cu cele existente (<see cref="PotrivireSolicitant"/>).
     /// </summary>
+    /// <summary>
+    /// Cine cere materialele: un șantier al proiectului (ales sau potrivit după textul de pe document). Compartimentele firmei
+    /// nu mai sunt solicitanți pentru necesarele noi; un necesar emis înainte pe un compartiment îl păstrează la modificare
+    /// (<paramref name="compartimentPastrat"/>).
+    /// </summary>
     internal static async Task<(LocCandidat? Loc, IResult? Eroare)> RezolvaSolicitantAsync(
-        IInterogareProiecte proiecte, Guid proiectId, Guid? santierId, Guid? compartimentId, string? text, CancellationToken ct)
+        IInterogareProiecte proiecte, Guid proiectId, Guid? santierId, Guid? compartimentId, string? text, CancellationToken ct,
+        Guid? compartimentPastrat = null)
     {
         if (santierId is not null && compartimentId is not null)
             return (null, Results.BadRequest(new { mesaj = "Alege fie șantierul, fie compartimentul, nu amândouă." }));
+        if (compartimentId is not null && compartimentId != compartimentPastrat)
+            return (null, Results.BadRequest(new { mesaj = "Necesarul se emite pe un șantier al proiectului ales." }));
         if (santierId is not null || compartimentId is not null)
         {
             var gasit = await proiecte.LocSolicitantAsync(proiectId, santierId, compartimentId, ct);
@@ -332,16 +349,16 @@ public sealed partial class ModulAprovizionare : IModul
             return (new LocCandidat(gasit.Id, gasit.EsteSantier, gasit.Denumire), null);
         }
 
-        var locuri = await proiecte.LocuriSolicitantAsync(proiectId, ct);
+        var locuri = (await proiecte.LocuriSolicitantAsync(proiectId, ct)).Where(l => l.EsteSantier).ToList();
         var potrivit = PotrivireSolicitant.Cauta(text, locuri.Select(l => new LocCandidat(l.Id, l.EsteSantier, l.Denumire)).ToList());
         if (potrivit is not null)
             return (potrivit, null);
-        var optiuni = string.Join(", ", locuri.Select(l => (l.EsteSantier ? "șantier " : "compartiment ") + l.Denumire));
+        var optiuni = string.Join(", ", locuri.Select(l => l.Denumire));
         return (null, Results.BadRequest(new
         {
             mesaj = locuri.Count == 0
-                ? "Proiectul nu are șantiere și firma nu are compartimente: adaugă-le întâi (fișa proiectului / Administrare → Compartimente)."
-                : $"Alege șantierul sau compartimentul care cere materialele{(string.IsNullOrWhiteSpace(text) ? "" : $" („{text.Trim()}” nu se potrivește)")}: {optiuni}.",
+                ? "Proiectul nu are șantiere: adaugă-le întâi în fișa proiectului (tab-ul „Șantiere”)."
+                : $"Alege șantierul care cere materialele{(string.IsNullOrWhiteSpace(text) ? "" : $" („{text.Trim()}” nu se potrivește)")}: {optiuni}.",
         }));
     }
 
@@ -404,7 +421,8 @@ public sealed partial class ModulAprovizionare : IModul
         if (necesar.Stare != StareNecesarMateriale.InAsteptareAprobare)
             return Results.Conflict(new { mesaj = "Necesarul a fost deja aprobat sau respins: nu se mai modifică." });
 
-        var (loc, eroareLoc) = await RezolvaSolicitantAsync(proiecte, proiectId, cerere.SantierId, cerere.CompartimentId, cerere.CompartimentSantier, ct);
+        var (loc, eroareLoc) = await RezolvaSolicitantAsync(proiecte, proiectId, cerere.SantierId, cerere.CompartimentId, cerere.CompartimentSantier, ct,
+            compartimentPastrat: necesar.CompartimentId);
         if (eroareLoc is not null)
             return eroareLoc;
         var r = necesar.Modifica(loc!.Denumire,

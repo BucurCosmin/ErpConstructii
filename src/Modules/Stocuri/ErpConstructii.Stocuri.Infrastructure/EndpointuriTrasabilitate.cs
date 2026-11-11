@@ -90,7 +90,7 @@ internal static class EndpointuriTrasabilitate
             .Select(x => new LotStocDto(
                 x.Gestiune.Id, x.Gestiune.Denumire, x.Gestiune.Tip.ToString(), x.Articol.Id, x.Articol.Cod, x.Articol.Denumire, x.Articol.UnitateMasura,
                 x.Lot.Cantitate,
-                x.Lot.TipOrigine switch { TipMiscare.IntrareNir => "NIR", TipMiscare.PlusInventar => "Inventar", _ => "Transfer" },
+                x.Lot.TipOrigine switch { TipMiscare.IntrareNir => "NIR", TipMiscare.PlusInventar => "Inventar", TipMiscare.SoldInitial => "Sold inițial", _ => "Transfer" },
                 x.Lot.DocumentOrigineId, x.Lot.DocumentOrigineNumar, x.Lot.DataIntrare,
                 x.Nir?.FacturaId, x.Nir?.FacturaNumar, x.Nir?.FacturaData, x.Nir?.FurnizorDenumire, x.Nir?.ProiectCod,
                 preturi ? x.Lot.PretUnitar : null, preturi ? Rotunjire.Lei.Aplica(x.Lot.Cantitate * x.Lot.PretUnitar) : null, x.Nir?.AvizNumar))

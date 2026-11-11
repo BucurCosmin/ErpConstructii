@@ -49,7 +49,7 @@ public static partial class InterpretorNecesarMateriale
 
         var linii = document.Tabele.Count > 0 && GasesteTabelMateriale(document.Tabele) is { } tabel
             ? LiniiDinTabel(tabel, probleme)
-            : LiniiDinRanduri(randuri, document.DinOcr, probleme);
+            : LiniiDinRanduri(randuri, document.LiniiOrizontale, document.DinOcr, probleme);
 
         if (linii.Count == 0)
         {
@@ -241,7 +241,14 @@ public static partial class InterpretorNecesarMateriale
 
     // ------------------------------------------------------------------ tabel din scanare (OCR)
 
-    private static List<LinieCitita> LiniiDinRanduri(IReadOnlyList<RandText> randuri, bool dinOcr, List<ProblemaImport> probleme)
+    /// <summary>
+    /// Rândurile de materiale din rândurile de text. Când se cunosc liniile orizontale ale tabelului, un material = un rând
+    /// fizic: tot textul dintre două linii (denumire sau observații pe mai multe rânduri, număr și cantitate centrate pe
+    /// verticală). Fără linii, rândurile se unesc după poziții: un rând doar cu denumire ține de rândul cu date cel mai
+    /// apropiat (deasupra: denumirea continuă; dedesubt: denumirea începe deasupra numărului și cantității).
+    /// </summary>
+    private static List<LinieCitita> LiniiDinRanduri(
+        IReadOnlyList<RandText> randuri, IReadOnlyList<LinieOrizontala> liniiOrizontale, bool dinOcr, List<ProblemaImport> probleme)
     {
         var indexAntet = randuri.ToList().FindIndex(r => EsteAntetTabel(r.Text));
         if (indexAntet < 0)
@@ -250,7 +257,28 @@ public static partial class InterpretorNecesarMateriale
         }
 
         var limite = LimiteColoane(randuri[indexAntet]);
+        var benzi = limite is null ? null : new BenziTabel(liniiOrizontale, limite.Value);
+        var bandaAntet = benzi?.Banda(randuri[indexAntet]);
         var linii = new List<RandTabel>();
+        // Rândurile cu text doar în „Observații” (observația pe mai multe rânduri, cu materialul pe rândul din mijloc):
+        // se lipesc la final de rândul de tabel cel mai apropiat pe verticală.
+        var orfane = new List<(RandText Rand, RandTabel Continut, int DupaRandul)>();
+        // Rândul doar cu denumire, fără linii de tabel: se hotărăște la rândul următor dacă ține de cel de deasupra sau de cel de dedesubt.
+        RandTabel? inAsteptare = null;
+
+        void Rezolva(RandTabel p)
+        {
+            var anterior = linii.Count > 0 ? linii[^1] : null;
+            if (anterior is not null && DeUnitCuAnterior(p, anterior))
+            {
+                anterior.Adauga(p);
+            }
+            else
+            {
+                p.Nr = (anterior?.Nr ?? 0) + 1;
+                linii.Add(p);
+            }
+        }
 
         for (var i = indexAntet + 1; i < randuri.Count; i++)
         {
@@ -282,10 +310,79 @@ public static partial class InterpretorNecesarMateriale
                 cuvinte = cuvinte.Skip(1).ToList();
             }
 
-            var curent = new RandTabel(nr ?? 0, rand);
+            var curent = new RandTabel(nr ?? 0, rand) { NrCitit = nr is not null };
             foreach (var c in cuvinte)
             {
-                curent.Lista(limite is null ? Coloana.Denumire : ColoanaCuvant(c, limite.Value)).Add(c);
+                curent.Adauga(limite is null ? Coloana.Denumire : ColoanaCuvant(c, limite.Value), c, rand);
+            }
+
+            // Rândul fizic al tabelului (între două linii orizontale): tot ce e în el e același material.
+            if (benzi?.Banda(rand) is { } banda)
+            {
+                if (banda == bandaAntet)
+                {
+                    continue; // antetul pe mai multe rânduri
+                }
+
+                curent.Banda = banda;
+                if (linii.LastOrDefault(l => l.Banda == banda) is { } acelasi)
+                {
+                    acelasi.Adauga(curent);
+                    if (nr is not null && !acelasi.NrCitit)
+                    {
+                        (acelasi.Nr, acelasi.NrCitit) = (nr.Value, true); // numărul e pe al doilea rând al celulei
+                    }
+
+                    continue;
+                }
+
+                if (nr is null)
+                {
+                    curent.Nr = (linii.Count > 0 ? linii[^1].Nr : 0) + 1;
+                }
+
+                linii.Add(curent);
+                continue;
+            }
+
+            if (nr is null && curent.DoarObservatii)
+            {
+                orfane.Add((rand, curent, linii.Count - 1));
+                continue;
+            }
+
+            if (nr is null && curent.DoarDenumire && rand.ArePozitieVerticala)
+            {
+                if (inAsteptare is not null && DeUnitCuAnterior(curent, inAsteptare))
+                {
+                    inAsteptare.Adauga(curent); // denumirea pe trei rânduri
+                    continue;
+                }
+
+                if (inAsteptare is not null)
+                {
+                    Rezolva(inAsteptare);
+                }
+
+                inAsteptare = curent;
+                continue;
+            }
+
+            if (inAsteptare is not null)
+            {
+                var p = inAsteptare;
+                inAsteptare = null;
+                if (MaiAproapeDeDedesubt(p, curent, linii.Count > 0 ? linii[^1] : null))
+                {
+                    // Denumirea începe deasupra rândului cu numărul și cantitatea (celule centrate pe verticală).
+                    p.Adauga(curent);
+                    p.Nr = nr ?? (linii.Count > 0 ? linii[^1].Nr : 0) + 1;
+                    p.NrCitit = nr is not null;
+                    linii.Add(p);
+                    continue;
+                }
+
+                Rezolva(p);
             }
 
             var anterior = linii.Count > 0 ? linii[^1] : null;
@@ -301,6 +398,19 @@ public static partial class InterpretorNecesarMateriale
             }
 
             linii.Add(curent);
+        }
+
+        if (inAsteptare is not null)
+        {
+            Rezolva(inAsteptare);
+        }
+
+        foreach (var (rand, continut, dupaRandul) in orfane)
+        {
+            if (RandulCelMaiApropiat(linii, rand, dupaRandul) is { } tinta)
+            {
+                tinta.Adauga(continut);
+            }
         }
 
         var rezultat = new List<LinieCitita>();
@@ -330,32 +440,78 @@ public static partial class InterpretorNecesarMateriale
         return rezultat;
     }
 
+    /// <summary>
+    /// Rândul de tabel de care ține un rând cu text doar în „Observații”: cel mai apropiat pe verticală (rândul de sus al unei
+    /// observații pe trei rânduri stă deasupra materialului). Fără poziții verticale: rândul de deasupra lui.
+    /// </summary>
+    private static RandTabel? RandulCelMaiApropiat(List<RandTabel> linii, RandText rand, int dupaRandul)
+    {
+        if (linii.Count == 0)
+        {
+            return null;
+        }
+
+        if (!rand.ArePozitieVerticala || linii.Any(l => !l.Primul.ArePozitieVerticala))
+        {
+            return linii[Math.Clamp(dupaRandul, 0, linii.Count - 1)];
+        }
+
+        // Distanța de la rândul orfan la intervalul vertical ocupat de rândul de tabel (0 dacă se suprapun); la egalitate, cel de sus.
+        double Distanta(RandTabel l) => Math.Max(0, Math.Max(l.Primul.Y0 - rand.Y1, rand.Y0 - l.Ultimul.Y1));
+        return linii.OrderBy(Distanta).ThenBy(l => l.Primul.Y0 > rand.Y0 ? 1 : 0).First();
+    }
+
     /// <summary>Un rând al tabelului în construire (poate aduna mai multe rânduri OCR din aceeași celulă).</summary>
     private sealed class RandTabel(int nr, RandText primul)
     {
+        // Observațiile țin minte poziția verticală a rândului lor: un rând de deasupra materialului se lipește înaintea lui.
+        private readonly List<(int Y, CuvantText Cuvant)> _obs = [];
+
         public int Nr { get; set; } = nr;
+
+        /// <summary>Numărul a fost citit din document (nu dedus din rândul anterior).</summary>
+        public bool NrCitit { get; set; }
+
+        /// <summary>Rândul fizic al tabelului (între două linii orizontale), dacă liniile se cunosc.</summary>
+        public BandaTabel? Banda { get; set; }
+
         public List<CuvantText> Den { get; } = [];
         public List<CuvantText> Um { get; } = [];
         public List<CuvantText> Cant { get; } = [];
-        public List<CuvantText> Obs { get; } = [];
-        public RandText Primul { get; } = primul;
+        public List<CuvantText> Obs => _obs.OrderBy(o => o.Y).Select(o => o.Cuvant).ToList();
+        public RandText Primul { get; private set; } = primul;
         public RandText Ultimul { get; private set; } = primul;
 
-        public List<CuvantText> Lista(Coloana c) => c switch
+        public bool DoarObservatii => _obs.Count > 0 && Den.Count == 0 && Um.Count == 0 && Cant.Count == 0;
+
+        public bool DoarDenumire => Den.Count > 0 && Um.Count == 0 && Cant.Count == 0;
+
+        public void Adauga(Coloana coloana, CuvantText cuvant, RandText rand)
         {
-            Coloana.Um => Um,
-            Coloana.Cantitate => Cant,
-            Coloana.Observatii => Obs,
-            _ => Den,
-        };
+            switch (coloana)
+            {
+                case Coloana.Um: Um.Add(cuvant); break;
+                case Coloana.Cantitate: Cant.Add(cuvant); break;
+                case Coloana.Observatii: _obs.Add((rand.Y0, cuvant)); break;
+                default: Den.Add(cuvant); break;
+            }
+        }
 
         public void Adauga(RandTabel alt)
         {
             Den.AddRange(alt.Den);
             Um.AddRange(alt.Um);
             Cant.AddRange(alt.Cant);
-            Obs.AddRange(alt.Obs);
-            Ultimul = alt.Ultimul;
+            _obs.AddRange(alt._obs);
+            if (alt.Primul.Y0 < Primul.Y0 && alt.Primul.ArePozitieVerticala)
+            {
+                Primul = alt.Primul;
+            }
+
+            if (alt.Ultimul.Y1 >= Ultimul.Y1)
+            {
+                Ultimul = alt.Ultimul;
+            }
         }
     }
 
@@ -383,11 +539,62 @@ public static partial class InterpretorNecesarMateriale
         return doarDenumire && (!arePozitii || spatiu < inaltime * 0.8);
     }
 
+    /// <summary>
+    /// Fără linii de tabel: rândul doar cu denumire ține de rândul cu date de dedesubt (nu de cel de deasupra) când e mai
+    /// aproape de el. Ex. denumire pe două rânduri cu numărul și cantitatea centrate: primul rând de text n-are date, iar
+    /// distanța până la al doilea e spațiul dintre rânduri, mai mică decât cea până la materialul anterior (marginile celulelor).
+    /// </summary>
+    private static bool MaiAproapeDeDedesubt(RandTabel p, RandTabel urmator, RandTabel? anterior)
+    {
+        if (!p.Ultimul.ArePozitieVerticala || !urmator.Primul.ArePozitieVerticala || p.Ultimul.Pagina != urmator.Primul.Pagina)
+        {
+            return false;
+        }
+
+        if (anterior is null || !anterior.Ultimul.ArePozitieVerticala || anterior.Ultimul.Pagina != p.Primul.Pagina)
+        {
+            return true;
+        }
+
+        return urmator.Primul.Y0 - p.Ultimul.Y1 <= p.Primul.Y0 - anterior.Ultimul.Y1;
+    }
+
+    /// <summary>Rândul fizic al tabelului: al câtelea spațiu dintre liniile orizontale ale paginii.</summary>
+    private readonly record struct BandaTabel(int Pagina, int Index);
+
+    /// <summary>
+    /// Liniile orizontale ale tabelului de materiale, pe pagini: doar cele care traversează coloanele denumire → cantitate
+    /// (nu liniile de semnătură sau de completare). Un rând de text e în tabel dacă are o linie deasupra și una dedesubt.
+    /// </summary>
+    private sealed class BenziTabel(IReadOnlyList<LinieOrizontala> linii, Limite limite)
+    {
+        private readonly Dictionary<int, List<LinieOrizontala>> _pePagini = linii
+            .Where(l => l.X0 <= limite.InceputDenumire + 30 && l.X1 >= limite.UmCantitate)
+            .GroupBy(l => l.Pagina)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        public BandaTabel? Banda(RandText rand)
+        {
+            if (!rand.ArePozitieVerticala || !_pePagini.TryGetValue(rand.Pagina, out var pagina) || pagina.Count < 2)
+            {
+                return null;
+            }
+
+            var x = rand.Cuvinte.Count > 0 ? (rand.Cuvinte.Min(c => c.X0) + rand.Cuvinte.Max(c => c.X1)) / 2.0 : (limite.InceputDenumire + limite.UmCantitate) / 2.0;
+            var y = (rand.Y0 + rand.Y1) / 2.0;
+            var deasupra = pagina.Count(l => l.YLa(x) < y);
+            // Sub ultima linie sau deasupra primei (ex. linia de jos nu s-a găsit): regulile după poziții.
+            return deasupra == 0 || deasupra == pagina.Count ? null : new BandaTabel(rand.Pagina, deasupra);
+        }
+    }
+
     private readonly record struct Limite(int InceputDenumire, int DenumireUm, int UmCantitate, int CantitateObservatii);
 
     /// <summary>
     /// Limitele coloanelor, din pozițiile cuvintelor din antet: granița dintre două coloane e la mijlocul
     /// spațiului dintre cuvintele lor de antet. Coloana „Nr.” e îngustă: doar un număr la începutul rândului intră în ea.
+    /// „Observații” e de obicei o coloană lată cu antetul centrat, dar cu textul aliniat la stânga: granița cu „Cantitate”
+    /// stă aproape de capătul antetului „Cantitate” (cantitățile sunt centrate sub el), nu la mijlocul spațiului.
     /// </summary>
     private static Limite? LimiteColoane(RandText antet)
     {
@@ -412,7 +619,7 @@ public static partial class InterpretorNecesarMateriale
             InceputDenumire: denumire.X0,
             DenumireUm: (sfarsitDenumire + umX0) / 2,
             UmCantitate: (umX1 + cantitate.X0) / 2,
-            CantitateObservatii: (cantitate.X1 + obsX0) / 2);
+            CantitateObservatii: Math.Min((cantitate.X1 + obsX0) / 2, cantitate.X1 + (cantitate.X1 - cantitate.X0) / 4));
     }
 
     private static Coloana ColoanaCuvant(CuvantText c, Limite l)

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Aprovizionare;
@@ -80,6 +80,12 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
 
     /// <summary>Documentul original importat (scanare / Word), arhivat neschimbat.</summary>
     public Guid? DocumentOriginalId { get; private set; }
+
+    /// <summary>
+    /// Document din urmă (D-45): necesar vechi, importat din arhivă. Intră aprobat (aprobarea s-a dat pe hârtie) și nu
+    /// generează nota „de acceptat”: comanda la furnizor s-a făcut deja (nota ei se importă și se leagă de el).
+    /// </summary>
+    public bool DinUrma { get; private set; }
 
     public Guid? DecisaDeId { get; private set; }
     public string? DecisaDeNume { get; private set; }
@@ -181,6 +187,22 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
         return Rezultat.Ok(necesar);
     }
 
+    /// <summary>
+    /// Necesarul importat din urmă (D-45) intră direct aprobat: aprobarea s-a dat pe hârtie, demult. Cel care îl importă apare
+    /// ca decident (cu momentul importului); separarea atribuțiilor nu se aplică documentelor din arhivă.
+    /// </summary>
+    public Rezultat MarcheazaDinUrma(DateTimeOffset moment)
+    {
+        if (Sursa != SursaDocument.Import || Stare != StareNecesarMateriale.InAsteptareAprobare)
+            return Rezultat.Esuat(Eroare.Validare("Doar un necesar abia importat se marchează ca document din urmă."));
+        DinUrma = true;
+        Stare = StareNecesarMateriale.Aprobata;
+        DecisaDeId = EmitentId;
+        DecisaDeNume = EmitentNume;
+        DecisaLa = moment;
+        return Rezultat.Ok();
+    }
+
     /// <summary>Șantierul proiectului care cere materialele (D-38); exclusiv cu <see cref="CompartimentId"/>.</summary>
     public Guid? SantierId { get; private set; }
 
@@ -201,6 +223,22 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
         CompartimentId = loc.EsteSantier ? null : loc.Id;
         CompartimentSantier = loc.Denumire.Trim();
         return Rezultat.Ok();
+    }
+
+    /// <summary>
+    /// Șantierul necesarului a fost șters (pus din greșeală): necesarul trece pe alt șantier al aceluiași proiect, în orice stare.
+    /// Nu e o modificare a conținutului aprobat (regula 6), ci a locului care nu mai există; mutarea rămâne ca
+    /// <see cref="MutareSantierNecesar"/>, salvată odată cu necesarul.
+    /// </summary>
+    public Rezultat<MutareSantierNecesar> MutaPeSantier(LocCandidat santier, DateTimeOffset la)
+    {
+        if (!santier.EsteSantier || santier.Id == Guid.Empty || string.IsNullOrWhiteSpace(santier.Denumire) || santier.Denumire.Trim().Length > 300)
+            return Rezultat.Esuat<MutareSantierNecesar>(Eroare.Validare("Alege șantierul pe care se mută necesarul."));
+        var mutare = new MutareSantierNecesar(Id, NumarAfisat, SantierId, CompartimentSantier, santier.Id, santier.Denumire.Trim(), la);
+        SantierId = santier.Id;
+        CompartimentId = null;
+        CompartimentSantier = santier.Denumire.Trim();
+        return Rezultat.Ok(mutare);
     }
 
     /// <summary>Necesarul încă neaprobat se poate corecta (compartimentul și materialele); după decizie, nu.</summary>
@@ -225,6 +263,20 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
             UnitateMasura = l.UnitateMasura.Trim(),
             Observatii = l.Observatii?.Trim() ?? string.Empty,
         }).ToList());
+        return Rezultat.Ok();
+    }
+
+    /// <summary>
+    /// Renumerotarea numărului de pe hârtie (doar la necesarele importate), de ex. când două documente au același număr
+    /// sau documentul nu avea număr. Numărul de sistem rămâne; istoricul stă în <see cref="RenumerotareDocument"/>.
+    /// </summary>
+    public Rezultat Renumeroteaza(RenumerotareDocument renumerotare)
+    {
+        if (Sursa != SursaDocument.Import)
+            return Rezultat.Esuat(Eroare.Validare("Doar necesarele importate de pe hârtie au număr de document original."));
+        if (renumerotare.DocumentId != Id)
+            return Rezultat.Esuat(Eroare.Validare("Renumerotarea este pentru alt document."));
+        NumarExtern = renumerotare.NumarNou;
         return Rezultat.Ok();
     }
 
@@ -269,4 +321,29 @@ public sealed class NecesarMateriale : EntitateFirma, IDocumentCuStare
         MotivRespingere = motiv.Trim();
         return Rezultat.Ok();
     }
+}
+
+/// <summary>
+/// Un necesar mutat de pe șantierul șters (pus din greșeală) pe alt șantier al proiectului. Corectura care permite schimbarea
+/// necesarului deja aprobat (regula 6) și istoricul ei.
+/// </summary>
+public sealed class MutareSantierNecesar : EntitateFirma, ICorectieDocument
+{
+    private MutareSantierNecesar() { }
+
+    public MutareSantierNecesar(Guid necesarId, string necesarNumar, Guid? santierVechiId, string santierVechi, Guid santierNouId, string santierNou, DateTimeOffset la)
+    {
+        (NecesarId, NecesarNumar, SantierVechiId, SantierVechi, SantierNouId, SantierNou, La) =
+            (necesarId, necesarNumar, santierVechiId, santierVechi, santierNouId, santierNou, la);
+    }
+
+    public Guid NecesarId { get; private set; }
+    public string NecesarNumar { get; private set; } = string.Empty;
+    public Guid? SantierVechiId { get; private set; }
+    public string SantierVechi { get; private set; } = string.Empty;
+    public Guid SantierNouId { get; private set; }
+    public string SantierNou { get; private set; } = string.Empty;
+    public DateTimeOffset La { get; private set; }
+
+    public Guid DocumentCorectatId => NecesarId;
 }

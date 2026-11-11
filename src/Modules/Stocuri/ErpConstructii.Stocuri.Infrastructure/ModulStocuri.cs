@@ -1,4 +1,4 @@
-using ErpConstructii.Aprovizionare;
+﻿using ErpConstructii.Aprovizionare;
 using ErpConstructii.Facturi;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure;
@@ -17,11 +17,23 @@ namespace ErpConstructii.Stocuri.Infrastructure;
 
 // ---------------------------------------------------------------- DTO-uri
 
-public sealed record GestiuneDto(Guid Id, string Cod, string Denumire, string Tip, Guid? ProiectId, bool Activa);
+/// <param name="DepozitId">Depozitul din care face parte gestiunea (D-43); null la șantier.</param>
+public sealed record GestiuneDto(Guid Id, string Cod, string Denumire, string Tip, Guid? ProiectId, bool Activa,
+    Guid? DepozitId = null, string? DepozitCod = null, string? DepozitDenumire = null, Guid? GestionarId = null, string? GestionarNume = null);
 
-public sealed record GestiuneCerere(string Cod, string Denumire);
+/// <param name="DepozitId">Depozitul în care se creează; null = depozitul central.</param>
+public sealed record GestiuneCerere(string Cod, string Denumire, Guid? DepozitId = null, Guid? GestionarId = null);
 
-public sealed record ArticolDto(Guid Id, string Cod, string Denumire, string UnitateMasura, bool Activ);
+public sealed record ModificaGestiuneCerere(string Denumire, Guid? GestionarId, bool Activa);
+
+public sealed record DepozitDto(Guid Id, string Cod, string Denumire, string? Adresa, bool Activ, IReadOnlyList<GestiuneDto> Gestiuni);
+
+public sealed record DepozitCerere(string Cod, string Denumire, string? Adresa, bool Activ = true);
+
+public sealed record GestionarDto(Guid Id, string Nume, string Email);
+
+/// <param name="CodExtern">Codul din programul de gestiune anterior; <paramref name="Categorie"/> = categoria din balanța preluată (D-42).</param>
+public sealed record ArticolDto(Guid Id, string Cod, string Denumire, string UnitateMasura, bool Activ, string? CodExtern = null, string? Categorie = null);
 
 public sealed record ArticolCerere(string Denumire, string UnitateMasura, bool Activ);
 
@@ -106,8 +118,18 @@ public sealed class ModulStocuri : IModul
         var editare = Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Editare);
 
         g.MapGet("/gestiuni", ListaGestiuni).WithName("ListaGestiuni").WithSummary("Depozitele și gestiunile de șantier").Produces<IReadOnlyList<GestiuneDto>>().CerePermisiune(vizualizare);
-        g.MapPost("/gestiuni", CreeazaDepozit).WithName("CreeazaDepozit").WithSummary("Adaugă un depozit").Produces<GestiuneDto>(StatusCodes.Status201Created)
+        g.MapPost("/gestiuni", CreeazaGestiune).WithName("CreeazaGestiune").WithSummary("Adaugă o gestiune într-un depozit, cu gestionarul ei")
+            .Produces<GestiuneDto>(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status409Conflict).CerePermisiune(editare);
+        g.MapPut("/gestiuni/{id:guid}", ModificaGestiune).WithName("ModificaGestiune").WithSummary("Denumirea, gestionarul și starea unei gestiuni")
+            .Produces<GestiuneDto>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(editare);
+        g.MapGet("/depozite", ListaDepozite).WithName("ListaDepozite").WithSummary("Depozitele firmei, cu gestiunile lor").Produces<IReadOnlyList<DepozitDto>>()
+            .CerePermisiune(vizualizare);
+        g.MapPost("/depozite", CreeazaDepozit).WithName("CreeazaDepozit").WithSummary("Adaugă un depozit (loc fizic)").Produces<DepozitDto>(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status409Conflict).CerePermisiune(editare);
+        g.MapPut("/depozite/{id:guid}", ModificaDepozit).WithName("ModificaDepozit").WithSummary("Denumirea, adresa și starea unui depozit")
+            .Produces<DepozitDto>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(editare);
+        g.MapGet("/gestionari", ListaGestionari).WithName("ListaGestionari").WithSummary("Utilizatorii firmei care pot fi gestionari")
+            .Produces<IReadOnlyList<GestionarDto>>().CerePermisiune(vizualizare);
 
         g.MapGet("/articole", ListaArticole).WithName("ListaArticoleStoc").WithSummary("Nomenclatorul de materiale").Produces<IReadOnlyList<ArticolDto>>().CerePermisiune(vizualizare);
         g.MapPut("/articole/{id:guid}", ModificaArticol).WithName("ModificaArticolStoc").WithSummary("Corectează denumirea / UM unui material")
@@ -134,10 +156,14 @@ public sealed class ModulStocuri : IModul
             .Produces<TransferDto>(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(creare);
         // Consum pe articolele devizului, retur în depozit, consum real față de bugetul de materiale.
         EndpointuriConsum.Mapeaza(g);
+        // Numerele de pe hârtie ale bonurilor (verificare, renumerotare) și rapoartele bonurilor (D-48).
+        EndpointuriNumereBonuri.Mapeaza(g);
         EndpointuriImportBonConsum.Mapeaza(g);
 
         // Inventarul gestiunilor și stornarea NIR-urilor.
         EndpointuriInventar.Mapeaza(g);
+        // Stocul preluat din programul de gestiune anterior (balanța de stoc, D-42).
+        EndpointuriSoldInitial.Mapeaza(g);
         EndpointuriCorectieNir.Mapeaza(g);
 
         // Proveniența stocului: pe ce NIR / factură a intrat ce e acum în gestiuni.
@@ -154,20 +180,99 @@ public sealed class ModulStocuri : IModul
     private static async Task<IResult> ListaGestiuni(StocuriDbContext db, CancellationToken ct)
     {
         await AsiguraDepozitCentralAsync(db, ct);
-        var gestiuni = await db.Gestiuni.AsNoTracking().OrderBy(x => x.Tip).ThenBy(x => x.Cod).ToListAsync(ct);
-        return Results.Ok(gestiuni.Select(Dto).ToList());
+        var depozite = await db.Depozite.AsNoTracking().ToDictionaryAsync(d => d.Id, ct);
+        var gestiuni = await db.Gestiuni.AsNoTracking().ToListAsync(ct);
+        return Results.Ok(gestiuni
+            .OrderBy(x => x.Tip).ThenBy(x => x.DepozitId is { } d && depozite.TryGetValue(d, out var dep) ? dep.Cod : string.Empty).ThenBy(x => x.Cod)
+            .Select(x => Dto(x, depozite)).ToList());
     }
 
-    private static async Task<IResult> CreeazaDepozit(GestiuneCerere cerere, StocuriDbContext db, CancellationToken ct)
+    private static async Task<IResult> ListaDepozite(StocuriDbContext db, CancellationToken ct)
     {
-        var r = Gestiune.CreeazaDepozit(cerere.Cod ?? string.Empty, cerere.Denumire ?? string.Empty);
+        await AsiguraDepozitCentralAsync(db, ct);
+        var depozite = await db.Depozite.AsNoTracking().OrderBy(d => d.Cod).ToListAsync(ct);
+        var gestiuni = await db.Gestiuni.AsNoTracking().Where(x => x.Tip == TipGestiune.Depozit).OrderBy(x => x.Cod).ToListAsync(ct);
+        var dupaId = depozite.ToDictionary(d => d.Id);
+        return Results.Ok(depozite.Select(d => Dto(d, gestiuni.Where(x => x.DepozitId == d.Id).Select(x => Dto(x, dupaId)).ToList())).ToList());
+    }
+
+    private static async Task<IResult> CreeazaDepozit(DepozitCerere cerere, StocuriDbContext db, CancellationToken ct)
+    {
+        var r = Depozit.Creeaza(cerere.Cod ?? string.Empty, cerere.Denumire ?? string.Empty, cerere.Adresa);
+        if (r.Esec)
+            return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
+        if (await db.Depozite.AnyAsync(x => x.Cod == r.Valoare.Cod, ct))
+            return Results.Conflict(new { mesaj = $"Există deja un depozit cu codul {r.Valoare.Cod}." });
+        db.Depozite.Add(r.Valoare);
+        await db.SaveChangesAsync(ct);
+        return Results.Created($"/api/stocuri/depozite/{r.Valoare.Id}", Dto(r.Valoare, []));
+    }
+
+    private static async Task<IResult> ModificaDepozit(Guid id, DepozitCerere cerere, StocuriDbContext db, CancellationToken ct)
+    {
+        var d = await db.Depozite.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (d is null)
+            return Results.NotFound();
+        if (!cerere.Activ && await db.Gestiuni.AnyAsync(x => x.DepozitId == id && x.Activa, ct))
+            return Results.BadRequest(new { mesaj = "Depozitul are gestiuni active; dezactivează-le întâi." });
+        var r = d.Modifica(cerere.Denumire ?? string.Empty, cerere.Adresa, cerere.Activ);
+        if (r.Esec)
+            return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(Dto(d, []));
+    }
+
+    private static async Task<IResult> CreeazaGestiune(GestiuneCerere cerere, StocuriDbContext db, IInterogareUtilizatori utilizatori, CancellationToken ct)
+    {
+        await AsiguraDepozitCentralAsync(db, ct);
+        var depozit = cerere.DepozitId is { } did
+            ? await db.Depozite.FirstOrDefaultAsync(x => x.Id == did, ct)
+            : await db.Depozite.FirstOrDefaultAsync(x => x.Cod == Depozit.CodCentral, ct) ?? await db.Depozite.OrderBy(x => x.Cod).FirstOrDefaultAsync(ct);
+        if (depozit is null)
+            return Results.BadRequest(new { mesaj = "Depozitul ales nu există." });
+        var (gestionarId, gestionarNume, eroare) = await GestionarAsync(cerere.GestionarId, utilizatori, ct);
+        if (eroare is not null)
+            return Results.BadRequest(new { mesaj = eroare });
+        var r = Gestiune.CreeazaInDepozit(depozit, cerere.Cod ?? string.Empty, cerere.Denumire ?? string.Empty, gestionarId, gestionarNume);
         if (r.Esec)
             return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
         if (await db.Gestiuni.AnyAsync(x => x.Cod == r.Valoare.Cod, ct))
             return Results.Conflict(new { mesaj = $"Există deja o gestiune cu codul {r.Valoare.Cod}." });
         db.Gestiuni.Add(r.Valoare);
         await db.SaveChangesAsync(ct);
-        return Results.Created($"/api/stocuri/gestiuni/{r.Valoare.Id}", Dto(r.Valoare));
+        return Results.Created($"/api/stocuri/gestiuni/{r.Valoare.Id}", Dto(r.Valoare, new Dictionary<Guid, Depozit> { [depozit.Id] = depozit }));
+    }
+
+    private static async Task<IResult> ModificaGestiune(Guid id, ModificaGestiuneCerere cerere, StocuriDbContext db, IInterogareUtilizatori utilizatori, CancellationToken ct)
+    {
+        var g = await db.Gestiuni.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (g is null)
+            return Results.NotFound();
+        // Același gestionar rămâne (chiar dacă între timp a pierdut accesul la firmă); altul trebuie să fie utilizator activ.
+        var (gestionarId, gestionarNume, eroare) = cerere.GestionarId is { } gid && gid == g.GestionarId
+            ? (g.GestionarId, g.GestionarNume, (string?)null)
+            : await GestionarAsync(cerere.GestionarId, utilizatori, ct);
+        if (eroare is not null)
+            return Results.BadRequest(new { mesaj = eroare });
+        if (!cerere.Activa && g.Activa && await db.Solduri.AnyAsync(s => s.GestiuneId == id && s.Cantitate != 0, ct))
+            return Results.BadRequest(new { mesaj = "Gestiunea are stoc; nu poate fi dezactivată până nu se golește (transfer sau inventar)." });
+        var r = g.Modifica(cerere.Denumire ?? string.Empty, gestionarId, gestionarNume, cerere.Activa);
+        if (r.Esec)
+            return Results.BadRequest(new { mesaj = r.Eroare.Mesaj });
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(Dto(g, await db.Depozite.AsNoTracking().ToDictionaryAsync(d => d.Id, ct)));
+    }
+
+    private static async Task<IResult> ListaGestionari(IInterogareUtilizatori utilizatori, CancellationToken ct) =>
+        Results.Ok((await utilizatori.UtilizatoriFirmaAsync(ct)).Select(u => new GestionarDto(u.Id, u.Nume, u.Email)).ToList());
+
+    /// <summary>Gestionarul ales trebuie să fie un utilizator activ al firmei; null = fără gestionar.</summary>
+    private static async Task<(Guid? Id, string? Nume, string? Eroare)> GestionarAsync(Guid? id, IInterogareUtilizatori utilizatori, CancellationToken ct)
+    {
+        if (id is null)
+            return (null, null, null);
+        var u = (await utilizatori.UtilizatoriFirmaAsync(ct)).FirstOrDefault(x => x.Id == id);
+        return u is null ? (null, null, "Gestionarul ales nu este un utilizator activ al firmei.") : (u.Id, u.Nume, null);
     }
 
     private static async Task<IResult> ListaArticole(string? cauta, StocuriDbContext db, CancellationToken ct)
@@ -176,7 +281,7 @@ public sealed class ModulStocuri : IModul
         if (!string.IsNullOrWhiteSpace(cauta))
             q = q.Where(a => EF.Functions.ILike(a.Denumire, $"%{cauta.Trim()}%") || EF.Functions.ILike(a.Cod, $"%{cauta.Trim()}%"));
         var articole = await q.OrderBy(a => a.Denumire).Take(2000).ToListAsync(ct);
-        return Results.Ok(articole.Select(a => new ArticolDto(a.Id, a.Cod, a.Denumire, a.UnitateMasura, a.Activ)).ToList());
+        return Results.Ok(articole.Select(a => new ArticolDto(a.Id, a.Cod, a.Denumire, a.UnitateMasura, a.Activ, a.CodExtern, a.Categorie)).ToList());
     }
 
     private static async Task<IResult> ModificaArticol(Guid id, ArticolCerere cerere, StocuriDbContext db, CancellationToken ct)
@@ -257,7 +362,7 @@ public sealed class ModulStocuri : IModul
         // NIR-urile pe aviz încă fără factură, pe nota de comandă a avizului: factura aceleiași note le acoperă.
         var avizeNefacturate = listaAvize
             .Where(a => peAviz.TryGetValue(a.Id, out var n) && n.Any(x => x.FacturaId is null))
-            .GroupBy(a => a.NotaComandaId).ToDictionary(g => g.Key, g => g.Sum(a => peAviz[a.Id].Count(x => x.FacturaId is null)));
+            .Where(a => a.NotaComandaId is not null).GroupBy(a => a.NotaComandaId!.Value).ToDictionary(g => g.Key, g => g.Sum(a => peAviz[a.Id].Count(x => x.FacturaId is null)));
 
         var deFacturi = lista
             .Where(f => Potriveste(f.Numar, f.FurnizorDenumire, f.NotaComandaNumar))
@@ -647,7 +752,7 @@ public sealed class ModulStocuri : IModul
         return sold;
     }
 
-    private static async Task<int> UrmatorulNumarArticolAsync(StocuriDbContext db, CancellationToken ct)
+    internal static async Task<int> UrmatorulNumarArticolAsync(StocuriDbContext db, CancellationToken ct)
     {
         var coduri = await db.Articole.Where(a => a.Cod.StartsWith("MAT-")).Select(a => a.Cod).ToListAsync(ct);
         return coduri.Select(c => int.TryParse(c[4..], out var n) ? n : 0).DefaultIfEmpty(0).Max() + 1;
@@ -657,20 +762,43 @@ public sealed class ModulStocuri : IModul
         (await db.Aliasuri.AsNoTracking().Select(a => new AliasCandidat(a.FurnizorId, a.Cheie, a.ArticolId)).ToListAsync(ct),
          await db.Articole.AsNoTracking().Where(a => a.Activ).Select(a => new ArticolCandidat(a.Id, a.Cod, a.Denumire, a.UnitateMasura)).ToListAsync(ct));
 
-    private static async Task AsiguraDepozitCentralAsync(StocuriDbContext db, CancellationToken ct)
+    /// <summary>
+    /// Firma are cel puțin un depozit cu o gestiune (implicit „Depozit central” DEP-01). Gestiunile de depozit create înaintea
+    /// depozitelor (D-43) intră în depozitul central. Cu <paramref name="faraGestiuneImplicita"/> (importul soldului inițial,
+    /// care își creează gestiunile) nu se adaugă gestiunea implicită.
+    /// </summary>
+    internal static async Task AsiguraDepozitCentralAsync(StocuriDbContext db, CancellationToken ct, bool faraGestiuneImplicita = false)
     {
-        if (!await db.Gestiuni.AnyAsync(g => g.Tip == TipGestiune.Depozit, ct))
+        var central = await db.Depozite.FirstOrDefaultAsync(d => d.Cod == Depozit.CodCentral, ct) ?? await db.Depozite.OrderBy(d => d.Cod).FirstOrDefaultAsync(ct);
+        var faraDepozit = await db.Gestiuni.Where(g => g.Tip == TipGestiune.Depozit && g.DepozitId == null).ToListAsync(ct);
+        var areGestiuni = faraGestiuneImplicita || await db.Gestiuni.AnyAsync(g => g.Tip == TipGestiune.Depozit, ct);
+        if (central is not null && faraDepozit.Count == 0 && areGestiuni)
+            return;
+
+        if (central is null)
         {
-            db.Gestiuni.Add(Gestiune.DepozitCentral());
-            await db.SaveChangesAsync(ct);
+            central = Depozit.Central();
+            db.Depozite.Add(central);
         }
+
+        foreach (var g in faraDepozit)
+            g.MutaInDepozit(central);
+        if (!areGestiuni)
+            db.Gestiuni.Add(Gestiune.DepozitCentral(central));
+        await db.SaveChangesAsync(ct);
     }
 
     internal static async Task<bool> VedePreturiAsync(IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, CancellationToken ct) =>
         utilizator.UtilizatorId is { } uid && firma.FirmaId is { } fid &&
         (await permisiuni.PentruUtilizatorAsync(uid, ct)).Are(Permisiuni.PreturiCost, new Domeniu(fid));
 
-    private static GestiuneDto Dto(Gestiune g) => new(g.Id, g.Cod, g.Denumire, g.Tip.ToString(), g.ProiectId, g.Activa);
+    internal static GestiuneDto Dto(Gestiune g, IReadOnlyDictionary<Guid, Depozit> depozite)
+    {
+        var d = g.DepozitId is { } id && depozite.TryGetValue(id, out var dep) ? dep : null;
+        return new(g.Id, g.Cod, g.Denumire, g.Tip.ToString(), g.ProiectId, g.Activa, d?.Id, d?.Cod, d?.Denumire, g.GestionarId, g.GestionarNume);
+    }
+
+    private static DepozitDto Dto(Depozit d, IReadOnlyList<GestiuneDto> gestiuni) => new(d.Id, d.Cod, d.Denumire, d.Adresa, d.Activ, gestiuni);
 
     internal static NirDto Dto(Nir n, bool preturi) => new(n.Id, n.NumarAfisat, n.Data, n.GestiuneDenumire, n.FacturaId, n.FacturaNumar, n.FurnizorDenumire, n.ProiectCod,
         n.Linii.Select(l => new LinieNirDto(l.ArticolCod, l.Denumire, l.UnitateMasura, l.CantitateFactura, l.CantitateReceptionata,

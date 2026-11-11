@@ -28,6 +28,7 @@ public sealed class ExtractorTextPdf(ExtractorTextOcr ocr, ILogger<ExtractorText
     public async Task<RezultatImport<TextDocument>> ExtrageAsync(SursaImport sursa, CancellationToken ct = default)
     {
         var randuri = new List<RandText>();
+        var linii = new List<LinieOrizontala>();
         var scanate = new List<int>();
         try
         {
@@ -54,6 +55,7 @@ public sealed class ExtractorTextPdf(ExtractorTextOcr ocr, ILogger<ExtractorText
                 else
                 {
                     randuri.AddRange(randuriPagina);
+                    linii.AddRange(DetectareLinii.DinPaginaPdf(pagina, Scara, offset));
                 }
 
                 offset += (int)(pagina.Height * Scara) + 100; // paginile una sub alta, fără suprapuneri
@@ -72,12 +74,14 @@ public sealed class ExtractorTextPdf(ExtractorTextOcr ocr, ILogger<ExtractorText
 
         if (scanate.Count == 0)
         {
-            return RezultatImport<TextDocument>.Ok(new TextDocument(randuri, [], DinOcr: false));
+            return RezultatImport<TextDocument>.Ok(new TextDocument(randuri, [], DinOcr: false, linii));
         }
 
         // PDF combinat: paginile scanate prin OCR, puse la locul lor.
         var citite = await ocr.ExtragePaginiAsync(sursa, scanate, ct);
         var toate = randuri.Concat(citite.Valoare?.Randuri ?? []).OrderBy(r => r.Pagina).ToList();
-        return RezultatImport<TextDocument>.Ok(new TextDocument(toate, [], DinOcr: true), citite.Probleme);
+        var toateLiniile = linii.Concat(citite.Valoare?.LiniiOrizontale ?? []).ToList();
+        return RezultatImport<TextDocument>.Ok(new TextDocument(toate, [], DinOcr: true, toateLiniile), citite.Probleme);
+
     }
 }
