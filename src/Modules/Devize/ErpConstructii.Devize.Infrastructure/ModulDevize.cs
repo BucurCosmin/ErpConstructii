@@ -1,4 +1,5 @@
 ﻿using ErpConstructii.Devize.Calcul;
+using ErpConstructii.Devize.Analize;
 using ErpConstructii.Devize.Import;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure;
@@ -59,6 +60,9 @@ public sealed class ModulDevize : IModul
         // Importatorii concreți (WinDoc, Excel...) se înregistrează din proiectele lor,
         // ca IImportatorDeviz; registrul îi primește pe toți.
         servicii.AddScoped<RegistruImportatori>();
+        servicii.AddScoped<IAnalizorDeviz, AnalizorAmprentaNumerelor>();
+        servicii.AddScoped<IAnalizorDeviz, AnalizorPreturiSpeciale>();
+        servicii.AddScoped<RegistruAnalizori>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
@@ -96,6 +100,7 @@ public sealed class ModulDevize : IModul
         EndpointuriImportDeviz.Mapeaza(grup);
         // Lucrul pe versiune: redenumire, ștergere, editarea articolelor, versiune nouă, aprobare, PDF, Excel.
         EndpointuriEditareDeviz.Mapeaza(grup);
+        EndpointuriAnalizaDeviz.Mapeaza(grup);
     }
 
     private static StructuraDevizDto Structura(VersiuneDeviz v)

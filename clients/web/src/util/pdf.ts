@@ -1,5 +1,14 @@
 import { api } from '../api/client'
 
+export function descarcaFisier(blob: Blob, nume: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = nume
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
 /**
  * Deschide un PDF generat de API într-un tab nou (cererea poartă token-ul, deci nu poate fi un simplu link).
  * Tab-ul se deschide înainte de cerere, ca browserul să nu-l blocheze ca fereastră pop-up.

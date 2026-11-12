@@ -1,4 +1,5 @@
 using ErpConstructii.Devize;
+using ErpConstructii.Devize.Analize;
 using ErpConstructii.Devize.Calcul;
 using ErpConstructii.Devize.Import.Isdp;
 
@@ -122,6 +123,35 @@ public class ModelDevizIsdpTeste
         Assert.Empty(p2.Noi);
         Assert.Empty(p2.Probleme);
         Assert.All(v2.Articole().SelectMany(a => a.Consumuri), c => Assert.Contains(p1.Noi, r => r.Id == c.ResursaCatalogId));
+    }
+
+    [Fact]
+    public void Analiza_numerelor_identifica_volumele_posibil_copiate_din_tone_in_acelasi_stadiu()
+    {
+        var (_, deviz) = Versiune();
+        var rezultat = new AnalizorAmprentaNumerelor().Analizeaza(new(deviz, new()));
+        var articole = deviz.Articole().Where(a => a.Simbol is "TSD01C1" or "TSD04A1").ToArray();
+
+        Assert.Equal(2, articole.Length);
+        foreach (var articol in articole)
+        {
+            var constatare = Assert.Single(rezultat.Constatari, c => c.Corectura?.Articol == articol.CheieStabila);
+            Assert.Equal(320.82m, constatare.Corectura!.CantitateNoua);
+            Assert.Equal(SeveritateAnaliza.Info, constatare.Severitate);
+        }
+        Assert.Equal(2, rezultat.Constatari.Count(c => c.Corectura is not null));
+        // Cele două reduceri ale costului direct însumează aproximativ 37.035 lei.
+        Assert.InRange(-rezultat.Constatari.Where(c => c.Corectura is not null).Sum(c => c.ImpactCostDirect!.Value), 37030m, 37040m);
+    }
+
+    [Fact]
+    public void Analiza_preturilor_speciale_gaseste_apa_si_tariful_uniform_pe_devizul_isdp()
+    {
+        var (_, deviz) = Versiune();
+        var rezultat = new AnalizorPreturiSpeciale().Analizeaza(new(deviz, new()));
+
+        Assert.Contains(rezultat.Constatari, c => c.Cod == "A5.PRET_ZERO" && c.Dovezi.Contains(new("resursa", "6202806")));
+        Assert.Contains(rezultat.Constatari, c => c.Cod == "A5.TARIF_UNIFORM" && c.Dovezi.Contains(new("tarif", "111")));
     }
 
     private static decimal Bani(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);

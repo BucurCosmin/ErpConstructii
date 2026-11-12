@@ -3,6 +3,14 @@
 > Document de plan, fără cod. Completează `import-isdp.md` și `editor-deviz.md`.
 > Scop: algoritmi proprii, rulați în aplicație, care găsesc greșeli și riscuri într-un deviz și, unde se poate, propun corectura.
 
+## Stadiul implementării
+
+- Există nucleul pur `Devize/Analize`: contract și registru de analizori, constatări explicabile cu amprentă și un dicționar inițial de unități. În detaliile versiunii, „Verifică devizul” rulează la cerere A2 și A5 prin `POST /api/proiecte/{proiectId}/devize/{versiuneId}/analize/previzualizare`; cere `ofertare.vizualizare` și `date.preturi_cost` pe proiect. Rezultatul este experimental și nesalvat; nu modifică devizul și nu blochează aprobarea. Încă nu există stocarea rapoartelor sau aplicarea corecturilor.
+- „Descarcă PDF” descarcă rezultatele, dovezile și limitările pe dispozitiv, fără a stoca raportul pe server. `POST .../analize/raport/pdf` cere aceleași drepturi și amprenta previzualizării; dacă datele afișate sau rezultatele s-au schimbat, întoarce 409 și verificarea trebuie rulată din nou.
+- A2 acoperă deocamdată doar egalități volum–masă și lanțurile cu densități cunoscute; verificarea zecimalelor și celelalte perechi de dimensiuni lipsesc. A5 acoperă doar prețul zero și tariful orar uniform, fără partea statistică. Pragurile de precizie și recall nu au fost încă măsurate; implementarea nu este validată pentru producție.
+- A2 compară și capitole din același stadiu fizic: în fixture-ul chilleri săpătura și umpluturile sunt în capitole diferite. Constatările sunt informative; suspiciunile chilleri nu sunt confirmate ca greșeli.
+- Analiza va avertiza, nu va bloca aprobarea. Validarea familiilor și relațiilor, aplicarea pe F3 de la beneficiar și alegerea unui model local fără cost de licențiere rămân de stabilit.
+
 ## 1. Principii
 
 1. **Analizorii sunt module** (ca importatorii, D-06). Fiecare analizor e independent, are un cod (ex. `A2.AMPRENTA`), o versiune și se poate activa sau dezactiva per firmă.
@@ -99,7 +107,7 @@ Pentru fiecare: scop, intrări, metodă, ieșiri, criterii de acceptare. Criteri
 - **Metodă:**
   1. Indexează toate cantitățile nenule (rotunjite la 2 zecimale) într-un dicționar valoare → articole.
   2. **Egalitate peste dimensiuni:** aceeași valoare la articole cu dimensiuni diferite (t și mc, mp și mc). Ignoră valorile „rotunde” frecvente (1, 10, 100) și cantitățile sub un prag.
-  3. **Raport de conversie:** pentru perechi de articole din același capitol, raportul cantităților e (în toleranță 0,1%) un factor de conversie cunoscut (1,8; 2,4; 1,6; 7,85; 1.000). Raport exact = încredere mare.
+  3. **Raport de conversie:** pentru perechi de articole din același stadiu fizic (sau același capitol când nu există stadiu), raportul cantităților e (în toleranță 0,1%) un factor de conversie cunoscut (1,8; 2,4; 1,6; 7,85; 1.000). Raport exact = încredere mare; comparațiile între capitole sunt informative.
   4. **Lanț:** dacă A = B × factor și C = A, dar C are dimensiunea lui B, atunci C a fost probabil copiat din A în loc de B. Corectura propusă: C = B.
   5. **Zecimale:** cantitate ≈ 10ⁿ × cantitatea unui articol legat (aceeași familie sau relație din A1), n ≠ 0.
 - **Ieșiri:** `A2.UNITATE_COPIATA`, `A2.FACTOR_CONVERSIE`, `A2.ZECIMALA`, cu corectura propusă unde lanțul e clar.

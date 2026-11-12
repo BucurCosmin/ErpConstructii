@@ -20,7 +20,8 @@ import type { ArticolDeviz, CapitolDeviz, ValoriResurse } from '../../api/tipuri
 import { NumarRo } from '../../componente/NumarRo'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei, formatProcent, stariVersiune, tipuriVersiune } from '../../util/format'
-import { deschidePdf } from '../../util/pdf'
+import { descarcaFisier, deschidePdf } from '../../util/pdf'
+import { VerificareDeviz } from './VerificareDeviz'
 
 /** Rând din arborele devizului: capitole pe oricâte niveluri (obiect, stadiu fizic, capitol), apoi articole. */
 interface Rand {
@@ -109,15 +110,6 @@ function randCapitol(c: CapitolDeviz, adancime: number, cauta: string, pastreaza
 
 function capitoleToate(c: CapitolDeviz[]): CapitolDeviz[] {
   return c.flatMap((x) => [x, ...capitoleToate(x.subcapitole)])
-}
-
-function descarca(blob: Blob, nume: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nume
-  a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 type Vedere = 'valori' | 'preturi'
@@ -244,7 +236,7 @@ export function DetaliiDeviz() {
   const exportExcel = async () => {
     setSeExporta(true)
     try {
-      descarca(await api.getBinar(`/api/proiecte/${proiectId}/devize/${versiuneId}/excel`), `Deviz_${data?.versiune.numar ?? ''}.xlsx`)
+      descarcaFisier(await api.getBinar(`/api/proiecte/${proiectId}/devize/${versiuneId}/excel`), `Deviz_${data?.versiune.numar ?? ''}.xlsx`)
     } catch (e) {
       eroare(e)
     } finally {
@@ -370,6 +362,10 @@ export function DetaliiDeviz() {
             <Button icon={<DownloadOutlined />} disabled={!data} loading={seExporta} onClick={() => void exportExcel()}>
               Export Excel
             </Button>
+            {data && (
+              <VerificareDeviz key={`${proiectId}-${versiuneId}`} proiectId={proiectId} versiuneId={versiuneId}
+                permis={permisiuni.data?.includes('date.preturi_cost') ?? false} />
+            )}
             {ciorna && poateEdita && (
               <>
                 <Button icon={<EditOutlined />} onClick={() => setRedenumire(data?.versiune.denumire ?? '')}>Redenumește</Button>

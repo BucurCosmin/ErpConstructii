@@ -1,0 +1,20 @@
+@baseUrl = http://localhost:5080
+@proiectId = 00000000-0000-0000-0000-000000000000
+@versiuneId = 00000000-0000-0000-0000-000000000000
+@utilizatorId = 00000000-0000-0000-0000-000000000000
+@firmaId = 00000000-0000-0000-0000-000000000000
+
+### Previzualizare experimentală; înlocuiește ID-urile cu cele din mediul de dezvoltare.
+POST {{baseUrl}}/api/proiecte/{{proiectId}}/devize/{{versiuneId}}/analize/previzualizare
+X-Dev-Utilizator: {{utilizatorId}}
+X-Dev-Firma: {{firmaId}}
+
+### PDF-ul aceleiași previzualizări; copiază valoarea „amprenta” din răspunsul de mai sus.
+POST {{baseUrl}}/api/proiecte/{{proiectId}}/devize/{{versiuneId}}/analize/raport/pdf
+X-Dev-Utilizator: {{utilizatorId}}
+X-Dev-Firma: {{firmaId}}
+Content-Type: application/json
+
+{
+  "amprenta": "INLOCUIESTE_CU_AMPRENTA_PREVIZUALIZARII"
+}

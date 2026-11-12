@@ -46,11 +46,11 @@ public static class ComparareVersiuni
             }
 
             var campuri = new List<string>();
-            if (v.Simbol != n.Simbol)
+            if (Text(v.Simbol) != Text(n.Simbol))
                 campuri.Add("simbol");
-            if (v.Denumire != n.Denumire)
+            if (Text(v.Denumire) != Text(n.Denumire))
                 campuri.Add("denumire");
-            if (v.UnitateMasura != n.UnitateMasura)
+            if (Text(v.UnitateMasura) != Text(n.UnitateMasura))
                 campuri.Add("um");
             if (v.Cantitate != n.Cantitate)
                 campuri.Add("cantitate");
@@ -65,6 +65,9 @@ public static class ComparareVersiuni
 
         return new ComparatieVersiuni(diferente, vechi.Recapitulatie(), noua.Recapitulatie());
     }
+
+    /// <summary>Textul fără diferențele de spații (salvarea curăță spațiile de la capete; importul le poate păstra).</summary>
+    private static string Text(string s) => string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private static Dictionary<Guid, ArticolComparat> Articole(VersiuneDeviz v)
     {
