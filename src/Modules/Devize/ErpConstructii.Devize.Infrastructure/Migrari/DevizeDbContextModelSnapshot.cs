@@ -31,17 +31,22 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnName("id");
 
                     b.Property<decimal>("Cantitate")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
                         .HasColumnName("cantitate");
 
-                    b.Property<Guid>("CategorieId")
+                    b.Property<Guid>("CapitolId")
                         .HasColumnType("uuid")
-                        .HasColumnName("categorie_id");
+                        .HasColumnName("capitol_id");
 
                     b.Property<Guid>("CheieStabila")
                         .HasColumnType("uuid")
                         .HasColumnName("cheie_stabila");
+
+                    b.Property<string>("CodWbsSursa")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("cod_wbs_sursa");
 
                     b.Property<Guid?>("CreatDe")
                         .HasColumnType("uuid")
@@ -73,24 +78,54 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("integer")
                         .HasColumnName("ordine");
 
+                    b.Property<decimal>("PretEchipament")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("pret_echipament");
+
                     b.Property<decimal>("PretManopera")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
                         .HasColumnName("pret_manopera");
 
                     b.Property<decimal>("PretMaterial")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
                         .HasColumnName("pret_material");
 
+                    b.Property<decimal>("PretOfertaEchipament")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("pret_oferta_echipament");
+
+                    b.Property<decimal>("PretOfertaManopera")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("pret_oferta_manopera");
+
+                    b.Property<decimal>("PretOfertaMaterial")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("pret_oferta_material");
+
+                    b.Property<decimal>("PretOfertaTransport")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("pret_oferta_transport");
+
+                    b.Property<decimal>("PretOfertaUtilaj")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("pret_oferta_utilaj");
+
                     b.Property<decimal>("PretTransport")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
                         .HasColumnName("pret_transport");
 
                     b.Property<decimal>("PretUtilaj")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
                         .HasColumnName("pret_utilaj");
 
                     b.Property<string>("Simbol")
@@ -99,17 +134,56 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("character varying(40)")
                         .HasColumnName("simbol");
 
+                    b.Property<string>("SimbolBaza")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("simbol_baza");
+
+                    b.Property<string>("TipArticol")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Normat")
+                        .HasColumnName("tip_articol");
+
                     b.Property<string>("UnitateMasura")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("unitate_masura");
 
+                    b.Property<decimal>("ValoareOfertaEchipament")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("valoare_oferta_echipament");
+
+                    b.Property<decimal>("ValoareOfertaManopera")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("valoare_oferta_manopera");
+
+                    b.Property<decimal>("ValoareOfertaMaterial")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("valoare_oferta_material");
+
+                    b.Property<decimal>("ValoareOfertaTransport")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("valoare_oferta_transport");
+
+                    b.Property<decimal>("ValoareOfertaUtilaj")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("valoare_oferta_utilaj");
+
                     b.HasKey("Id")
                         .HasName("pk_articole");
 
-                    b.HasIndex("CategorieId")
-                        .HasDatabaseName("ix_articole_categorie_id");
+                    b.HasIndex("CapitolId")
+                        .HasDatabaseName("ix_articole_capitol_id");
 
                     b.HasIndex("CheieStabila")
                         .HasDatabaseName("ix_articole_cheie_stabila");
@@ -117,7 +191,7 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                     b.ToTable("articole", "devize");
                 });
 
-            modelBuilder.Entity("ErpConstructii.Devize.CategorieLucrari", b =>
+            modelBuilder.Entity("ErpConstructii.Devize.CapitolDeviz", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -130,6 +204,11 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("character varying(40)")
                         .HasColumnName("cod");
 
+                    b.Property<string>("CodWbs")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("cod_wbs");
+
                     b.Property<Guid?>("CreatDe")
                         .HasColumnType("uuid")
                         .HasColumnName("creat_de");
@@ -140,8 +219,8 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
 
                     b.Property<string>("Denumire")
                         .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
                         .HasColumnName("denumire");
 
                     b.Property<Guid>("FirmaId")
@@ -156,25 +235,38 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
-                    b.Property<Guid>("ObiectId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("obiect_id");
-
                     b.Property<int>("Ordine")
                         .HasColumnType("integer")
                         .HasColumnName("ordine");
 
-                    b.Property<bool>("Subcontractata")
+                    b.Property<Guid?>("ParinteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("parinte_id");
+
+                    b.Property<bool>("Subcontractat")
                         .HasColumnType("boolean")
-                        .HasColumnName("subcontractata");
+                        .HasColumnName("subcontractat");
+
+                    b.Property<string>("Tip")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tip");
+
+                    b.Property<Guid>("VersiuneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_id");
 
                     b.HasKey("Id")
-                        .HasName("pk_categorie_lucrari");
+                        .HasName("pk_capitole");
 
-                    b.HasIndex("ObiectId")
-                        .HasDatabaseName("ix_categorie_lucrari_obiect_id");
+                    b.HasIndex("ParinteId")
+                        .HasDatabaseName("ix_capitole_parinte_id");
 
-                    b.ToTable("categorie_lucrari", "devize");
+                    b.HasIndex("VersiuneId", "ParinteId", "Ordine")
+                        .HasDatabaseName("ix_capitole_versiune_id_parinte_id_ordine");
+
+                    b.ToTable("capitole", "devize");
                 });
 
             modelBuilder.Entity("ErpConstructii.Devize.ConsumNormat", b =>
@@ -188,6 +280,11 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("articol_id");
 
+                    b.Property<decimal>("CantitateTotala")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("cantitate_totala");
+
                     b.Property<string>("CodResursa")
                         .IsRequired()
                         .HasMaxLength(40)
@@ -195,8 +292,8 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnName("cod_resursa");
 
                     b.Property<decimal>("ConsumUnitar")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)")
+                        .HasPrecision(24, 12)
+                        .HasColumnType("numeric(24,12)")
                         .HasColumnName("consum_unitar");
 
                     b.Property<Guid?>("CreatDe")
@@ -225,16 +322,28 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
+                    b.Property<int>("Ordine")
+                        .HasColumnType("integer")
+                        .HasColumnName("ordine");
+
                     b.Property<decimal>("PretUnitar")
-                        .HasPrecision(18, 4)
-                        .HasColumnType("numeric(18,4)")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
                         .HasColumnName("pret_unitar");
+
+                    b.Property<Guid?>("ResursaCatalogId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resursa_catalog_id");
 
                     b.Property<string>("Tip")
                         .IsRequired()
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("tip");
+
+                    b.Property<bool>("TipDedus")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tip_dedus");
 
                     b.Property<string>("UnitateMasura")
                         .IsRequired()
@@ -248,15 +357,157 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                     b.HasIndex("ArticolId")
                         .HasDatabaseName("ix_consum_normat_articol_id");
 
+                    b.HasIndex("ResursaCatalogId")
+                        .HasDatabaseName("ix_consum_normat_resursa_catalog_id");
+
                     b.ToTable("consum_normat", "devize");
                 });
 
-            modelBuilder.Entity("ErpConstructii.Devize.ObiectDeviz", b =>
+            modelBuilder.Entity("ErpConstructii.Devize.FisierSursaDeviz", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("Amprenta")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("amprenta");
+
+                    b.Property<byte[]>("Continut")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("continut");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<long>("Marime")
+                        .HasColumnType("bigint")
+                        .HasColumnName("marime");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("NumeFisier")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("character varying(260)")
+                        .HasColumnName("nume_fisier");
+
+                    b.Property<bool>("Principal")
+                        .HasColumnType("boolean")
+                        .HasColumnName("principal");
+
+                    b.Property<string>("TipContinut")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("tip_continut");
+
+                    b.Property<Guid>("VersiuneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_fisiere_sursa");
+
+                    b.HasIndex("VersiuneId")
+                        .HasDatabaseName("ix_fisiere_sursa_versiune_id");
+
+                    b.HasIndex("FirmaId", "Amprenta")
+                        .HasDatabaseName("ix_fisiere_sursa_firma_id_amprenta");
+
+                    b.ToTable("fisiere_sursa", "devize");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Devize.InlocuireVersiuneDeviz", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<DateTimeOffset>("La")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("la");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<Guid>("VersiuneInlocuitaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_inlocuita_id");
+
+                    b.Property<Guid>("VersiuneNouaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_noua_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_inlocuiri_versiuni");
+
+                    b.HasIndex("VersiuneInlocuitaId")
+                        .HasDatabaseName("ix_inlocuiri_versiuni_versiune_inlocuita_id");
+
+                    b.HasIndex("VersiuneNouaId")
+                        .HasDatabaseName("ix_inlocuiri_versiuni_versiune_noua_id");
+
+                    b.ToTable("inlocuiri_versiuni", "devize");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Devize.ResursaCatalog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ArticolStocDenumire")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("articol_stoc_denumire");
+
+                    b.Property<Guid?>("ArticolStocId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("articol_stoc_id");
+
+                    b.Property<string>("Categorie")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("categorie");
 
                     b.Property<string>("Cod")
                         .IsRequired()
@@ -274,13 +525,31 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
 
                     b.Property<string>("Denumire")
                         .IsRequired()
-                        .HasMaxLength(300)
-                        .HasColumnType("character varying(300)")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
                         .HasColumnName("denumire");
+
+                    b.Property<bool>("FaraMapare")
+                        .HasColumnType("boolean")
+                        .HasColumnName("fara_mapare");
 
                     b.Property<Guid>("FirmaId")
                         .HasColumnType("uuid")
                         .HasColumnName("firma_id");
+
+                    b.Property<string>("MapataDeNume")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("mapata_de_nume");
+
+                    b.Property<DateTimeOffset?>("MapataLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("mapata_la");
+
+                    b.Property<string>("Meserie")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("meserie");
 
                     b.Property<Guid?>("ModificatDe")
                         .HasColumnType("uuid")
@@ -290,21 +559,41 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
-                    b.Property<int>("Ordine")
-                        .HasColumnType("integer")
-                        .HasColumnName("ordine");
+                    b.Property<string>("Sursa")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("sursa");
 
-                    b.Property<Guid>("VersiuneId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("versiune_id");
+                    b.Property<string>("Tip")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tip");
+
+                    b.Property<bool>("TipDedus")
+                        .HasColumnType("boolean")
+                        .HasColumnName("tip_dedus");
+
+                    b.Property<string>("UnitateMasura")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("unitate_masura");
+
+                    b.Property<string>("Utilaj")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("utilaj");
 
                     b.HasKey("Id")
-                        .HasName("pk_obiect_deviz");
+                        .HasName("pk_resurse_catalog");
 
-                    b.HasIndex("VersiuneId")
-                        .HasDatabaseName("ix_obiect_deviz_versiune_id");
+                    b.HasIndex("FirmaId", "Sursa", "Cod")
+                        .IsUnique()
+                        .HasDatabaseName("ix_resurse_catalog_firma_id_sursa_cod");
 
-                    b.ToTable("obiect_deviz", "devize");
+                    b.ToTable("resurse_catalog", "devize");
                 });
 
             modelBuilder.Entity("ErpConstructii.Devize.VersiuneDeviz", b =>
@@ -342,6 +631,11 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("creat_la");
 
+                    b.Property<decimal?>("Curs")
+                        .HasPrecision(19, 6)
+                        .HasColumnType("numeric(19,6)")
+                        .HasColumnName("curs");
+
                     b.Property<string>("Denumire")
                         .IsRequired()
                         .HasMaxLength(300)
@@ -364,13 +658,44 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
+                    b.Property<string>("Moneda")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasDefaultValue("RON")
+                        .HasColumnName("moneda");
+
                     b.Property<int>("Numar")
                         .HasColumnType("integer")
                         .HasColumnName("numar");
 
+                    b.Property<string>("Obiect")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("obiect");
+
+                    b.Property<string>("Obiectiv")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("obiectiv");
+
+                    b.Property<string>("PoliticaRotunjire")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Standard")
+                        .HasColumnName("politica_rotunjire");
+
                     b.Property<Guid>("ProiectId")
                         .HasColumnType("uuid")
                         .HasColumnName("proiect_id");
+
+                    b.Property<string>("StadiuFizic")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("stadiu_fizic");
 
                     b.Property<string>("Stare")
                         .IsRequired()
@@ -390,6 +715,10 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("character varying(30)")
                         .HasColumnName("tip");
 
+                    b.Property<string>("TotaluriDeclarateJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("totaluri_declarate_json");
+
                     b.Property<Guid?>("VersiuneAnterioaraId")
                         .HasColumnType("uuid")
                         .HasColumnName("versiune_anterioara_id");
@@ -406,22 +735,28 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
 
             modelBuilder.Entity("ErpConstructii.Devize.ArticolDeviz", b =>
                 {
-                    b.HasOne("ErpConstructii.Devize.CategorieLucrari", null)
+                    b.HasOne("ErpConstructii.Devize.CapitolDeviz", null)
                         .WithMany("Articole")
-                        .HasForeignKey("CategorieId")
+                        .HasForeignKey("CapitolId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_articole_categorie_lucrari_categorie_id");
+                        .HasConstraintName("fk_articole_capitole_capitol_id");
                 });
 
-            modelBuilder.Entity("ErpConstructii.Devize.CategorieLucrari", b =>
+            modelBuilder.Entity("ErpConstructii.Devize.CapitolDeviz", b =>
                 {
-                    b.HasOne("ErpConstructii.Devize.ObiectDeviz", null)
-                        .WithMany("Categorii")
-                        .HasForeignKey("ObiectId")
+                    b.HasOne("ErpConstructii.Devize.CapitolDeviz", null)
+                        .WithMany()
+                        .HasForeignKey("ParinteId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .HasConstraintName("fk_capitole_capitole_parinte_id");
+
+                    b.HasOne("ErpConstructii.Devize.VersiuneDeviz", null)
+                        .WithMany("Capitole")
+                        .HasForeignKey("VersiuneId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_categorie_lucrari_obiect_deviz_obiect_id");
+                        .HasConstraintName("fk_capitole_versiuni_versiune_id");
                 });
 
             modelBuilder.Entity("ErpConstructii.Devize.ConsumNormat", b =>
@@ -432,16 +767,22 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_consum_normat_articole_articol_id");
+
+                    b.HasOne("ErpConstructii.Devize.ResursaCatalog", null)
+                        .WithMany()
+                        .HasForeignKey("ResursaCatalogId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_consum_normat_resurse_resursa_catalog_id");
                 });
 
-            modelBuilder.Entity("ErpConstructii.Devize.ObiectDeviz", b =>
+            modelBuilder.Entity("ErpConstructii.Devize.FisierSursaDeviz", b =>
                 {
                     b.HasOne("ErpConstructii.Devize.VersiuneDeviz", null)
-                        .WithMany("Obiecte")
+                        .WithMany()
                         .HasForeignKey("VersiuneId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_obiect_deviz_versiuni_versiune_id");
+                        .HasConstraintName("fk_fisiere_sursa_versiuni_versiune_id");
                 });
 
             modelBuilder.Entity("ErpConstructii.Devize.ArticolDeviz", b =>
@@ -449,19 +790,14 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                     b.Navigation("Consumuri");
                 });
 
-            modelBuilder.Entity("ErpConstructii.Devize.CategorieLucrari", b =>
+            modelBuilder.Entity("ErpConstructii.Devize.CapitolDeviz", b =>
                 {
                     b.Navigation("Articole");
                 });
 
-            modelBuilder.Entity("ErpConstructii.Devize.ObiectDeviz", b =>
-                {
-                    b.Navigation("Categorii");
-                });
-
             modelBuilder.Entity("ErpConstructii.Devize.VersiuneDeviz", b =>
                 {
-                    b.Navigation("Obiecte");
+                    b.Navigation("Capitole");
                 });
 #pragma warning restore 612, 618
         }

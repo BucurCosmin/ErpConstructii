@@ -30,7 +30,7 @@ public static class RoluriPredefinite
     // Ordinea coloanelor: Ofertare, Contracte, Buget, Santier, Situatii, Aprovizionare, Utilaje, Financiar, HR
     public static readonly IReadOnlyList<DefinitieRol> Toate =
     [
-        Rol("director", "Director general", [V, A, A, V, A, V, V, V, V], proiecte: V,
+        Rol("director", "Director general", [A, A, A, V, A, V, V, V, V], proiecte: V,
             Permisiuni.PreturiCost, Permisiuni.Salarii),
         Rol("ofertant", "Ofertant / devizier", [E, V, V, F, F, V, F, F, F], proiecte: V,
             Permisiuni.PreturiCost),

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <!--
     Host-ul aplicației: un singur proces care încarcă toate modulele (monolit modular).
     Nu conține logică de business; doar compunere, autentificare și pipeline HTTP.
@@ -14,7 +14,7 @@
     <ProjectReference Include="..\..\Modules\Identitate\ErpConstructii.Identitate.Infrastructure\ErpConstructii.Identitate.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Proiecte\ErpConstructii.Proiecte.Infrastructure\ErpConstructii.Proiecte.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Devize\ErpConstructii.Devize.Infrastructure\ErpConstructii.Devize.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\Modules\Devize\ErpConstructii.Devize.Import.WinDoc\ErpConstructii.Devize.Import.WinDoc.csproj" />
+    <ProjectReference Include="..\..\Modules\Devize\ErpConstructii.Devize.Import.Isdp.Excel\ErpConstructii.Devize.Import.Isdp.Excel.csproj" />
     <ProjectReference Include="..\..\Modules\Formulare\ErpConstructii.Formulare.Infrastructure\ErpConstructii.Formulare.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Parteneri\ErpConstructii.Parteneri.Infrastructure\ErpConstructii.Parteneri.Infrastructure.csproj" />
     <ProjectReference Include="..\..\Modules\Audit\ErpConstructii.Audit.Infrastructure\ErpConstructii.Audit.Infrastructure.csproj" />

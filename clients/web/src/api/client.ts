@@ -76,6 +76,9 @@ export const api = {
     return trateaza<T>(await trimite(url, { method: 'POST', body: date }))
   },
 
+  /** Formular cu mai multe fișiere (ex. devizul ISDP + lista F3). */
+  postFormular: async <T>(url: string, date: FormData) => trateaza<T>(await trimite(url, { method: 'POST', body: date })),
+
   getBinar: async (url: string) => {
     const r = await trimite(url)
     if (!r.ok) return trateaza<never>(r)

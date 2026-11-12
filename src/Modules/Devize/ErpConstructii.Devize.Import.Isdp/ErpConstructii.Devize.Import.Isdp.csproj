@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Parserul exporturilor ISDP (Intersoft, www.devize.ro): „Deviz ofertă cu resurse” și „F3 - Lista cu
+    cantități de lucrări”. Logică pură, fără pachete NuGet și fără referințe la restul soluției:
+    lucrează pe o foaie de calcul abstractă (FoaieCalcul). Citirea efectivă a .xls/.xlsx este în
+    ErpConstructii.Devize.Import.Isdp.Excel; maparea la modelul canonic al ERP-ului se face în
+    importatorul modulului Devize (vezi docs/import-isdp.md).
+  -->
+</Project>

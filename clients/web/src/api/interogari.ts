@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type {
   CreeazaProiect,
+  FisiereImportDeviz,
   PrevizualizareImport,
   Profil,
   Proiect,
@@ -49,17 +50,27 @@ export const useDeviz = (proiectId: string, versiuneId: string) =>
     queryFn: () => api.get<StructuraDeviz>(`/api/proiecte/${proiectId}/devize/${versiuneId}`),
   })
 
+function formularImport(f: FisiereImportDeviz) {
+  const date = new FormData()
+  date.append('fisier', f.fisier)
+  if (f.f3) date.append('f3', f.f3)
+  if (f.curs) date.append('curs', String(f.curs))
+  if (f.moneda) date.append('moneda', f.moneda)
+  if (f.denumire?.trim()) date.append('denumire', f.denumire.trim())
+  return date
+}
+
 export const usePrevizualizareImport = (proiectId: string) =>
   useMutation({
-    mutationFn: (fisier: File) =>
-      api.postFisier<PrevizualizareImport>(`/api/proiecte/${proiectId}/devize/import/previzualizare`, fisier),
+    mutationFn: (f: FisiereImportDeviz) =>
+      api.postFormular<PrevizualizareImport>(`/api/proiecte/${proiectId}/devize/import/previzualizare`, formularImport(f)),
   })
 
 export const useConfirmaImport = (proiectId: string) => {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ fisier, tip }: { fisier: File; tip: TipVersiuneDeviz }) =>
-      api.postFisier<{ id: string; numar: number }>(`/api/proiecte/${proiectId}/devize/import?tip=${tip}`, fisier),
+    mutationFn: ({ tip, ...f }: FisiereImportDeviz & { tip: TipVersiuneDeviz }) =>
+      api.postFormular<{ id: string; numar: number }>(`/api/proiecte/${proiectId}/devize/import?tip=${tip}`, formularImport(f)),
     onSuccess: () => qc.invalidateQueries({ queryKey: chei.devize(proiectId) }),
   })
 }

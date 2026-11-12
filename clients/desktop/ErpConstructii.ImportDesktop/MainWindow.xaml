@@ -264,7 +264,7 @@
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Denumire" Binding="{Binding Denumire}" Width="*" />
                                         <DataGridTextColumn Header="UM" Binding="{Binding Um}" Width="55" />
-                                        <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue=''}" Width="75" />
+                                        <DataGridTextColumn Header="Cantitate" Binding="{Binding Cantitate, TargetNullValue='', StringFormat={}{0:0.####}}" Width="100" />
                                         <DataGridTextColumn Header="Preț" Binding="{Binding Pret, TargetNullValue=''}" Width="75" />
                                         <DataGridTextColumn Header="Valoare" Binding="{Binding Valoare, TargetNullValue='', StringFormat=N2}" Width="85" />
                                         <DataGridTextColumn Header="TVA %" Binding="{Binding CotaProcent, TargetNullValue=''}" Width="50" />

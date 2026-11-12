@@ -181,7 +181,15 @@ export function DetaliiProiect() {
                     { title: 'Tip', dataIndex: 'tip', width: 170, render: (t: VersiuneDeviz['tip']) => tipuriVersiune[t] },
                     { title: 'Nr.', dataIndex: 'numar', width: 70 },
                     { title: 'Denumire', dataIndex: 'denumire' },
-                    { title: 'Sursă', dataIndex: 'sursa', width: 160 },
+                    {
+                      title: 'Sursă',
+                      dataIndex: 'sursa',
+                      width: 200,
+                      render: (s: string, v: VersiuneDeviz) => {
+                        const din = v.versiuneAnterioaraId && devize.data?.find((x) => x.id === v.versiuneAnterioaraId)
+                        return v.versiuneAnterioaraId ? `modificare din nr. ${din ? din.numar : '?'}` : s === 'isdp' ? 'import ISDP' : s
+                      },
+                    },
                     {
                       title: 'Stare',
                       dataIndex: 'stare',

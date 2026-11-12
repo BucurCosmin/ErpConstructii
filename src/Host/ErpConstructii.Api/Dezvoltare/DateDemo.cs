@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using ErpConstructii.Devize;
 using ErpConstructii.Devize.Calcul;
 using ErpConstructii.Devize.Infrastructure;
@@ -236,24 +236,24 @@ public static class DateDemo
 
         var obiect = v.AdaugaObiect("01", "Bloc locuințe P+8");
 
-        var terasamente = obiect.AdaugaCategorie("01.1", "Terasamente");
+        var terasamente = v.AdaugaCapitol("01.1", "Terasamente", TipCapitol.Capitol, obiect);
         terasamente.AdaugaArticol("TsC03B1", "Săpătură mecanică cu excavator 0,40–0,70 mc, teren categoria II", "100 mc", 18.5m, new(0m, 85.40m, 612.30m, 0m));
         terasamente.AdaugaArticol("TsD02A1", "Încărcare pământ în autovehicule", "100 mc", 18.5m, new(0m, 42.10m, 310.00m, 0m));
         terasamente.AdaugaArticol("TRA01A10", "Transport pământ cu autobasculanta la 10 km", "t", 3330m, new(0m, 0m, 0m, 18.20m));
 
-        var fundatii = obiect.AdaugaCategorie("01.2", "Fundații");
+        var fundatii = v.AdaugaCapitol("01.2", "Fundații", TipCapitol.Capitol, obiect);
         fundatii.AdaugaArticol("CA02C1", "Beton C8/10 în fundații, turnat cu pompa", "mc", 95m, new(410.00m, 28.50m, 22.00m, 0m));
         fundatii.AdaugaArticol("CA04A1", "Cofraje din panouri refolosibile pentru fundații", "mp", 640m, new(38.20m, 31.40m, 1.10m, 0m));
         fundatii.AdaugaArticol("CC02K1", "Armături din oțel beton PC52 în fundații", "kg", 48500m, new(5.85m, 0.92m, 0.06m, 0m));
         fundatii.AdaugaArticol("CA02F1", "Beton C25/30 în radier, turnat cu pompa", "mc", 860m, new(520.00m, 31.20m, 24.50m, 0m));
 
-        var suprastructura = obiect.AdaugaCategorie("01.3", "Structură de rezistență");
+        var suprastructura = v.AdaugaCapitol("01.3", "Structură de rezistență", TipCapitol.Capitol, obiect);
         suprastructura.AdaugaArticol("CB02B1", "Beton C30/37 în stâlpi și diafragme", "mc", 1240m, new(560.00m, 48.30m, 26.00m, 0m));
         suprastructura.AdaugaArticol("CB03C1", "Beton C25/30 în plăci și grinzi", "mc", 2180m, new(525.00m, 39.80m, 24.10m, 0m));
         suprastructura.AdaugaArticol("CB10A1", "Cofraje pentru stâlpi, diafragme, plăci", "mp", 15800m, new(42.50m, 36.70m, 1.40m, 0m));
         suprastructura.AdaugaArticol("CC02M1", "Armături PC52 în elemente de suprastructură", "kg", 412000m, new(5.85m, 1.04m, 0.07m, 0m));
 
-        var zidarii = obiect.AdaugaCategorie("01.4", "Zidării", subcontractata: true);
+        var zidarii = v.AdaugaCapitol("01.4", "Zidării", TipCapitol.Capitol, obiect, subcontractat: true);
         zidarii.AdaugaArticol("CG04A1", "Zidărie din blocuri ceramice cu goluri 25 cm", "mc", 1650m, new(395.00m, 92.00m, 3.20m, 0m));
         zidarii.AdaugaArticol("CG07B1", "Pereți despărțitori BCA 10 cm", "mp", 5200m, new(48.00m, 24.50m, 0.40m, 0m));
 

@@ -12,6 +12,14 @@ $setari = Get-Content (Join-Path $productie "setari.json") -Raw | ConvertFrom-Js
 
 & (Join-Path $PSScriptRoot "opreste-productie.ps1") -Liniste
 
+# Portul trebuie să fie liber (ex. 443 e ocupat des de IIS, Skype, VMware sau alt server web).
+$ocupat = Get-NetTCPConnection -LocalPort ([int]$setari.Port) -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($ocupat) {
+    $program = (Get-Process -Id $ocupat.OwningProcess -ErrorAction SilentlyContinue).ProcessName
+    throw ("Portul $($setari.Port) e ocupat de alt program ($program, PID $($ocupat.OwningProcess)). " +
+        "Alege alt port: powershell -ExecutionPolicy Bypass -File deploy\reporneste-productie.ps1 -Actualizeaza -Port 8443")
+}
+
 $env:ASPNETCORE_ENVIRONMENT = "Production"
 Remove-Item Env:ASPNETCORE_URLS -ErrorAction SilentlyContinue # adresa vine din configurare (Kestrel:Endpoints)
 $proces = Start-Process -FilePath "dotnet" -ArgumentList "ErpConstructii.Api.dll" -WorkingDirectory $api -WindowStyle Hidden -PassThru `

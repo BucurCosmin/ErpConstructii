@@ -7,7 +7,8 @@ Instrucțiuni pentru Claude Code. Citește tot fișierul înainte de prima modif
 ERP pentru firme de construcții din România, după modelul Charisma ERP (TotalSoft). Ținta inițială: **firme medii (20–250 angajați)**, cu arhitectură pregătită pentru firme mari. Ideea centrală: **proiectul (șantierul) este axa costurilor**, iar **articolul de deviz este entitatea pivot**. Oferta, bugetul, consumurile, pontajul, situațiile și facturile se leagă de articol.
 
 - Cerințele, cu ID-uri: `docs/cerinte.md` (ID-urile `REQ-*` apar în comentariile din cod).
-- Deciziile de arhitectură: `docs/decizii.md` (`D-01` … `D-17`).
+- Deciziile de arhitectură: `docs/decizii.md` (`D-01` … `D-53`).
+- Devizele ISDP: `docs/import-isdp.md` (formatul, regulile verificate pe fișiere reale, modelul) și `docs/editor-deviz.md` (editorul, biblioteca de norme, catalogul de prețuri; D-51, D-52).
 - Documentul de proiect complet (diagrame, rapoarte, formulare): în proiectul claude.ai „ERP pt constructii”.
 
 ## Starea curentă (generată în claude.ai, fără acces la nuget.org)
@@ -98,7 +99,7 @@ docs/                                cerințe, decizii
 
 Sediile firmei (D-47) sunt proiecte de tipul `TipProiect.Sediu` (birouri, bază, depozit): fără beneficiar, pornesc „în execuție”, primesc aceleași documente (necesare, note de comandă, facturi, bonuri de consum) și rapoarte ca o lucrare; locurile din ele sunt „șantierele” lor (tab-ul „Locații”); în alegeri apar cu „(sediu)” (`etichetaProiect`). Proiectul se editează complet și se arhivează / reactivează doar cu `proiecte.editare` pe toată firma (D-38, D-39: arhivat = ascuns din liste și alegeri, fără documente noi în afară de retur; endpointurile care creează documente verifică `DateProiectPentruDocument.Arhivat`); are mai multe șantiere (tab-ul „Șantiere” din fișa proiectului); pornește cu „Șantier principal” (redenumibil) și rămâne mereu cu cel puțin un șantier activ; șantierul pus din greșeală se șterge (D-49, `StergereSantier`, `DELETE …/santiere/{id}?mutaPe=`): necesarele lui se mută pe alt șantier activ prin `IUtilizariSantier` (implementat de Aprovizionare), cu `MutareSantierNecesar` ca istoric / corectură, iar compartimentele firmei se administrează în Administrare → Compartimente.
 
-Module existente: Audit (jurnalul de modificări, D-36: scris de `InterceptorAudit`, citit în `/jurnal`), Identitate (+ server de autentificare), Proiecte, Parteneri (furnizori, clienți și subantreprenori), Devize (+ Import.WinDoc), Aprovizionare (necesare de materiale cu aprobare, note de comandă către furnizori, avize de însoțire a mărfii, import din scanări / Word), Contracte (contractele proiectului cu subantreprenori / parteneri, D-41; plus calculul situațiilor și al ajustării), Grafic (+ Import.Primavera, Import.Excel), Facturi (facturi primite: import e-Factura XML / ZIP SPV și PDF, înregistrare pe proiect), Stocuri (NIR, transfer / retur, consum pe articole de deviz, CMP), Formulare (+ Infrastructure Word/PDF).
+Module existente: Audit (jurnalul de modificări, D-36: scris de `InterceptorAudit`, citit în `/jurnal`), Identitate (+ server de autentificare), Proiecte, Parteneri (furnizori, clienți și subantreprenori), Devize (+ Import.Isdp: parserul pur al exporturilor ISDP; Import.Isdp.Excel: `CititorExcel` + importatorul `ImportatorIsdp` / `ConversieIsdp`, D-50 — devizul cu resurse .xls + F3 .xlsx opțional, prin `IImportatorDevizCuAnexe`; endpointurile `EndpointuriImportDeviz`: previzualizare cu recapitulația fișier vs. recalcul, extrasul de resurse cu starea în nomenclator și diferențele la reimport, confirmare cu cheile stabile păstrate (`PotrivireReimport`) și fișierele originale arhivate în `devize.fisiere_sursa`; modelul: capitole arborescente, 5 resurse, cost direct + preț de ofertă, rotunjirea `Fara`; lucrul pe versiune, D-53 (`EndpointuriEditareDeviz`): ciorna se redenumește / șterge / editează pe articole, „Modifică” = `CopieCiorna` (aceleași chei), aprobarea înlocuiește versiunea anterioară (`InlocuireVersiuneDeviz`, corectură), PDF prin `IServiciuDocumente` și Excel (`ExportDeviz`); aprobarea cere `ofertare.aprobare`; nomenclatorul de resurse al firmei `ResursaCatalog`, REQ-IMP-04: la confirmarea importului `CatalogResurse.Potriveste` leagă consumurile de resurse și creează codurile necunoscute nemapate, `/api/devize/resurse` pentru listă / mapare / propuneri; articolele de stoc prin contractul `IArticoleStocPentruMapare`, implementat de Stocuri), Aprovizionare (necesare de materiale cu aprobare, note de comandă către furnizori, avize de însoțire a mărfii, import din scanări / Word), Contracte (contractele proiectului cu subantreprenori / parteneri, D-41; plus calculul situațiilor și al ajustării), Grafic (+ Import.Primavera, Import.Excel), Facturi (facturi primite: import e-Factura XML / ZIP SPV și PDF, înregistrare pe proiect), Stocuri (NIR, transfer / retur, consum pe articole de deviz, CMP), Formulare (+ Infrastructure Word/PDF).
 
 ## Reguli de arhitectură (nu le încălca)
 
@@ -135,7 +136,7 @@ Module existente: Audit (jurnalul de modificări, D-36: scris de `InterceptorAud
 4. ~~Administrarea utilizatorilor, rolurilor și atribuirilor, firme noi cu rolurile predefinite, invalidarea cache-ului de permisiuni.~~ (`EndpointuriAdministrare`, reguli în `RegulaAdministrare`; ecranul `/administrare`). Rămân: profilul propriu (schimbare parolă voluntară), invitație pe email în locul parolei temporare (după serviciul de email).
 5. ~~Jurnalul de audit append-only (schema `audit`), scris din `InterceptorAudit`.~~ (D-36, modulul Audit, pagina `/jurnal`.)
 6. Modulul Documente (arhivă de fișiere: SHA-256, imuabil), folosit de importul de devize (`FisierSursaId`) și de formulare.
-7. **Importatorul WinDoc:** blocat până avem fișiere reale de la pilot. Pașii sunt în comentariul din `ImportatorWinDoc`. Poarta fazei 0: un deviz real importat și recalculat identic.
+7. ~~**Importatorul de devize:** un deviz real importat și recalculat identic (poarta fazei 0).~~ Formatul real e ISDP, nu WinDoc (D-50): `ImportatorIsdp`, verificat pe exporturile reale (`Sabloane/devize/`). Rămân: extrasul de resurse pe versiune pentru aprovizionare, apoi editorul de deviz (`docs/editor-deviz.md`, D-51).
 8. Setările firmei: cote implicite pentru recapitulație, cote TVA cu dată de valabilitate, formate de import active.
 9. Teste de arhitectură (NetArchTest sau similar) pentru regula 1.
 
@@ -143,7 +144,7 @@ Fazele 1–3: vezi `docs/cerinte.md`, coloana „Faza”.
 
 ## Întrebări deschise (nu presupune răspunsul; întreabă)
 
-- Ce format exportă WinDoc (fișier nativ, XML, Excel) și avem fișiere reale de test?
+- Devizele ISDP: întrebările din `docs/import-isdp.md` §10 (alte formate de export, fișiere cu mai multe stadii, echipamente, moneda situațiilor, cursul ofertei, catalogul de norme) și `docs/editor-deviz.md` §10.
 - Exemple reale de grafice Primavera (.xer) și Excel din documentații de atribuire, pentru definirea șablonului.
 - Ce program contabil folosește pilotul (pentru primul exportator contabil)?
 - Contabilitate și salarizare proprii sau integrare pe termen lung?

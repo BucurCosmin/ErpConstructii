@@ -1,11 +1,11 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using ErpConstructii.Api.Autentificare;
 using ErpConstructii.Api.Dezvoltare;
 using ErpConstructii.Aprovizionare.Infrastructure;
 using ErpConstructii.Audit.Infrastructure;
 using ErpConstructii.Contracte.Infrastructure;
-using ErpConstructii.Devize.Import.WinDoc;
+using ErpConstructii.Devize.Import.Isdp.Excel;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Facturi.Infrastructure;
 using ErpConstructii.Stocuri.Infrastructure;
@@ -57,7 +57,7 @@ foreach (var modul in module)
 }
 
 // Importatori de devize (module de import, REQ-IMP-01). Un format nou = un pachet nou + o linie aici.
-builder.Services.AdaugaImportatorWinDoc();
+builder.Services.AdaugaImportatorIsdp(); // D-50: devizele vin din ISDP (Intersoft)
 
 // ---------------------------------------------------------------------------
 // Autentificare (D-07, REQ-UTL-02).

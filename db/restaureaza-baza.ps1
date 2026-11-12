@@ -97,6 +97,22 @@ END `$`$;
         if ($LASTEXITCODE -ne 0) { throw "01-roluri.sql a eșuat." }
     }
 
+    # Parola lui erp_app = cea din configurarea producției (altfel: „password authentication failed for user erp_app”).
+    # Fără producție pe acest calculator, parolele se pun cu db\creeaza-baza-locala.ps1.
+    $configProductie = Join-Path $radacina "productie\api\appsettings.Production.local.json"
+    if (Test-Path $configProductie) {
+        $conexiune = (Get-Content $configProductie -Raw | ConvertFrom-Json).ConnectionStrings.Erp
+        if ($conexiune -match '(?:^|;)Password=([^;]*)') {
+            $pApp = $Matches[1].Replace("'", "''")
+            & $psql -h $Gazda -p $Port -U postgres -d postgres -v ON_ERROR_STOP=1 -q -c "ALTER ROLE erp_app PASSWORD '$pApp'"
+            if ($LASTEXITCODE -ne 0) { throw "Setarea parolei lui erp_app a eșuat." }
+            Write-Host "Parola lui erp_app: cea din productie\api\appsettings.Production.local.json."
+        }
+    }
+    else {
+        Write-Warning "Nu există configurarea producției pe acest calculator: verifică parolele rolurilor cu db\creeaza-baza-locala.ps1 (-ParolaApp / -ParolaOwner)."
+    }
+
     $sumar = & $psql -h $Gazda -p $Port -U postgres -d $Baza -tAc "SELECT (SELECT count(*) FROM identitate.firme) || ' firme, ' || (SELECT count(*) FROM proiecte.proiecte) || ' proiecte'" 2>$null
     Write-Host "Baza $Baza a fost restaurată: $sumar." -ForegroundColor Green
 }

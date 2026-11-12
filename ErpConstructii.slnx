@@ -1,4 +1,4 @@
-<Solution>
+﻿<Solution>
   <Folder Name="/Solution Items/">
     <File Path="CLAUDE.md" />
     <File Path="README.md" />
@@ -7,6 +7,8 @@
     <File Path="docker-compose.yml" />
     <File Path="docs/cerinte.md" />
     <File Path="docs/decizii.md" />
+    <File Path="docs/import-isdp.md" />
+    <File Path="docs/editor-deviz.md" />
   </Folder>
   <Folder Name="/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/ErpConstructii.SharedKernel/ErpConstructii.SharedKernel.csproj" />
@@ -35,7 +37,8 @@
   <Folder Name="/Modules/Devize/">
     <Project Path="src/Modules/Devize/ErpConstructii.Devize/ErpConstructii.Devize.csproj" />
     <Project Path="src/Modules/Devize/ErpConstructii.Devize.Infrastructure/ErpConstructii.Devize.Infrastructure.csproj" />
-    <Project Path="src/Modules/Devize/ErpConstructii.Devize.Import.WinDoc/ErpConstructii.Devize.Import.WinDoc.csproj" />
+    <Project Path="src/Modules/Devize/ErpConstructii.Devize.Import.Isdp/ErpConstructii.Devize.Import.Isdp.csproj" />
+    <Project Path="src/Modules/Devize/ErpConstructii.Devize.Import.Isdp.Excel/ErpConstructii.Devize.Import.Isdp.Excel.csproj" />
   </Folder>
   <Folder Name="/Modules/Contracte/">
     <Project Path="src/Modules/Contracte/ErpConstructii.Contracte/ErpConstructii.Contracte.csproj" />
@@ -71,5 +74,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/ErpConstructii.Teste.Unitare/ErpConstructii.Teste.Unitare.csproj" />
     <Project Path="tests/ErpConstructii.Teste.Formulare/ErpConstructii.Teste.Formulare.csproj" />
+    <Project Path="tests/ErpConstructii.Teste.Isdp/ErpConstructii.Teste.Isdp.csproj" />
   </Folder>
 </Solution>

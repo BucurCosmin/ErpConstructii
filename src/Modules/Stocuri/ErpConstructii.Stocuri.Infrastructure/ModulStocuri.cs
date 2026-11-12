@@ -108,6 +108,7 @@ public sealed class ModulStocuri : IModul
         servicii.AdaugaDbContextModul<StocuriDbContext>(configurare, Nume);
         servicii.AddScoped<IInterogareReceptiiFactura, InterogareReceptiiFactura>();
         servicii.AddScoped<IInterogareReceptiiAviz, InterogareReceptiiAviz>();
+        servicii.AddScoped<ErpConstructii.Devize.IArticoleStocPentruMapare, ArticoleStocPentruMapare>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)

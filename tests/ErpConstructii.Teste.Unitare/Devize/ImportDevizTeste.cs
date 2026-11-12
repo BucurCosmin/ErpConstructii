@@ -1,4 +1,4 @@
-using ErpConstructii.Devize;
+﻿using ErpConstructii.Devize;
 using ErpConstructii.Devize.Calcul;
 using ErpConstructii.Devize.Import;
 using ErpConstructii.SharedKernel.Import;
@@ -10,7 +10,7 @@ public class ImportDevizTeste
     private static readonly ParametriRecapitulatie Parametri = new(0.0225m, 0.10m, 0.05m, 0.21m);
 
     private static DevizCanonic Deviz(TotaluriDeclarate? totaluri, params ArticolCanonic[] articole) =>
-        new("Test", [new ObiectCanonic("OB1", "Bloc A", [new CategorieCanonica("C1", "Fundații", articole)])], Parametri, totaluri);
+        new("Test", [new CapitolCanonic("OB1", "Bloc A", TipCapitol.Obiect, [new CapitolCanonic("C1", "Fundații", TipCapitol.Capitol, [], articole)], [])], Parametri, totaluri);
 
     private static ArticolCanonic Articol(string simbol, decimal cantitate, ValoriResurse pret, string um = "mc", params ConsumCanonic[] consumuri) =>
         new(simbol, "Articol " + simbol, um, cantitate, pret, consumuri);

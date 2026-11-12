@@ -1,4 +1,4 @@
-using ErpConstructii.Devize.Calcul;
+﻿using ErpConstructii.Devize.Calcul;
 using ErpConstructii.SharedKernel;
 using ErpConstructii.SharedKernel.Import;
 
@@ -17,22 +17,20 @@ public static class ValidatorDevizCanonic
     {
         var probleme = new List<ProblemaImport>();
 
-        if (deviz.Obiecte.Count == 0)
+        if (!deviz.Articole().Any())
         {
-            probleme.Add(new(Severitate.Eroare, "deviz", "Devizul nu conține niciun obiect."));
+            probleme.Add(new(Severitate.Eroare, "deviz", "Devizul nu conține niciun articol."));
             return probleme;
         }
 
-        foreach (var obiect in deviz.Obiecte)
+        // Simbolurile se verifică pe capitolul direct al articolului.
+        foreach (var grup in deviz.ArticoleCuCale().GroupBy(x => x.Cale[^1]))
         {
-            foreach (var categorie in obiect.Categorii)
+            var simboluriVazute = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (cale, articol) in grup)
             {
-                var simboluriVazute = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var articol in categorie.Articole)
-                {
-                    var loc = $"{obiect.Cod} / {categorie.Cod} / {articol.Simbol}{(articol.Rand is null ? "" : $" (rând {articol.Rand})")}";
-                    ValideazaArticol(articol, loc, simboluriVazute, probleme);
-                }
+                var loc = $"{string.Join(" / ", cale.Select(c => c.Cod))} / {articol.Simbol}{(articol.Rand is null ? "" : $" (rând {articol.Rand})")}";
+                ValideazaArticol(articol, loc, simboluriVazute, probleme);
             }
         }
 
@@ -68,7 +66,7 @@ public static class ValidatorDevizCanonic
 
         if (!simboluri.Add(a.Simbol))
         {
-            probleme.Add(new(Severitate.Avertisment, loc, "Simbolul apare de mai multe ori în aceeași categorie."));
+            probleme.Add(new(Severitate.Avertisment, loc, "Simbolul apare de mai multe ori în același capitol."));
         }
 
         foreach (var c in a.Consumuri.Where(c => c.PretUnitar == 0 && c.ConsumUnitar != 0))
@@ -94,10 +92,7 @@ public static class ValidatorDevizCanonic
 
     private static void ComparaTotaluri(DevizCanonic deviz, List<ProblemaImport> probleme)
     {
-        var linii = deviz.Obiecte
-            .SelectMany(o => o.Categorii)
-            .SelectMany(c => c.Articole)
-            .Select(a => new LinieDeviz(a.Cantitate, a.PretUnitar));
+        var linii = deviz.Articole().Select(a => new LinieDeviz(a.Cantitate, a.PretUnitar));
         var recalculat = CalculatorDeviz.Calculeaza(linii, deviz.Parametri!);
         var declarat = deviz.Totaluri!;
 
@@ -116,6 +111,7 @@ public static class ValidatorDevizCanonic
             Compara("Manoperă", recalculat.CheltuieliDirecteResurse.Manopera, d.Manopera);
             Compara("Utilaj", recalculat.CheltuieliDirecteResurse.Utilaj, d.Utilaj);
             Compara("Transport", recalculat.CheltuieliDirecteResurse.Transport, d.Transport);
+            Compara("Echipament", recalculat.CheltuieliDirecteResurse.Echipament, d.Echipament);
         }
 
         Compara("Total fără TVA", recalculat.TotalFaraTva, declarat.TotalFaraTva);

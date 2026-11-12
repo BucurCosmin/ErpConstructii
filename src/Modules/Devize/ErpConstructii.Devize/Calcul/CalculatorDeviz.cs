@@ -1,6 +1,17 @@
-using ErpConstructii.SharedKernel;
+﻿using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Devize.Calcul;
+
+/// <summary>
+/// Cum rotunjește calculul versiunii: <see cref="Standard"/> = la ban, pe fiecare linie și rând de recapitulație;
+/// <see cref="Fara"/> = fără rotunjiri intermediare, ca programele de devizare care nu rotunjesc pe parcurs (ISDP, D-50),
+/// ca totalurile să iasă identic cu sursa. Rotunjirea la 2 zecimale se face atunci doar la afișare și pe documente.
+/// </summary>
+public enum PoliticaRotunjire
+{
+    Standard,
+    Fara,
+}
 
 /// <summary>O linie de deviz pentru calcul: cantitate × preț unitar pe resurse.</summary>
 public readonly record struct LinieDeviz(decimal Cantitate, ValoriResurse PretUnitar);
@@ -21,6 +32,11 @@ public sealed record ParametriRecapitulatie(
 
     /// <summary>Rotunjirea fiecărui rând din recapitulație.</summary>
     public Rotunjire RotunjireRecapitulatie { get; init; } = Rotunjire.Lei;
+
+    /// <summary>Aceiași parametri, cu rotunjirile politicii versiunii.</summary>
+    public ParametriRecapitulatie Cu(PoliticaRotunjire politica) => politica == PoliticaRotunjire.Fara
+        ? this with { RotunjireLinie = Rotunjire.Fara, RotunjireRecapitulatie = Rotunjire.Fara }
+        : this with { RotunjireLinie = Rotunjire.Lei, RotunjireRecapitulatie = Rotunjire.Lei };
 
     public void Valideaza()
     {
@@ -63,9 +79,8 @@ public sealed record RecapitulatieDeviz(
 ///        Total fără TVA                  = total directe + indirecte + profit
 ///        TVA                             = rotunjit(total fără TVA × cotă TVA)
 ///
-/// ATENȚIE: înainte de a declara importatorul WinDoc gata, ordinea și regulile de rotunjire
-/// se confirmă pe devize reale (testul de regresie trebuie să iasă la ban față de totalurile
-/// din fișier). Dacă programul sursă rotunjește altfel, se adaugă opțiuni în
+/// Ordinea e verificată pe devizul real ISDP (docs/import-isdp.md §2.5): cu <see cref="PoliticaRotunjire.Fara"/>,
+/// recapitulația iese identic cu fișierul. Dacă alt program sursă rotunjește altfel, se adaugă opțiuni în
 /// <see cref="ParametriRecapitulatie"/>, nu cazuri speciale în cod.
 /// </summary>
 public static class CalculatorDeviz

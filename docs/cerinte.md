@@ -38,17 +38,17 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 
 | ID | Cerință | Faza | Stare |
 |---|---|---|---|
-| REQ-DEV-01 | Structura: versiune → obiect → categorie de lucrări → articol → consumuri normate pe 4 resurse (material, manoperă, utilaj, transport). | 0 | ✅ |
+| REQ-DEV-01 | Structura: versiune → capitole arborescente cu cod WBS (obiect, stadiu fizic, capitole, pe oricâte niveluri) → articol → consumuri normate pe 5 resurse (material, manoperă, utilaj, transport, echipament); pe articol costul direct și prețul de ofertă; pe versiune moneda, cursul și politica de rotunjire (D-50). | 0 | ✅ |
 | REQ-DEV-02 | Recapitulația devizului-ofertă: directe pe resurse, contribuții pe manoperă, indirecte %, profit %, TVA. | 0 | ✅ |
-| REQ-DEV-03 | Versiuni de deviz: ofertă, contract, buget de execuție, act adițional; comparare între versiuni. | 1 | 🟡 |
+| REQ-DEV-03 | Versiuni de deviz: ofertă, contract, buget de execuție, act adițional; comparare între versiuni. Implementat (D-53): ciornă editabilă pe articole, „Modifică” = versiune nouă cu aceleași chei, aprobarea înlocuiește versiunea anterioară, PDF / Excel. Rămân: compararea versiunilor, trecerea ofertă → contract → buget, actul adițional. | 1 | 🟡 |
 | REQ-DEV-04 | Formulare de ofertă pentru licitații (liste de cantități, deviz-ofertă pe categorii, liste de consumuri), din șabloane editabile. | 1 | ⬜ |
-| REQ-DEV-05 | Articolul se urmărește între versiuni printr-o cheie stabilă. | 1 | 🟡 |
+| REQ-DEV-05 | Articolul se urmărește între versiuni printr-o cheie stabilă. Implementat la reimport (`PotrivireReimport`: WBS + simbol, apoi simbol + denumire + UM); și la copierea versiunii (`CopieCiorna`); rămâne trecerea între tipuri (ofertă → contract → buget). | 1 | 🟡 |
 | REQ-DEV-06 | Versiunea aprobată este imuabilă; orice modificare creează o versiune nouă legată de cea anterioară. | 0 | ✅ |
-| REQ-IMP-01 | Fiecare format de deviz este un importator separat (plugin); nucleul nu cunoaște formatele. Primul: **WinDoc**. | 0 | 🟡 |
+| REQ-IMP-01 | Fiecare format de deviz este un importator separat (plugin); nucleul nu cunoaște formatele. Primul: **ISDP** (Intersoft, D-50; nu WinDoc): `ImportatorIsdp`, deviz cu resurse + F3 opțional. | 0 | ✅ |
 | REQ-IMP-02 | Model canonic comun (`DevizCanonic`), folosit și la export. | 0 | ✅ |
-| REQ-IMP-03 | Pașii importului: detectare → citire → validare (totaluri recalculate vs. declarate, UM, prețuri, duplicate) → mapare nomenclatoare → previzualizare cu diferențe la reimport → confirmare ca versiune nouă, cu fișierul original arhivat. | 0 | 🟡 |
-| REQ-IMP-04 | Maparea codurilor de resurse la articole de stoc / meserii / utilaje, memorată per firmă și per sursă. | 1 | ⬜ |
-| REQ-IMP-05 | Fiecare importator are fișiere de test și totaluri așteptate; recalculul trebuie să iasă la ban. | 0 | ⬜ |
+| REQ-IMP-03 | Pașii importului: detectare → citire → validare (totaluri recalculate vs. declarate, UM, prețuri, duplicate) → mapare nomenclatoare → previzualizare cu diferențe la reimport → confirmare ca versiune nouă, cu fișierul original arhivat. | 0 | ✅ |
+| REQ-IMP-04 | Maparea codurilor de resurse la articole de stoc / meserii / utilaje, memorată per firmă și per sursă. Implementat: nomenclatorul `ResursaCatalog` (cod unic pe firmă și sursă), codurile necunoscute create nemapate la confirmarea importului, endpointurile de listă / mapare / propuneri de articole de stoc (`/api/devize/resurse`). Rămâne: ecranul de mapare. | 1 | 🟡 |
+| REQ-IMP-05 | Fiecare importator are fișiere de test și totaluri așteptate; recalculul trebuie să iasă la ban. ISDP: fixture-urile JSON (`tests/samples/isdp`) + fișierele reale local; recapitulația iese identic (T3 521.134,09). | 0 | ✅ |
 | REQ-IMP-06 | Importator Excel generic cu șablon și mapare de coloane salvată. | 1 | ⬜ |
 
 ## CTR / SIT — Contracte și situații de lucrări
@@ -173,7 +173,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 
 | Fază | Conținut | Poarta de ieșire |
 |---|---|---|
-| 0 — Fundament (1–2 luni, estimare) | Client pilot, import WinDoc (plugin), model de date + calcul, autentificare, roluri, audit, multi-firmă | Un deviz real importat și recalculat identic |
+| 0 — Fundament (1–2 luni, estimare) | Client pilot, import ISDP (plugin, D-50), model de date + calcul, autentificare, roluri, audit, multi-firmă | Un deviz real importat și recalculat identic |
 | 1 — Proiect (4–6 luni) | Ofertare și versiuni, contracte, buget, import grafic, situații de lucrări, facturi + e-Factura, formulare Word | Pilotul emite situații lunare din sistem |
 | 2 — Șantier (4–5 luni) | Aplicația mobilă, gestiuni, e-Transport, aprovizionare, pontaj, utilaje, progres grafic, cost real | Cost real pe articol, fără Excel paralel |
 | 3 — Financiar (6+ luni) | Contabilitate, SAF-T, trezorerie, salarizare, REGES, mijloace fixe, EVM și BI | Al doilea client în producție |

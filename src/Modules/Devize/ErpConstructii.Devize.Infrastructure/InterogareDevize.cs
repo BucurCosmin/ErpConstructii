@@ -18,13 +18,21 @@ internal sealed class InterogareDevize(DevizeDbContext db) : IInterogareDevize
             return null;
         }
 
-        var v = await db.Versiuni.AsNoTracking()
-            .Include(x => x.Obiecte).ThenInclude(o => o.Categorii).ThenInclude(c => c.Articole)
-            .AsSplitQuery()
-            .FirstAsync(x => x.Id == aleasa.Id, ct);
-        var articole = v.Obiecte.OrderBy(o => o.Ordine)
-            .SelectMany(o => o.Categorii.OrderBy(c => c.Ordine).SelectMany(c => c.Articole.OrderBy(a => a.Ordine)
-                .Select(a => new ArticolDevizReferinta(a.CheieStabila, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.PretMaterial, o.Denumire, c.Denumire))))
+        var v = await ModulDevize.IncarcaAsync(db, aleasa.Id, ct);
+        if (v is null)
+        {
+            return null;
+        }
+
+        // „Obiect” = capitolul de pe primul nivel, „Categorie” = capitolul direct al articolului (arborele are oricâte niveluri).
+        var capitole = v.Capitole.ToDictionary(c => c.Id);
+        var articole = v.Articole()
+            .Select(a =>
+            {
+                var cale = v.Cale(capitole[a.CapitolId]);
+                return new ArticolDevizReferinta(a.CheieStabila, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.PretMaterial,
+                    cale[0].Denumire, cale[^1].Denumire);
+            })
             .ToList();
         return new DevizReferinta(v.Id, v.Denumire, v.Tip, v.Stare, articole);
     }

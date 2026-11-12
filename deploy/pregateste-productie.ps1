@@ -5,6 +5,8 @@
 #   powershell -ExecutionPolicy Bypass -File deploy\pregateste-productie.ps1 -Domeniu sdaq.home.ro -Port 8443 -ParolaBazaAplicatie "..."
 #
 # Pe router: redirecționează portul TCP ales (implicit 443) către acest calculator. Atât.
+# Fără -Port, o instalare existentă își păstrează portul (din productie\setari.json); doar prima instalare ia 443.
+# Portul se schimbă oricând cu: deploy\reporneste-productie.ps1 -Actualizeaza -Port 8443
 # Adrese: https://<domeniu>[:port]/ din internet, https://<IP-ul din rețea>[:port]/ din rețeaua locală.
 #
 # HTTPS e obligatoriu (login-ul folosește criptografia browserului, disponibilă doar pe https; parolele nu circulă în clar).
@@ -21,13 +23,19 @@
 
 param(
     [Parameter(Mandatory = $true)] [string] $Domeniu,
-    [int] $Port = 443,
+    [int] $Port = 0,
     [string] $ParolaBazaAplicatie = "erp_app_dev"
 )
 
 $ErrorActionPreference = "Stop"
 $radacina = Split-Path -Parent $PSScriptRoot
 $productie = Join-Path $radacina "productie"
+if ($Port -eq 0) {
+    $setariExistente = Join-Path $productie "setari.json"
+    $Port = if (Test-Path $setariExistente) { [int](Get-Content $setariExistente -Raw | ConvertFrom-Json).Port } else { 443 }
+    Write-Host "Portul: $Port$(if (Test-Path $setariExistente) { ' (al instalării existente)' } else { ' (implicit)' }). Altul: -Port <număr>."
+}
+if ($Port -lt 1 -or $Port -gt 65535) { throw "Portul $Port nu e valid." }
 foreach ($d in @("api", "web", "certificate", "loguri")) { New-Item -ItemType Directory -Force (Join-Path $productie $d) | Out-Null }
 
 function ParolaAleatoare { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) }
@@ -74,6 +82,9 @@ if (-not $info.PSObject.Properties["Https"] -or $info.HttpsNume -ne $numeHttps) 
 $info | ConvertTo-Json | Set-Content -Encoding utf8 $secrete
 
 # ---------------------------------------------------------------- 3. compilare
+# Modelele OCR (folderul tessdata\, nu e în git): fără ele, importul scanărilor nu merge.
+& (Join-Path $radacina "scripts\descarca-tessdata.ps1")
+
 Write-Host "Compilez interfața web..."
 Push-Location (Join-Path $radacina "clients\web")
 try {

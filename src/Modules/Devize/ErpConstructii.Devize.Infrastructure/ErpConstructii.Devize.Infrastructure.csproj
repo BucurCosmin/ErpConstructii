@@ -3,8 +3,14 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
   <ItemGroup>
+    <!-- Exportul Excel al devizului. -->
+    <PackageReference Include="DocumentFormat.OpenXml" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
     <ProjectReference Include="..\ErpConstructii.Devize\ErpConstructii.Devize.csproj" />
     <ProjectReference Include="..\..\Identitate\ErpConstructii.Identitate\ErpConstructii.Identitate.csproj" />
+    <!-- Tipărirea devizului: contractul de documente PDF (IServiciuDocumente), implementat de Formulare. -->
+    <ProjectReference Include="..\..\Formulare\ErpConstructii.Formulare\ErpConstructii.Formulare.csproj" />
   </ItemGroup>
 </Project>

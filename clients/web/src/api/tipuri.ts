@@ -114,6 +114,16 @@ export interface VersiuneDeviz {
   denumire: string
   stare: 'Ciorna' | 'Aprobata' | 'Inlocuita'
   sursa: string
+  /** Moneda prețului de ofertă (costurile directe sunt în lei) și cursul lei / unitate (null la RON). */
+  moneda: string
+  curs: number | null
+  /** „Fara” la versiunile din ISDP: fără rotunjiri intermediare (D-50). */
+  politicaRotunjire: 'Standard' | 'Fara'
+  obiectiv: string | null
+  obiect: string | null
+  stadiuFizic: string | null
+  /** Versiunea din care a pornit (ciorna de lucru, D-53); null la devizul importat. */
+  versiuneAnterioaraId: string | null
 }
 
 export interface ValoriResurse {
@@ -121,6 +131,8 @@ export interface ValoriResurse {
   manopera: number
   utilaj: number
   transport: number
+  /** A cincea resursă (ISDP); 0 la devizele vechi. */
+  echipament: number
   total: number
 }
 
@@ -144,36 +156,41 @@ export interface ParametriRecapitulatie {
 
 export interface ArticolDeviz {
   id: string
+  cheieStabila: string
   simbol: string
   denumire: string
   unitateMasura: string
   cantitate: number
+  /** Costul direct unitar și valoarea, în lei. */
   pretUnitar: ValoriResurse
   valoare: ValoriResurse
+  tipArticol: 'Normat' | 'Asimilat' | 'ResursaDirecta'
+  codWbs: string | null
+  /** Prețul de ofertă (în moneda versiunii); null dacă articolul nu are. */
+  pretOfertaUnitar: ValoriResurse | null
+  valoareOferta: ValoriResurse | null
+  resurse: number
 }
 
-export interface CategorieDeviz {
+/** Capitol al arborelui devizului (obiect, stadiu fizic, capitol), pe oricâte niveluri. */
+export interface CapitolDeviz {
   id: string
   cod: string
+  codWbs: string | null
   denumire: string
-  subcontractata: boolean
+  tip: 'Obiect' | 'StadiuFizic' | 'Capitol'
+  subcontractat: boolean
+  /** Costul direct al capitolului (articolele lui și ale subcapitolelor). */
   total: number
+  subcapitole: CapitolDeviz[]
   articole: ArticolDeviz[]
-}
-
-export interface ObiectDeviz {
-  id: string
-  cod: string
-  denumire: string
-  total: number
-  categorii: CategorieDeviz[]
 }
 
 export interface StructuraDeviz {
   versiune: VersiuneDeviz
   parametri: ParametriRecapitulatie
   recapitulatie: Recapitulatie
-  obiecte: ObiectDeviz[]
+  capitole: CapitolDeviz[]
 }
 
 export interface ProblemaImport {
@@ -182,14 +199,89 @@ export interface ProblemaImport {
   mesaj: string
 }
 
+export interface ComparatieTotal {
+  rand: string
+  declarat: number | null
+  recalculat: number
+}
+
+export interface ArticolImport {
+  codWbs: string | null
+  capitol: string
+  simbol: string
+  denumire: string
+  unitateMasura: string
+  cantitate: number
+  costDirect: number
+  valoareOferta: number | null
+  resurse: number
+  tip: string
+}
+
+/** O resursă din extrasul devizului importat, cu starea în nomenclatorul firmei. */
+export interface ResursaImport {
+  cod: string
+  denumire: string
+  tip: string
+  unitateMasura: string
+  cantitateTotala: number
+  valoare: number
+  articole: number
+  tipDedus: boolean
+  nomenclator: 'Noua' | 'Nemapata' | 'Mapata'
+  mapare: string | null
+}
+
+export interface DiferentaArticol {
+  stare: 'Neschimbat' | 'Nou' | 'Eliminat' | 'CantitateSchimbata' | 'PretSchimbat' | 'CantitateSiPretSchimbate'
+  simbol: string
+  denumire: string
+  unitateMasura: string
+  codWbs: string | null
+  cantitateVeche: number | null
+  cantitateNoua: number | null
+  pretVechi: number | null
+  pretNou: number | null
+  resurseSchimbate: boolean
+  potrivitDupaDenumire: boolean
+}
+
+export interface ReimportDeviz {
+  versiuneId: string
+  versiune: string
+  chei: number
+  noi: number
+  eliminate: number
+  modificate: number
+  diferente: DiferentaArticol[]
+}
+
 export interface PrevizualizareImport {
   format: string
   denumire: string
-  obiecte: number
+  capitole: number
   articole: number
   recapitulatie: Recapitulatie | null
   probleme: ProblemaImport[]
   poateFiConfirmat: boolean
+  moneda: string
+  curs: number | null
+  politicaRotunjire: string
+  totaluri: ComparatieTotal[] | null
+  articoleLista: ArticolImport[] | null
+  resurse: ResursaImport[] | null
+  reimport: ReimportDeviz | null
+  fisierDejaImportat: string | null
+}
+
+/** Fișierele importului de deviz: principalul (ISDP: deviz cu resurse) și, opțional, lista F3, cursul și moneda ofertei. */
+export interface FisiereImportDeviz {
+  fisier: File
+  f3?: File | null
+  curs?: number | null
+  moneda?: string | null
+  /** Denumirea versiunii (la confirmare); fără ea, titlul din fișier. */
+  denumire?: string | null
 }
 
 // ---------------------------------------------------------------- Administrare
