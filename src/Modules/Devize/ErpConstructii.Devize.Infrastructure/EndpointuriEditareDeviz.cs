@@ -145,7 +145,7 @@ internal static class EndpointuriEditareDeviz
     /// de lucru existentă pornită din el ori una nouă (copie cu aceleași chei), ca originalul să rămână neschimbat (D-53).
     /// Articolele și capitolele cerute se regăsesc în copie după cheia stabilă, respectiv calea capitolului.
     /// </summary>
-    private static async Task<Rezultat<CiornaDeLucru>> CiornaDeLucruAsync(DevizeDbContext db, Guid proiectId, Guid versiuneId, CancellationToken ct)
+    internal static async Task<Rezultat<CiornaDeLucru>> CiornaDeLucruAsync(DevizeDbContext db, Guid proiectId, Guid versiuneId, CancellationToken ct)
     {
         var v = await PentruModificareAsync(db, proiectId, versiuneId, ct);
         if (v is null)
@@ -167,7 +167,7 @@ internal static class EndpointuriEditareDeviz
         return Rezultat.Ok(new CiornaDeLucru(v, copie, true));
     }
 
-    private sealed record CiornaDeLucru(VersiuneDeviz Ceruta, VersiuneDeviz Ciorna, bool Noua)
+    internal sealed record CiornaDeLucru(VersiuneDeviz Ceruta, VersiuneDeviz Ciorna, bool Noua)
     {
         public ArticolDeviz? Articol(Guid articolIdCerut) =>
             Ceruta.Articole().FirstOrDefault(x => x.Id == articolIdCerut) is { } a
@@ -194,7 +194,7 @@ internal static class EndpointuriEditareDeviz
         return copie;
     }
 
-    private static IResult Refuz(Eroare e) =>
+    internal static IResult Refuz(Eroare e) =>
         e.Cod == "nu_exista" ? Results.NotFound(new { mesaj = e.Mesaj }) : Results.BadRequest(new { mesaj = e.Mesaj });
 
     private static async Task<IResult> ModificaArticol(

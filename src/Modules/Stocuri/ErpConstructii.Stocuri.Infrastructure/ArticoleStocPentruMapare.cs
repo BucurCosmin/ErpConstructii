@@ -1,11 +1,11 @@
-using ErpConstructii.Devize;
+﻿using ErpConstructii.Devize;
 using Microsoft.EntityFrameworkCore;
 
 namespace ErpConstructii.Stocuri.Infrastructure;
 
 /// <summary>
 /// Articolele de stoc pentru maparea resurselor din devize (contractul Devize, REQ-IMP-04): articolul ales și propunerile
-/// după denumire (potrivirea exactă / aliasurile de la recepții, apoi asemănarea pe cuvinte, apoi căutarea pe text).
+/// după denumire (potrivirea exactă / aliasurile de la recepții, apoi asemănarea, apoi cuvintele întregi și numerele comune).
 /// </summary>
 internal sealed class ArticoleStocPentruMapare(StocuriDbContext db) : IArticoleStocPentruMapare
 {
@@ -23,13 +23,8 @@ internal sealed class ArticoleStocPentruMapare(StocuriDbContext db) : IArticoleS
         if (PotrivireArticol.PropuneSauAsemanator(denumire, unitateMasura, aliasuri, articole) is { } p)
             rezultat.Add(p.Articol);
 
-        // Apoi articolele care conțin cuvintele lungi ale denumirii (cele mai multe cuvinte comune întâi).
-        var cuvinte = PotrivireArticol.Cheie(denumire).Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(c => c.Length >= 3).ToList();
-        rezultat.AddRange(articole
-            .Select(a => (Articol: a, Comune: cuvinte.Count(c => PotrivireArticol.Cheie(a.Denumire).Contains(c, StringComparison.Ordinal))))
-            .Where(x => x.Comune > 0)
-            .OrderByDescending(x => x.Comune).ThenBy(x => x.Articol.Denumire, StringComparer.Ordinal)
-            .Select(x => x.Articol));
+        // Apoi articolele după cuvintele întregi și numerele comune (dimensiuni), cu aceeași UM înainte.
+        rezultat.AddRange(PotrivireArticol.Ordoneaza(denumire, unitateMasura, articole));
 
         return rezultat.DistinctBy(a => a.Id).Take(Math.Clamp(maxim, 1, 50))
             .Select(a => new ArticolStocMapare(a.Id, a.Cod, a.Denumire, a.UnitateMasura)).ToList();

@@ -109,6 +109,9 @@ public sealed class ModulStocuri : IModul
         servicii.AddScoped<IInterogareReceptiiFactura, InterogareReceptiiFactura>();
         servicii.AddScoped<IInterogareReceptiiAviz, InterogareReceptiiAviz>();
         servicii.AddScoped<ErpConstructii.Devize.IArticoleStocPentruMapare, ArticoleStocPentruMapare>();
+        // Prețurile din recepții și costurile din consum, pentru catalogul și bugetul din Devize (D-55).
+        servicii.AddScoped<ErpConstructii.Devize.ISursaPreturi, SursaPreturiReceptii>();
+        servicii.AddScoped<ErpConstructii.Devize.ISursaCosturi, SursaCosturiConsum>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)

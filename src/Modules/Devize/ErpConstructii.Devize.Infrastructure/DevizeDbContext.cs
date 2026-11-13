@@ -1,4 +1,4 @@
-using ErpConstructii.Infrastructure.Persistenta;
+﻿using ErpConstructii.Infrastructure.Persistenta;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -177,6 +177,8 @@ internal sealed class ConfigurareResursaCatalog : IEntityTypeConfiguration<Resur
         b.Property(x => x.UnitateMasura).HasMaxLength(20).IsRequired();
         b.Property(x => x.Tip).HasConversion<string>().HasMaxLength(20);
         b.Property(x => x.ArticolStocDenumire).HasMaxLength(300);
+        b.Property(x => x.ArticolStocUnitateMasura).HasMaxLength(20);
+        b.Property(x => x.FactorConversie).HasPrecision(24, 12);
         b.Property(x => x.Meserie).HasMaxLength(100);
         b.Property(x => x.Categorie).HasMaxLength(50);
         b.Property(x => x.Utilaj).HasMaxLength(200);

@@ -44,6 +44,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | REQ-DEV-04 | Formulare de ofertă pentru licitații (liste de cantități, deviz-ofertă pe categorii, liste de consumuri), din șabloane editabile. | 1 | ⬜ |
 | REQ-DEV-05 | Articolul se urmărește între versiuni printr-o cheie stabilă. Implementat la reimport (`PotrivireReimport`: WBS + simbol, apoi simbol + denumire + UM); și la copierea versiunii (`CopieCiorna`); rămâne trecerea între tipuri (ofertă → contract → buget). | 1 | 🟡 |
 | REQ-DEV-06 | Versiunea aprobată este imuabilă; orice modificare creează o versiune nouă legată de cea anterioară. | 0 | ✅ |
+| REQ-DEV-07 | Catalogul de prețuri din devizele firmei: resursele (materiale, manoperă, utilaje, transport) și articolele, cu prețul din fiecare deviz (minim / mediu / maxim / ultimul, abaterea) și compararea prețurilor între devize. Implementat (D-54) din devizele importate; rămân prețurile din comenzi, facturi și oferte de furnizori (`editor-deviz.md` §5) și actualizarea prețurilor unui deviz din catalog. | 1 | 🟡 |
 | REQ-IMP-01 | Fiecare format de deviz este un importator separat (plugin); nucleul nu cunoaște formatele. Primul: **ISDP** (Intersoft, D-50; nu WinDoc): `ImportatorIsdp`, deviz cu resurse + F3 opțional. | 0 | ✅ |
 | REQ-IMP-02 | Model canonic comun (`DevizCanonic`), folosit și la export. | 0 | ✅ |
 | REQ-IMP-03 | Pașii importului: detectare → citire → validare (totaluri recalculate vs. declarate, UM, prețuri, duplicate) → mapare nomenclatoare → previzualizare cu diferențe la reimport → confirmare ca versiune nouă, cu fișierul original arhivat. | 0 | ✅ |
@@ -155,7 +156,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 | ID | Cerință | Faza | Stare |
 |---|---|---|---|
 | REQ-RPT-01 | Grafic fizic actualizat, curba S, raport lunar de progres (PDF), lookahead 2–4 săptămâni, activități întârziate. | 2 | ⬜ |
-| REQ-RPT-02 | Situații vs. grafic valoric; buget vs. angajat vs. realizat; EVM (CPI, SPI, EAC); marjă și WIP; cash-flow previzionat. | 2–3 | ⬜ |
+| REQ-RPT-02 | Situații vs. grafic valoric; buget vs. angajat vs. realizat; EVM (CPI, SPI, EAC); marjă și WIP; cash-flow previzionat. Început (D-55): fișa proiectului → Buget = bugetul pe articolele devizului de referință față de costurile reale (materialele consumate pe articole, cheltuieli generale, servicii facturate nerepartizate, materiale cumpărate / neconsumate); rămân angajatul (comenzi, contracte), manopera și utilajele pe articole, repartizarea facturilor de servicii, EVM. | 2–3 | 🟡 |
 | REQ-RPT-03 | Consum materiale normat vs. real; productivitate manoperă; utilizare utilaje. | 2 | ⬜ |
 | REQ-RPT-04 | Livrare: dashboard, PDF cu layout fix, Excel, trimitere programată, view-uri pentru BI extern; respectă drepturile utilizatorului. | 2 | ⬜ |
 

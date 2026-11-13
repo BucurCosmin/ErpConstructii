@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using ErpConstructii.SharedKernel;
 
@@ -167,6 +167,48 @@ public static class PotrivireArticol
             .FirstOrDefault();
         return cel.Articol is null ? null : new ArticolPotrivit(cel.Articol, SursaPotrivire.Asemanare);
     }
+
+    /// <summary>Cuvinte prea comune ca să deosebească materialele.</summary>
+    private static readonly HashSet<string> CuvinteGoale = ["CU", "DIN", "DE", "LA", "PENTRU", "PT", "TIP", "SI", "SAU", "FARA", "CLS", "CL"];
+
+    /// <summary>
+    /// Articolele ordonate după cât de bine se potrivesc cu o denumire liberă (ex. resursa din deviz, D-55): cuvintele întregi
+    /// comune (cele lungi contează mai mult; începutul de cuvânt contează puțin mai puțin; „CONIC” nu se potrivește cu „TRONCONIC”), numerele comune (dimensiuni:
+    /// „3,0 x 60” cu „3.0MM X 60MM”) și aceeași UM. Doar articolele cu cel puțin un cuvânt sau număr comun.
+    /// </summary>
+    public static IReadOnlyList<ArticolCandidat> Ordoneaza(string denumire, string? unitateMasura, IEnumerable<ArticolCandidat> articole)
+    {
+        var cuvinte = CuvinteSemnificative(denumire);
+        var numere = Numere(denumire);
+        if (cuvinte.Count == 0 && numere.Count == 0)
+            return [];
+        var um = PotrivireArticolUm(unitateMasura);
+        return articole
+            .Select(a =>
+            {
+                var ca = CuvinteSemnificative(a.Denumire);
+                var na = Numere(a.Denumire);
+                // Cuvântul întreg valorează lungimea lui; începutul de cuvânt („CUI” → „CUIE”) cu o literă mai puțin.
+                var scorCuvinte = cuvinte.Sum(c => ca.Contains(c) ? c.Length : ca.Any(x => x.StartsWith(c, StringComparison.Ordinal)) ? c.Length - 1 : 0);
+                var scorNumere = numere.Count(na.Contains) * 3;
+                var bonusUm = um is not null && PotrivireArticolUm(a.UnitateMasura) == um ? 2 : 0;
+                return (Articol: a, Scor: scorCuvinte + scorNumere, Total: scorCuvinte + scorNumere + bonusUm);
+            })
+            .Where(x => x.Scor > 0)
+            .OrderByDescending(x => x.Total).ThenBy(x => x.Articol.Denumire, StringComparer.Ordinal)
+            .Select(x => x.Articol)
+            .ToList();
+    }
+
+    private static HashSet<string> CuvinteSemnificative(string text) =>
+        [.. Cheie(text).Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(c => c.Length >= 3 && !CuvinteGoale.Contains(c) && !c.All(char.IsDigit))];
+
+    /// <summary>Numerele din text, normalizate („3,0” = „3.0” = „3”; „60MM” → 60).</summary>
+    private static HashSet<string> Numere(string text) =>
+        [.. System.Text.RegularExpressions.Regex.Matches(text, @"\d+(?:[.,]\d+)?")
+            .Select(m => decimal.TryParse(m.Value.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var d)
+                ? d.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture)
+                : m.Value)];
 
     private static HashSet<string> Cuvinte(string text) => [.. Cheie(text).Split(' ', StringSplitOptions.RemoveEmptyEntries)];
 

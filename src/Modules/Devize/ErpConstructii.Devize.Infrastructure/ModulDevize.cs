@@ -69,6 +69,10 @@ public sealed class ModulDevize : IModul
     {
         // Nomenclatorul de resurse al firmei (REQ-IMP-04): lista, maparea, propunerile de articole de stoc.
         EndpointuriResurse.Mapeaza(rute);
+        // Catalogul de prețuri din devizele firmei și compararea prețurilor între devize (D-54).
+        EndpointuriCatalogPreturi.Mapeaza(rute);
+        // Bugetul proiectului față de costurile reale (D-55; costurile vin prin ISursaCosturi).
+        EndpointuriBuget.Mapeaza(rute);
 
         var grup = rute.MapGroup("/proiecte/{proiectId:guid}/devize").WithTags("Devize");
         var vizualizare = Permisiuni.Pentru(ModulErp.Ofertare, Actiune.Vizualizare);
@@ -101,6 +105,10 @@ public sealed class ModulDevize : IModul
         // Lucrul pe versiune: redenumire, ștergere, editarea articolelor, versiune nouă, aprobare, PDF, Excel.
         EndpointuriEditareDeviz.Mapeaza(grup);
         EndpointuriAnalizaDeviz.Mapeaza(grup);
+        // Componentele (resursele) unui articol, ca în extrasul de resurse.
+        EndpointuriCatalogPreturi.MapeazaPeVersiune(grup);
+        // „Actualizează prețurile”: prețurile din deviz față de cele de achiziție, aplicate în ciorna de lucru (D-55).
+        EndpointuriActualizarePreturi.Mapeaza(grup);
     }
 
     private static StructuraDevizDto Structura(VersiuneDeviz v)

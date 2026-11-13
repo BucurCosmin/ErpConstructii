@@ -1,4 +1,4 @@
-using ErpConstructii.Contracte;
+﻿using ErpConstructii.Contracte;
 using ErpConstructii.Aprovizionare;
 using System.IO.Compression;
 using System.Text.Json;
@@ -152,6 +152,8 @@ public sealed class ModulFacturi : IModul
         servicii.AddScoped<IInterogareFacturiPrimite, InterogareFacturiPrimite>();
         servicii.AddScoped<IInterogareFacturiNotaComanda, InterogareFacturiNotaComanda>();
         servicii.AddScoped<IInterogareFacturiContract, InterogareFacturiContract>();
+        // Costurile proiectului pentru bugetul din Devize (D-55).
+        servicii.AddScoped<ErpConstructii.Devize.ISursaCosturi, SursaCosturiFacturi>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)

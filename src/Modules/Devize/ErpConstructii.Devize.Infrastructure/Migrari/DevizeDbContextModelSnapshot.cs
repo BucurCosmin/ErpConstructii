@@ -504,6 +504,11 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("uuid")
                         .HasColumnName("articol_stoc_id");
 
+                    b.Property<string>("ArticolStocUnitateMasura")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("articol_stoc_unitate_masura");
+
                     b.Property<string>("Categorie")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -528,6 +533,11 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("denumire");
+
+                    b.Property<decimal?>("FactorConversie")
+                        .HasPrecision(24, 12)
+                        .HasColumnType("numeric(24,12)")
+                        .HasColumnName("factor_conversie");
 
                     b.Property<bool>("FaraMapare")
                         .HasColumnType("boolean")

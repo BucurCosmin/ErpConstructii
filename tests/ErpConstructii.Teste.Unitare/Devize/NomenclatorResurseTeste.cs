@@ -1,4 +1,4 @@
-using ErpConstructii.Devize;
+﻿using ErpConstructii.Devize;
 using ErpConstructii.Devize.Calcul;
 using ErpConstructii.SharedKernel.Import;
 
@@ -57,7 +57,7 @@ public class NomenclatorResurseTeste
         var material = ResursaCatalog.Noua("isdp", "6000123", "Beton", "mc", TipResursa.Material, false);
         Assert.True(material.Mapeaza(new MapareResursa(TipResursa.Material, null, null, "Zidar", null, null, false), "Ana", Acum).Esec);
         var articolStoc = Guid.NewGuid();
-        Assert.True(material.Mapeaza(new MapareResursa(TipResursa.Material, articolStoc, "MAT-00012 — Beton C16/20", null, null, null, false), "Ana", Acum).Succes);
+        Assert.True(material.Mapeaza(new MapareResursa(TipResursa.Material, articolStoc, "MAT-00012 — Beton C16/20", null, null, null, false, "MC"), "Ana", Acum).Succes);
         Assert.Equal((articolStoc, true, "Ana"), (material.ArticolStocId!.Value, material.EsteMapata, material.MapataDeNume));
 
         var manopera = ResursaCatalog.Noua("isdp", "19621", "Săpător", "ora", TipResursa.Manopera, false);
@@ -76,4 +76,37 @@ public class NomenclatorResurseTeste
 
         Assert.Equal((true, true, false), (apa.EsteMapata, apa.FaraMapare, apa.TipDedus));
     }
+
+    [Fact]
+    public void Materialul_din_stoc_cu_alta_UM_cere_factorul_de_conversie()
+    {
+        var otel = ResursaCatalog.Noua("isdp", "3800123", "Otel beton PC52", "to", TipResursa.Material, false);
+        var mat = Guid.NewGuid();
+
+        // to → kg are factor fix: propus automat (1 to = 1000 kg).
+        Assert.True(otel.Mapeaza(new MapareResursa(TipResursa.Material, mat, "MAT-1", null, null, null, false, "kg"), "Ana", Acum).Succes);
+        Assert.Equal((1000m, "kg"), (otel.FactorConversie!.Value, otel.ArticolStocUnitateMasura));
+
+        // mc → to depinde de densitate: fără factor dat, eroare; cu factor (nisip 1,6 t/mc), merge.
+        var nisip = ResursaCatalog.Noua("isdp", "2200456", "Nisip 0-4", "mc", TipResursa.Material, false);
+        Assert.True(nisip.Mapeaza(new MapareResursa(TipResursa.Material, mat, "MAT-2", null, null, null, false, "to"), "Ana", Acum).Esec);
+        Assert.True(nisip.Mapeaza(new MapareResursa(TipResursa.Material, mat, "MAT-2", null, null, null, false, "to", 0m), "Ana", Acum).Esec);
+        Assert.True(nisip.Mapeaza(new MapareResursa(TipResursa.Material, mat, "MAT-2", null, null, null, false, "to", 1.6m), "Ana", Acum).Succes);
+        Assert.Equal(1.6m, nisip.FactorConversie);
+
+        // „Fără corespondent” șterge legătura cu stocul și factorul.
+        Assert.True(nisip.Mapeaza(new MapareResursa(TipResursa.Material, null, null, null, null, null, true), "Ana", Acum).Succes);
+        Assert.Equal(((Guid?)null, (decimal?)null), (nisip.ArticolStocId, nisip.FactorConversie));
+    }
+
+    [Theory]
+    [InlineData("MC", "m3", 1)]
+    [InlineData("tona", "Kg", 1000)]
+    [InlineData("kg", "t", 0.001)]
+    [InlineData("buc.", "bucata", 1)]
+    public void Conversia_recunoaste_scrierile_aceleiasi_unitati_si_perechile_fixe(string resursa, string stoc, decimal factor) =>
+        Assert.Equal(factor, ConversieUm.Propune(resursa, stoc));
+
+    [Fact]
+    public void Conversia_intre_volum_si_masa_nu_se_ghiceste() => Assert.Null(ConversieUm.Propune("mc", "to"));
 }

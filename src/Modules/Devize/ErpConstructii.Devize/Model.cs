@@ -306,6 +306,32 @@ public sealed class VersiuneDeviz : EntitateFirma, IDocumentCuStare
     }
 
     /// <summary>
+    /// Schimbă prețurile resurselor (cod din nomenclator → preț nou, în UM-ul resursei) în toate articolele ciornei (D-55,
+    /// „actualizează prețurile”). Fiecare articol își ajustează prețul unitar doar cu diferența adusă de resursele schimbate
+    /// (consum unitar × (preț nou − preț vechi)), pe componenta lor; restul prețului rămâne cum era (și modificările manuale).
+    /// Prețul de ofertă se recalculează după regula F3. Întoarce câte articole s-au schimbat.
+    /// </summary>
+    public Rezultat<int> ActualizeazaPreturiResurse(IReadOnlyDictionary<string, decimal> preturiNoi)
+    {
+        if (EsteBlocat)
+            return Rezultat.Esuat<int>(Eroare.Validare("Versiunea aprobată nu se mai modifică; creează o versiune nouă."));
+        if (preturiNoi.Values.Any(p => p < 0))
+            return Rezultat.Esuat<int>(Eroare.Validare("Prețurile nu pot fi negative."));
+        var schimbate = 0;
+        foreach (var a in Articole())
+        {
+            if (a.AplicaPreturiResurse(preturiNoi))
+            {
+                schimbate++;
+                if (a.ArePretOferta)
+                    a.RecalculeazaPretOferta(Parametri(), Curs ?? 1);
+            }
+        }
+
+        return Rezultat.Ok(schimbate);
+    }
+
+    /// <summary>
     /// Versiunea e înlocuită de ciorna pornită din ea, la aprobarea acesteia (rămâne în istoric, neschimbată). Și ciorna
     /// originală (ex. devizul importat, neaprobat) se înlocuiește astfel: modificările ei s-au făcut în versiunea nouă.
     /// </summary>
@@ -546,6 +572,56 @@ public sealed class ArticolDeviz : EntitateFirma
     /// Prețul de ofertă după regula F3 (docs/import-isdp.md §3.1): factor manoperă = (1 + CAM)(1 + indirecte)(1 + profit),
     /// celelalte (1 + indirecte)(1 + profit); unitar = rotunjit₂(preț lei × factor / curs), total = rotunjit₂(valoare lei × factor / curs).
     /// </summary>
+    /// <summary>
+    /// Suma resurselor pe componente (consum unitar × preț), când nu se potrivește la 1 ban cu prețul unitar al articolului
+    /// (prețul a fost modificat manual după import); null pentru articolele fără resurse sau care se potrivesc.
+    /// </summary>
+    public ValoriResurse? DiferaDeResurse()
+    {
+        if (_consumuri.Count == 0)
+            return null;
+        decimal Pe(TipResursa t) => _consumuri.Where(c => c.Tip == t).Sum(c => c.ConsumUnitar * c.PretUnitar);
+        var suma = new ValoriResurse(Pe(TipResursa.Material), Pe(TipResursa.Manopera), Pe(TipResursa.Utilaj), Pe(TipResursa.Transport), Pe(TipResursa.Echipament));
+        var pu = PretUnitar;
+        var diferite = Math.Abs(suma.Material - pu.Material) >= 0.01m || Math.Abs(suma.Manopera - pu.Manopera) >= 0.01m
+                       || Math.Abs(suma.Utilaj - pu.Utilaj) >= 0.01m || Math.Abs(suma.Transport - pu.Transport) >= 0.01m
+                       || Math.Abs(suma.Echipament - pu.Echipament) >= 0.01m;
+        return diferite ? suma : null;
+    }
+
+    /// <summary>Prețurile noi ale resurselor (cod → preț): prețul unitar primește diferența, pe componenta resursei.</summary>
+    internal bool AplicaPreturiResurse(IReadOnlyDictionary<string, decimal> preturiNoi)
+    {
+        decimal m = 0, mo = 0, u = 0, t = 0, e = 0;
+        var schimbat = false;
+        foreach (var c in _consumuri)
+        {
+            if (!preturiNoi.TryGetValue(ResursaCatalog.CheieCod(c.CodResursa), out var pret) || pret == c.PretUnitar)
+                continue;
+            var delta = c.ConsumUnitar * (pret - c.PretUnitar);
+            switch (c.Tip)
+            {
+                case TipResursa.Material: m += delta; break;
+                case TipResursa.Manopera: mo += delta; break;
+                case TipResursa.Utilaj: u += delta; break;
+                case TipResursa.Transport: t += delta; break;
+                default: e += delta; break;
+            }
+
+            c.SchimbaPret(pret);
+            schimbat = true;
+        }
+
+        if (!schimbat)
+            return false;
+        PretMaterial += m;
+        PretManopera += mo;
+        PretUtilaj += u;
+        PretTransport += t;
+        PretEchipament += e;
+        return true;
+    }
+
     internal void RecalculeazaPretOferta(ParametriRecapitulatie p, decimal curs)
     {
         var f = (1 + p.CotaCheltuieliIndirecte) * (1 + p.CotaProfit);
@@ -623,6 +699,9 @@ public sealed class ConsumNormat : EntitateFirma
 
     /// <summary>Cantitatea articolului s-a schimbat: consumul unitar rămâne, cantitatea totală urmează articolul.</summary>
     internal void Rescaleaza(decimal cantitateArticol) => CantitateTotala = ConsumUnitar * cantitateArticol;
+
+    /// <summary>Prețul nou al resursei (actualizarea prețurilor din achiziții, D-55).</summary>
+    internal void SchimbaPret(decimal pret) => PretUnitar = pret;
 }
 
 /// <summary>

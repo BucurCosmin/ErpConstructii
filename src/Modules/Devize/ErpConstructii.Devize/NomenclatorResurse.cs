@@ -1,4 +1,4 @@
-using ErpConstructii.Devize.Calcul;
+﻿using ErpConstructii.Devize.Calcul;
 using ErpConstructii.SharedKernel;
 using ErpConstructii.SharedKernel.Import;
 
@@ -28,6 +28,10 @@ public sealed class ResursaCatalog : EntitateFirma
     /// <summary>Material / echipament: articolul de stoc (modulul Stocuri), cu denumirea lui la momentul mapării.</summary>
     public Guid? ArticolStocId { get; private set; }
     public string? ArticolStocDenumire { get; private set; }
+
+    /// <summary>UM-ul articolului de stoc la mapare și factorul „1 UM resursă = factor × UM stoc” (D-55; 1 = aceeași unitate).</summary>
+    public string? ArticolStocUnitateMasura { get; private set; }
+    public decimal? FactorConversie { get; private set; }
 
     /// <summary>Manoperă: meseria și categoria (ex. „Săpător”, „II”).</summary>
     public string? Meserie { get; private set; }
@@ -82,12 +86,27 @@ public sealed class ResursaCatalog : EntitateFirma
                 return Rezultat.Esuat(Eroare.Validare(lipsa));
         }
 
+        // Materialul din stoc poate avea altă UM: factorul dat, altfel cel propus (aceeași unitate / pereche fixă), altfel eroare.
+        var esteStoc = !m.FaraMapare && m.Tip is TipResursa.Material or TipResursa.Echipament && m.ArticolStocId is not null;
+        decimal? factor = null;
+        if (esteStoc && !m.FaraMapare)
+        {
+            factor = m.FactorConversie ?? ConversieUm.Propune(UnitateMasura, m.ArticolStocUnitateMasura);
+            if (factor is null)
+                return Rezultat.Esuat(Eroare.Validare(
+                    $"Resursa e în „{UnitateMasura}”, materialul din stoc în „{m.ArticolStocUnitateMasura}”: completează factorul de conversie (1 {UnitateMasura} = ? {m.ArticolStocUnitateMasura})."));
+            if (factor <= 0)
+                return Rezultat.Esuat(Eroare.Validare("Factorul de conversie trebuie să fie pozitiv."));
+        }
+
         Tip = m.Tip;
         TipDedus = false;
         FaraMapare = m.FaraMapare;
         var stoc = !m.FaraMapare && m.Tip is TipResursa.Material or TipResursa.Echipament;
         ArticolStocId = stoc && !m.FaraMapare ? m.ArticolStocId : null;
         ArticolStocDenumire = ArticolStocId is null ? null : Gol(m.ArticolStocDenumire, 300);
+        ArticolStocUnitateMasura = ArticolStocId is null ? null : Gol(m.ArticolStocUnitateMasura, 20);
+        FactorConversie = ArticolStocId is null ? null : factor;
         Meserie = !m.FaraMapare && m.Tip == TipResursa.Manopera ? meserie : null;
         Categorie = Meserie is null ? null : categorie;
         Utilaj = !m.FaraMapare && m.Tip is TipResursa.Utilaj or TipResursa.Transport ? utilaj : null;
@@ -102,8 +121,10 @@ public sealed class ResursaCatalog : EntitateFirma
 }
 
 /// <summary>Legătura cerută pentru o resursă (vezi <see cref="ResursaCatalog.Mapeaza"/>).</summary>
+/// <param name="FactorConversie">1 UM resursă = factor × UM stoc; null = propus din UM-uri (<see cref="ConversieUm.Propune"/>).</param>
 public sealed record MapareResursa(
-    TipResursa Tip, Guid? ArticolStocId, string? ArticolStocDenumire, string? Meserie, string? Categorie, string? Utilaj, bool FaraMapare);
+    TipResursa Tip, Guid? ArticolStocId, string? ArticolStocDenumire, string? Meserie, string? Categorie, string? Utilaj, bool FaraMapare,
+    string? ArticolStocUnitateMasura = null, decimal? FactorConversie = null);
 
 /// <summary>Rezultatul potrivirii consumurilor unei versiuni cu nomenclatorul: resursele noi (nemapate) și ce e de verificat.</summary>
 public sealed record PotrivireCatalog(IReadOnlyList<ResursaCatalog> Noi, IReadOnlyList<ProblemaImport> Probleme);

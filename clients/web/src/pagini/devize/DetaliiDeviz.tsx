@@ -1,8 +1,10 @@
-import { CheckOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons'
+import { CheckOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, ExclamationCircleOutlined, NodeExpandOutlined, PlusOutlined, PrinterOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Card, Col, Flex, Form, Input, Modal, Popconfirm, Progress, Row, Segmented, Skeleton, Space, Statistic, Switch, Table, Tag, Tooltip, Typography, theme } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
+import { useResurseArticole } from '../../api/catalogPreturi'
+import type { ConsumArticol } from '../../api/catalogPreturi'
 import { api } from '../../api/client'
 import {
   useAdaugaArticolDeviz,
@@ -21,12 +23,13 @@ import { NumarRo } from '../../componente/NumarRo'
 import { AntetPagina } from '../../layout/AntetPagina'
 import { formatCantitate, formatLei, formatProcent, stariVersiune, tipuriVersiune } from '../../util/format'
 import { descarcaFisier, deschidePdf } from '../../util/pdf'
+import { PreturiAchizitie } from './PreturiAchizitie'
 import { VerificareDeviz } from './VerificareDeviz'
 
-/** Rând din arborele devizului: capitole pe oricâte niveluri (obiect, stadiu fizic, capitol), apoi articole. */
+/** Rând din arborele devizului: capitole pe oricâte niveluri (obiect, stadiu fizic, capitol), articole, resursele lor. */
 interface Rand {
   cheie: string
-  nivel: 'capitol' | 'articol'
+  nivel: 'capitol' | 'articol' | 'resursa'
   /** Adâncimea capitolului (0 = primul nivel), pentru nuanța rândului. */
   adancime: number
   cod: string
@@ -42,8 +45,40 @@ interface Rand {
   asimilat?: boolean
   /** Articolul (pentru editare) și capitolul lui; la rândurile de capitol, capitolul (pentru „adaugă articol”). */
   articol?: ArticolDeviz
+  /** Resursa (rândul de sub articol, ca în extrasul de resurse) și UM-ul articolului ei. */
+  consum?: ConsumArticol
+  articolUm?: string
+  /** Componentele prețului unitar după resurse, când diferă de prețul articolului (modificat manual după import). */
+  diferaDeResurse?: ValoriResurse
   capitolId: string
   children?: Rand[]
+}
+
+const componente = ['material', 'manopera', 'utilaj', 'transport', 'echipament'] as const
+const cheieTip: Record<ConsumArticol['tip'], (typeof componente)[number]> = {
+  Material: 'material', Manopera: 'manopera', Utilaj: 'utilaj', Transport: 'transport', Echipament: 'echipament',
+}
+const numeTip: Record<ConsumArticol['tip'], string> = {
+  Material: 'material', Manopera: 'manoperă', Utilaj: 'utilaj', Transport: 'transport', Echipament: 'echipament',
+}
+
+function randResursa(c: ConsumArticol, adancime: number, capitolId: string, articolUm: string): Rand {
+  const k = cheieTip[c.tip]
+  const zero = { material: 0, manopera: 0, utilaj: 0, transport: 0, echipament: 0 }
+  return {
+    cheie: `r-${c.id}`, nivel: 'resursa', adancime, cod: c.cod, denumire: c.denumire, um: c.unitateMasura, cantitate: c.cantitateTotala,
+    pretUnitar: { ...zero, [k]: c.valoareUnitara, total: c.valoareUnitara }, valoare: { ...zero, [k]: c.valoare, total: c.valoare },
+    total: c.valoare, consum: c, articolUm, capitolId,
+  }
+}
+
+/** Suma resurselor pe componente, dacă nu se potrivește (la 1 ban) cu prețul unitar al articolului. */
+function diferenta(a: ArticolDeviz, resurse: ConsumArticol[]): ValoriResurse | undefined {
+  if (!resurse.length) return undefined
+  const suma = { material: 0, manopera: 0, utilaj: 0, transport: 0, echipament: 0, total: 0 }
+  for (const c of resurse) suma[cheieTip[c.tip]] += c.valoareUnitara
+  suma.total = componente.reduce((s, k) => s + suma[k], 0)
+  return componente.some((k) => Math.abs(suma[k] - a.pretUnitar[k]) >= 0.01) ? suma : undefined
 }
 
 interface ValoriArticol {
@@ -58,7 +93,7 @@ interface ValoriArticol {
   echipament?: number
 }
 
-function randArticol(a: ArticolDeviz, adancime: number, capitolId: string): Rand {
+function randArticol(a: ArticolDeviz, adancime: number, capitolId: string, resurse: ConsumArticol[] = []): Rand {
   return {
     cheie: a.id,
     nivel: 'articol',
@@ -75,6 +110,8 @@ function randArticol(a: ArticolDeviz, adancime: number, capitolId: string): Rand
     asimilat: a.tipArticol === 'Asimilat',
     articol: a,
     capitolId,
+    diferaDeResurse: diferenta(a, resurse),
+    children: resurse.length ? resurse.map((c) => randResursa(c, adancime + 1, capitolId, a.unitateMasura)) : undefined,
   }
 }
 
@@ -85,14 +122,16 @@ const normalizeaza = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').t
  * Arborele, păstrând doar ce se potrivește cu căutarea (și capitolele care conțin potriviri); fără căutare, tot.
  * `pastreaza` (ex. „doar modificările”) restrânge în plus articolele; capitolele rămase goale dispar.
  */
-function randCapitol(c: CapitolDeviz, adancime: number, cauta: string, pastreaza?: (a: ArticolDeviz) => boolean): Rand | null {
+function randCapitol(
+  c: CapitolDeviz, adancime: number, cauta: string, pastreaza?: (a: ArticolDeviz) => boolean, resurse?: Map<string, ConsumArticol[]>,
+): Rand | null {
   const potriveste = (t?: string | null) => !!t && normalizeaza(t).includes(cauta)
   const capitolPotrivit = !cauta || potriveste(c.denumire) || potriveste(c.codWbs) || potriveste(c.cod)
   const articole = c.articole
     .filter((a) => capitolPotrivit || potriveste(a.simbol) || potriveste(a.denumire) || potriveste(a.codWbs))
     .filter((a) => !pastreaza || pastreaza(a))
-    .map((a) => randArticol(a, adancime + 1, c.id))
-  const sub = c.subcapitole.map((s) => randCapitol(s, adancime + 1, capitolPotrivit ? '' : cauta, pastreaza)).filter((x): x is Rand => x !== null)
+    .map((a) => randArticol(a, adancime + 1, c.id, resurse?.get(a.id)))
+  const sub = c.subcapitole.map((s) => randCapitol(s, adancime + 1, capitolPotrivit ? '' : cauta, pastreaza, resurse)).filter((x): x is Rand => x !== null)
   const copii = [...articole, ...sub]
   if (copii.length === 0 && ((cauta && !capitolPotrivit) || pastreaza)) return null
   return {
@@ -151,17 +190,29 @@ export function DetaliiDeviz() {
   const dupaCheie = useMemo(() => new Map((diferente.data?.diferente ?? []).map((d) => [d.cheieStabila, d])), [diferente.data])
   const [doarModificari, setDoarModificari] = useState(false)
 
+  // Resursele articolelor (extrasul de resurse): rânduri sub fiecare articol, desfăcute la cerere.
+  const resurseArticole = useResurseArticole(proiectId, versiuneId)
+  const resurse = useMemo(() => {
+    const m = new Map<string, ConsumArticol[]>()
+    for (const c of resurseArticole.data ?? []) m.set(c.articolId, [...(m.get(c.articolId) ?? []), c])
+    return m
+  }, [resurseArticole.data])
+
   const textCautat = normalizeaza(cauta.trim())
   const arbore = useMemo(
     () => (data
       ? data.capitole
-        .map((c) => randCapitol(c, 0, textCautat, doarModificari ? (a) => dupaCheie.has(a.cheieStabila) : undefined))
+        .map((c) => randCapitol(c, 0, textCautat, doarModificari ? (a) => dupaCheie.has(a.cheieStabila) : undefined, resurse))
         .filter((x): x is Rand => x !== null)
       : []),
-    [data, textCautat, doarModificari, dupaCheie],
+    [data, textCautat, doarModificari, dupaCheie, resurse],
   )
   const capitole = useMemo(() => (data ? capitoleToate(data.capitole) : []), [data])
   const chei = useMemo(() => capitole.map((c) => c.id), [capitole])
+  /** Rândurile desfăcute: capitolele mereu la început; articolele (cu resursele lor) la cerere. */
+  const [desfacute, setDesfacute] = useState<React.Key[] | null>(null)
+  const randuriDesfacute = desfacute ?? chei
+  const toateResursele = resurse.size > 0 && [...resurse.keys()].every((k) => randuriDesfacute.includes(k))
   const articole = useMemo(() => capitole.flatMap((c) => c.articole), [capitole])
   const gasite = useMemo(() => {
     const numara = (r: Rand[]): number => r.reduce((s, x) => s + (x.nivel === 'articol' ? 1 : numara(x.children ?? [])), 0)
@@ -246,11 +297,12 @@ export function DetaliiDeviz() {
 
   const resursa = (titlu: string, k: keyof Omit<ValoriResurse, 'total'>) => ({
     title: titlu,
-    width: 120,
+    width: 105,
     className: 'numeric',
     render: (_: unknown, r: Rand) => {
       const v = vedere === 'valori' ? r.valoare : r.pretUnitar
-      return v && v[k] !== 0 ? formatLei(v[k]) : ''
+      if (!v || v[k] === 0) return ''
+      return r.nivel === 'resursa' ? <Typography.Text type="secondary">{formatLei(v[k])}</Typography.Text> : formatLei(v[k])
     },
   })
 
@@ -258,15 +310,33 @@ export function DetaliiDeviz() {
     {
       title: 'Cod / simbol',
       dataIndex: 'cod',
-      width: 190,
+      width: 175,
       fixed: 'left',
-      render: (v, r) => (r.nivel === 'articol' ? <Typography.Text code>{v}</Typography.Text> : <Typography.Text strong>{v}</Typography.Text>),
+      render: (v, r) => r.nivel === 'articol'
+        ? <Typography.Text code>{v}</Typography.Text>
+        : r.nivel === 'resursa' ? <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>{v}</Typography.Text> : <Typography.Text strong>{v}</Typography.Text>,
     },
     {
       title: 'Denumire',
       dataIndex: 'denumire',
-      render: (v, r) => (
-        <>
+      ellipsis: { showTitle: false },
+      render: (v, r) => r.nivel === 'resursa' && r.consum ? (
+        <Tooltip title={`${v} · ${numeTip[r.consum.tip]}: ${formatCantitate(r.consum.consumUnitar)} ${r.consum.unitateMasura} / ${r.articolUm} × ${formatLei(r.consum.pretUnitar)} lei`}>
+          <span>
+          <Typography.Text type="secondary" style={{ fontSize: 11, marginInlineEnd: 8 }}>
+            {numeTip[r.consum.tip]} · {formatCantitate(r.consum.consumUnitar)} × {formatLei(r.consum.pretUnitar)}
+          </Typography.Text>
+          <Typography.Text type="secondary">{v}</Typography.Text>
+          </span>
+        </Tooltip>
+      ) : (
+        <Tooltip title={v} mouseEnterDelay={0.6}>
+          <span>
+          {r.diferaDeResurse && (
+            <Tooltip title={`Prețul unitar al articolului (${formatLei(r.pretUnitar!.total)}) diferă de suma resurselor (${formatLei(r.diferaDeResurse.total)}): a fost modificat manual; resursele au prețurile din import.`}>
+              <ExclamationCircleOutlined style={{ color: token.colorWarning, marginInlineEnd: 6 }} />
+            </Tooltip>
+          )}
           <Typography.Text strong={r.nivel !== 'articol'}>{v}</Typography.Text>
           {r.subcontractata && <Tag color="purple" style={{ marginInlineStart: 8 }}>subcontractat</Tag>}
           {r.asimilat && <Tag style={{ marginInlineStart: 8 }}>asimilat</Tag>}
@@ -280,11 +350,15 @@ export function DetaliiDeviz() {
               </Tooltip>
             )
           })()}
-        </>
+          </span>
+        </Tooltip>
       ),
     },
-    { title: 'UM', dataIndex: 'um', width: 70 },
-    { title: 'Cantitate', dataIndex: 'cantitate', width: 110, className: 'numeric', render: (v?: number) => (v === undefined ? '' : formatCantitate(v)) },
+    { title: 'UM', dataIndex: 'um', width: 55, render: (v, r) => (r.nivel === 'resursa' ? <Typography.Text type="secondary">{v}</Typography.Text> : v) },
+    {
+      title: 'Cantitate', dataIndex: 'cantitate', width: 95, className: 'numeric',
+      render: (v: number | undefined, r: Rand) => (v === undefined ? '' : r.nivel === 'resursa' ? <Typography.Text type="secondary">{formatCantitate(v)}</Typography.Text> : formatCantitate(v)),
+    },
     resursa('Material', 'material'),
     resursa('Manoperă', 'manopera'),
     resursa('Utilaj', 'utilaj'),
@@ -292,7 +366,7 @@ export function DetaliiDeviz() {
     ...(areEchipament ? [resursa('Echipament', 'echipament')] : []),
     ...(areOferta ? [{
       title: vedere === 'valori' ? `Valoare ofertă (${moneda})` : `Preț ofertă (${moneda})`,
-      width: 150,
+      width: 130,
       className: 'numeric',
       render: (_: unknown, r: Rand) => {
         const v = vedere === 'valori' ? r.ofertaTotal : r.ofertaUnitar
@@ -301,20 +375,23 @@ export function DetaliiDeviz() {
     }] : []),
     {
       title: vedere === 'valori' ? 'Valoare' : 'Preț unitar',
-      width: 140,
+      width: 120,
       fixed: 'right',
       className: 'numeric',
       render: (_, r) => {
         const v = vedere === 'valori' ? r.total : r.pretUnitar?.total
-        return v === undefined ? '' : <Typography.Text strong={r.nivel !== 'articol'}>{formatLei(v)}</Typography.Text>
+        if (v === undefined) return ''
+        return r.nivel === 'resursa'
+          ? <Typography.Text type="secondary">{formatLei(v)}</Typography.Text>
+          : <Typography.Text strong={r.nivel !== 'articol'}>{formatLei(v)}</Typography.Text>
       },
     },
     ...(editabil ? [{
       title: '',
       key: 'actiuni',
-      width: 84,
+      width: 72,
       fixed: 'right' as const,
-      render: (_: unknown, r: Rand) => r.nivel === 'articol' && r.articol
+      render: (_: unknown, r: Rand) => r.nivel === 'resursa' ? null : r.nivel === 'articol' && r.articol
         ? (
           <Space size={0}>
             <Tooltip title="Modifică articolul"><Button size="small" type="text" icon={<EditOutlined />} onClick={() => deschideArticol(r.capitolId, r.articol)} /></Tooltip>
@@ -362,6 +439,9 @@ export function DetaliiDeviz() {
             <Button icon={<DownloadOutlined />} disabled={!data} loading={seExporta} onClick={() => void exportExcel()}>
               Export Excel
             </Button>
+            {data && permisiuni.data?.includes('date.preturi_cost') && (
+              <PreturiAchizitie proiectId={proiectId} versiuneId={versiuneId} poateAplica={editabil} />
+            )}
             {data && (
               <VerificareDeviz key={`${proiectId}-${versiuneId}`} proiectId={proiectId} versiuneId={versiuneId}
                 permis={permisiuni.data?.includes('date.preturi_cost') ?? false} />
@@ -484,35 +564,43 @@ export function DetaliiDeviz() {
         </Card>
       )}
 
-      <Row gutter={[16, 16]}>
+      <Row gutter={[12, 12]}>
         <Col xs={24} sm={12} xl={6}>
-          <Card>
+          <Card size="small">
             <Statistic title="Total fără TVA" value={rec?.totalFaraTva ?? 0} precision={2} suffix="lei" loading={isLoading} formatter={(v) => formatLei(Number(v))} />
           </Card>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <Card>
+          <Card size="small">
             <Statistic title="Total cu TVA" value={rec?.totalCuTva ?? 0} precision={2} suffix="lei" loading={isLoading} formatter={(v) => formatLei(Number(v))} />
           </Card>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <Card>
+          <Card size="small">
             <Statistic title="Articole de deviz" value={nrArticole} loading={isLoading} suffix={data ? `în ${capitole.length} capitole` : ''} />
           </Card>
         </Col>
         <Col xs={24} sm={12} xl={6}>
-          <Card>
+          <Card size="small">
             <Statistic title="Profit" value={rec?.profit ?? 0} precision={2} suffix="lei" loading={isLoading} formatter={(v) => formatLei(Number(v))} />
           </Card>
         </Col>
 
-        <Col xs={24} xxl={17}>
+        <Col xs={24}>
           <Card
+            size="small"
             title="Structura devizului"
             styles={{ body: { padding: 0 } }}
             extra={
               <Space wrap>
-                <Input.Search allowClear placeholder="Caută simbol, denumire, WBS" style={{ width: 260 }} onChange={(e) => setCauta(e.target.value)} />
+                {resurse.size > 0 && (
+                  <Tooltip title="Resursele fiecărui articol (materiale, manoperă, utilaje, transport), ca în extrasul de resurse; un articol se desface și din săgeata lui.">
+                    <Button size="small" icon={<NodeExpandOutlined />} onClick={() => setDesfacute(toateResursele ? chei : [...chei, ...resurse.keys()])}>
+                      {toateResursele ? 'Ascunde resursele' : 'Arată resursele'}
+                    </Button>
+                  </Tooltip>
+                )}
+                <Input.Search allowClear size="small" placeholder="Caută simbol, denumire, WBS" style={{ width: 240 }} onChange={(e) => setCauta(e.target.value)} />
                 {(textCautat || doarModificari) && <Typography.Text type="secondary">{gasite} articole</Typography.Text>}
                 {diferente.data && (
                   <Space size={4}>
@@ -521,6 +609,7 @@ export function DetaliiDeviz() {
                   </Space>
                 )}
                 <Segmented<Vedere>
+                  size="small"
                   value={vedere}
                   onChange={setVedere}
                   options={[
@@ -534,18 +623,21 @@ export function DetaliiDeviz() {
             {data && (
               <Table<Rand>
                 key={textCautat || doarModificari ? `filtru-${doarModificari}` : 'tot'}
+                className="tabel-compact tabel-deviz"
                 rowKey="cheie"
                 size="small"
                 columns={coloane}
                 dataSource={arbore}
                 pagination={false}
-                scroll={{ x: 1400 }}
-                expandable={{ defaultExpandedRowKeys: chei }}
+                sticky
+                scroll={{ x: 1250 }}
+                expandable={{ expandedRowKeys: randuriDesfacute, onExpandedRowsChange: (k) => setDesfacute([...k]), indentSize: 12 }}
                 rowClassName={(r) => `rand-${r.nivel}`}
                 onRow={(r) => {
                   const d = r.articol && dupaCheie.get(r.articol.cheieStabila)
                   return {
-                    style: r.nivel === 'capitol'
+                    style: r.nivel === 'resursa' ? { background: token.colorFillAlter }
+                      : r.nivel === 'capitol'
                       ? { background: r.adancime === 0 ? token.colorFillSecondary : token.colorFillQuaternary }
                       : d ? { background: d.tip === 'Adaugat' ? token.colorSuccessBg : token.colorWarningBg } : undefined,
                   }
@@ -556,9 +648,8 @@ export function DetaliiDeviz() {
           </Card>
         </Col>
 
-        <Col xs={24} xxl={7}>
-          <Flex vertical gap={16}>
-            <Card title="Recapitulație">
+        <Col xs={24} xl={14}>
+            <Card size="small" title="Recapitulație">
               <Skeleton loading={isLoading} active>
                 {rec && data && directe && (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -579,8 +670,8 @@ export function DetaliiDeviz() {
                         { e: 'TOTAL CU TVA', v: rec.totalCuTva, b: true, linie: true, mare: true },
                       ].map((r) => (
                         <tr key={r.e} style={{ borderTop: r.linie ? `1px solid ${token.colorBorder}` : undefined }}>
-                          <td style={{ padding: '6px 0', fontWeight: r.b ? 600 : 400, fontSize: r.mare ? 16 : undefined }}>{r.e}</td>
-                          <td className="numeric" style={{ padding: '6px 0', fontWeight: r.b ? 600 : 400, fontSize: r.mare ? 16 : undefined }}>
+                          <td style={{ padding: '3px 0', fontWeight: r.b ? 600 : 400, fontSize: r.mare ? 16 : undefined }}>{r.e}</td>
+                          <td className="numeric" style={{ padding: '3px 0', fontWeight: r.b ? 600 : 400, fontSize: r.mare ? 16 : undefined }}>
                             {formatLei(r.v)}
                           </td>
                         </tr>
@@ -590,8 +681,9 @@ export function DetaliiDeviz() {
                 )}
               </Skeleton>
             </Card>
-
-            <Card title="Structura costurilor directe">
+        </Col>
+        <Col xs={24} xl={10}>
+            <Card size="small" title="Structura costurilor directe">
               {directe && directe.total > 0 && (
                 <Flex vertical gap={8}>
                   {[
@@ -612,7 +704,6 @@ export function DetaliiDeviz() {
                 </Flex>
               )}
             </Card>
-          </Flex>
         </Col>
       </Row>
 

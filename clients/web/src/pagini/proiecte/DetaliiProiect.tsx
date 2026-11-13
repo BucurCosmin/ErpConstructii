@@ -11,6 +11,7 @@ import { ImportDeviz } from '../devize/ImportDeviz'
 import { useArhiveazaProiect, useReactiveazaProiect } from '../../api/proiecte'
 import { EditareProiect } from './EditareProiect'
 import { SantiereProiect } from './SantiereProiect'
+import { BugetProiect } from './BugetProiect'
 import { ListaContracte } from '../contracte/ListaContracte'
 
 export function DetaliiProiect() {
@@ -205,7 +206,10 @@ export function DetaliiProiect() {
               label: 'Contracte',
               children: <ListaContracte proiectId={proiectId} />,
             },
-            ...['Buget', 'Grafic', 'Situații', 'Documente'].map((t) => ({
+            ...(permisiuni.data?.includes('buget.vizualizare') && permisiuni.data.includes('date.preturi_cost')
+              ? [{ key: 'buget', label: 'Buget', children: <BugetProiect proiectId={proiectId} /> }]
+              : []),
+            ...['Grafic', 'Situații', 'Documente'].map((t) => ({
               key: t.toLowerCase(),
               label: t,
               children: <Empty description={`Modulul „${t}” va fi disponibil într-o fază ulterioară.`} />,

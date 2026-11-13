@@ -1,4 +1,4 @@
-using ErpConstructii.Devize.Calcul;
+﻿using ErpConstructii.Devize.Calcul;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure.Autorizare;
 using ErpConstructii.SharedKernel;
@@ -14,11 +14,12 @@ namespace ErpConstructii.Devize.Infrastructure;
 public sealed record ResursaCatalogDto(
     Guid Id, string Sursa, string Cod, string Denumire, string UnitateMasura, string Tip, bool TipDedus, bool Mapata, bool FaraMapare,
     Guid? ArticolStocId, string? ArticolStocDenumire, string? Meserie, string? Categorie, string? Utilaj, string? MapataDe,
-    DateTimeOffset? MapataLa, int Utilizari, int Versiuni);
+    DateTimeOffset? MapataLa, int Utilizari, int Versiuni, string? ArticolStocUnitateMasura = null, decimal? FactorConversie = null);
 
 /// <param name="Tip">Tipul resursei (confirmă / corectează tipul dedus): Material, Manopera, Utilaj, Transport, Echipament.</param>
+/// <param name="FactorConversie">1 UM resursă = factor × UM stoc (D-55); null = propus când UM-urile se potrivesc.</param>
 public sealed record MapareResursaCerere(
-    string? Tip, Guid? ArticolStocId, string? Meserie, string? Categorie, string? Utilaj, bool FaraMapare = false);
+    string? Tip, Guid? ArticolStocId, string? Meserie, string? Categorie, string? Utilaj, bool FaraMapare = false, decimal? FactorConversie = null);
 
 /// <summary>
 /// Nomenclatorul de resurse al firmei (docs/import-isdp.md §6.3, REQ-IMP-04): lista (nemapate / mapate), maparea spre ERP
@@ -29,19 +30,22 @@ internal static class EndpointuriResurse
     public static void Mapeaza(IEndpointRouteBuilder rute)
     {
         var g = rute.MapGroup("/devize/resurse").WithTags("Devize");
+        // Resursele le leagă ofertantul sau achizitorul (D-55): oricare dintre drepturi.
         var vizualizare = Permisiuni.Pentru(ModulErp.Ofertare, Actiune.Vizualizare);
+        var vizualizareAprovizionare = Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Vizualizare);
         var editare = Permisiuni.Pentru(ModulErp.Ofertare, Actiune.Editare);
+        var editareAprovizionare = Permisiuni.Pentru(ModulErp.Aprovizionare, Actiune.Editare);
 
         g.MapGet("/", Lista).WithName("ResurseCatalog")
             .WithSummary("Nomenclatorul de resurse al firmei: stare = nemapate | mapate | toate; tip; căutare după cod / denumire")
-            .Produces<IReadOnlyList<ResursaCatalogDto>>().CerePermisiune(vizualizare);
+            .Produces<IReadOnlyList<ResursaCatalogDto>>().CereOricarePermisiune(vizualizare, vizualizareAprovizionare);
         g.MapPut("/{id:guid}/mapare", Mapare).WithName("MapeazaResursa")
             .WithSummary("Leagă resursa de ERP: articol de stoc (material / echipament), meserie (manoperă), utilaj / transport, sau „fără corespondent”")
             .Produces<ResursaCatalogDto>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound)
-            .CerePermisiune(editare);
+            .CereOricarePermisiune(editare, editareAprovizionare);
         g.MapGet("/{id:guid}/propuneri", Propuneri).WithName("PropuneriArticolStoc")
-            .WithSummary("Articolele de stoc cu denumirea cea mai apropiată de a resursei (pentru maparea materialelor)")
-            .Produces<IReadOnlyList<ArticolStocMapare>>().Produces(StatusCodes.Status404NotFound).CerePermisiune(vizualizare);
+            .WithSummary("Articolele de stoc cu denumirea cea mai apropiată de a resursei (sau de textul ?cauta=), pentru maparea materialelor")
+            .Produces<IReadOnlyList<ArticolStocMapare>>().Produces(StatusCodes.Status404NotFound).CereOricarePermisiune(vizualizare, vizualizareAprovizionare);
     }
 
     /// <summary>
@@ -106,6 +110,7 @@ internal static class EndpointuriResurse
             return Results.BadRequest(new { mesaj = "Tipul resursei nu e valid (Material, Manopera, Utilaj, Transport, Echipament)." });
 
         string? articolDenumire = null;
+        string? articolUm = null;
         if (cerere.ArticolStocId is { } articolId && !cerere.FaraMapare)
         {
             if (stoc.FirstOrDefault() is not { } interogare)
@@ -113,9 +118,11 @@ internal static class EndpointuriResurse
             if (await interogare.ArticolAsync(articolId, ct) is not { } articol)
                 return Results.BadRequest(new { mesaj = "Articolul de stoc ales nu există." });
             articolDenumire = $"{articol.Cod} — {articol.Denumire}";
+            articolUm = articol.UnitateMasura;
         }
 
-        var rezultat = r.Mapeaza(new MapareResursa(tip, cerere.ArticolStocId, articolDenumire, cerere.Meserie, cerere.Categorie, cerere.Utilaj, cerere.FaraMapare),
+        var rezultat = r.Mapeaza(new MapareResursa(tip, cerere.ArticolStocId, articolDenumire, cerere.Meserie, cerere.Categorie, cerere.Utilaj, cerere.FaraMapare,
+            articolUm, cerere.FactorConversie),
             utilizator.Nume ?? string.Empty, ceas.Acum);
         if (rezultat.Esec)
             return Results.BadRequest(new { mesaj = rezultat.Eroare.Mesaj });
@@ -124,17 +131,20 @@ internal static class EndpointuriResurse
         return Results.Ok(Dto(r, (u, 0)));
     }
 
-    private static async Task<IResult> Propuneri(Guid id, DevizeDbContext db, IEnumerable<IArticoleStocPentruMapare> stoc, CancellationToken ct)
+    private static async Task<IResult> Propuneri(Guid id, string? cauta, DevizeDbContext db, IEnumerable<IArticoleStocPentruMapare> stoc, CancellationToken ct)
     {
         var r = await db.Resurse.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
         if (r is null)
             return Results.NotFound();
         return Results.Ok(stoc.FirstOrDefault() is { } interogare
-            ? await interogare.PropuneAsync(r.Denumire, r.UnitateMasura, 10, ct)
+            ? string.IsNullOrWhiteSpace(cauta)
+                ? await interogare.PropuneAsync(r.Denumire, r.UnitateMasura, 10, ct)
+                : await interogare.PropuneAsync(cauta.Trim(), null, 20, ct)
             : []);
     }
 
     private static ResursaCatalogDto Dto(ResursaCatalog r, (int Consumuri, int Versiuni) u) => new(
         r.Id, r.Sursa, r.Cod, r.Denumire, r.UnitateMasura, r.Tip.ToString(), r.TipDedus, r.EsteMapata, r.FaraMapare,
-        r.ArticolStocId, r.ArticolStocDenumire, r.Meserie, r.Categorie, r.Utilaj, r.MapataDeNume, r.MapataLa, u.Consumuri, u.Versiuni);
+        r.ArticolStocId, r.ArticolStocDenumire, r.Meserie, r.Categorie, r.Utilaj, r.MapataDeNume, r.MapataLa, u.Consumuri, u.Versiuni,
+        r.ArticolStocUnitateMasura, r.FactorConversie);
 }

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import { chei } from './interogari'
+import type { StatisticaAchizitie } from './catalogPreturi'
 import type { ValoriResurse } from './tipuri'
 
 /** Datele unui articol editat sau adăugat manual: costul direct unitar în lei, pe resurse. */
@@ -100,3 +101,45 @@ export const useAdaugaArticolDeviz = (proiectId: string) =>
 export const useStergeArticolDeviz = (proiectId: string) =>
   useOperatie(proiectId, ({ versiuneId, articolId }: { versiuneId: string; articolId: string }) =>
     api.delete<RezultatEditareDeviz>(`${baza(proiectId)}/${versiuneId}/articole/${articolId}`))
+
+export type PoliticaPret = 'MedieInterval' | 'Ultimul' | 'MinimInterval'
+export type StarePropunere = 'Nelegata' | 'FaraAchizitii' | 'FaraAchizitiiRecente' | 'Egal' | 'Diferit'
+
+/** O resursă a devizului: prețul din deviz față de prețul de achiziție (recepții = prețul facturilor), D-55. */
+export interface PropunerePret {
+  cod: string
+  denumire: string
+  unitateMasura: string
+  tip: 'Material' | 'Manopera' | 'Utilaj' | 'Transport' | 'Echipament'
+  cantitateDeviz: number
+  pretDeviz: number
+  preturiDiferiteInDeviz: boolean
+  articole: number
+  stare: StarePropunere
+  pretPropus: number | null
+  /** (propus − deviz) / deviz */
+  diferenta: number | null
+  /** Schimbarea costului direct la prețul propus. */
+  impact: number
+  achizitii: StatisticaAchizitie | null
+}
+
+export interface RaportPreturiAchizitie {
+  resurse: PropunerePret[]
+  impactTotal: number
+  costDirectActual: number
+  articoleModificateManual: string[]
+}
+
+export const useDiferentePreturi = (proiectId: string, versiuneId: string, politica: PoliticaPret, activ: boolean) =>
+  useQuery({
+    queryKey: [...chei.deviz(proiectId, versiuneId), 'preturi-achizitie', politica],
+    queryFn: () => api.get<RaportPreturiAchizitie>(`${baza(proiectId)}/${versiuneId}/preturi-achizitie?politica=${politica}`),
+    enabled: activ,
+  })
+
+/** Aplică prețurile alese în ciorna de lucru (creată la nevoie, D-53). */
+export const useAplicaPreturi = (proiectId: string) =>
+  useOperatie(proiectId, ({ versiuneId, preturi }: { versiuneId: string; preturi: { cod: string; pret: number }[] }) =>
+    api.post<{ versiuneId: string; numar: number; versiuneNoua: boolean; articoleModificate: number }>(
+      `${baza(proiectId)}/${versiuneId}/preturi-achizitie`, { preturi }))
