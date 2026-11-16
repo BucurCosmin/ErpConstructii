@@ -64,6 +64,8 @@ public sealed class ContractPartener : EntitateFirma, IDocumentCuStare
 {
     private static readonly JsonSerializerOptions Json = new() { Converters = { new JsonStringEnumConverter() } };
     private IReadOnlyList<LinieContract>? _linii;
+    private IReadOnlyList<MembruAsociere>? _membri;
+    private IReadOnlyList<TransaAvans>? _transe;
 
     private ContractPartener() { }
 
@@ -96,6 +98,33 @@ public sealed class ContractPartener : EntitateFirma, IDocumentCuStare
     public DateTimeOffset? ActivatLa { get; private set; }
     public string? ActivatDeNume { get; private set; }
 
+    // ---- condițiile din fișa contractului (D-56)
+    public string? TipPret { get; private set; }
+    public string? Durata { get; private set; }
+    public string? Amplasament { get; private set; }
+    public string? StareText { get; private set; }
+    public DateOnly? DataPredareAmplasament { get; private set; }
+    public DateOnly? DataPvrtl { get; private set; }
+    public string MembriJson { get; private set; } = "[]";
+    public string TranseAvansJson { get; private set; } = "[]";
+
+    /// <summary>Membrii asocierii cu cotele lor; gol = firma singură (100%).</summary>
+    public IReadOnlyList<MembruAsociere> Membri => _membri ??= JsonSerializer.Deserialize<List<MembruAsociere>>(MembriJson, Json) ?? [];
+
+    /// <summary>Tranșele avansului; cu tranșe, <see cref="Avans"/> = valoarea × suma procentelor.</summary>
+    public IReadOnlyList<TransaAvans> TranseAvans => _transe ??= JsonSerializer.Deserialize<List<TransaAvans>>(TranseAvansJson, Json) ?? [];
+    public decimal ProcentGarantieAvans { get; private set; }
+    public decimal ProcentGarantieTehnica { get; private set; }
+    public int? LuniGarantieTehnica { get; private set; }
+    public decimal PenalitateExecutieZi { get; private set; }
+    public decimal PlafonPenalitateExecutie { get; private set; }
+    public decimal PenalitatePlataZi { get; private set; }
+    public decimal PlafonPenalitatePlata { get; private set; }
+
+    public ConditiiContract Conditii => new(TipPret, Durata, Amplasament, StareText, DataPredareAmplasament, DataPvrtl, Membri, TranseAvans,
+        ProcentGarantieAvans, ProcentGarantieTehnica, LuniGarantieTehnica, PenalitateExecutieZi, PlafonPenalitateExecutie, PenalitatePlataZi,
+        PlafonPenalitatePlata);
+
     public bool EsteBlocat => Stare != StareContract.Ciorna;
 
     public static Rezultat<ContractPartener> Creeaza(int an, int numar, DateContract date, Guid utilizatorId, string utilizatorNume)
@@ -111,17 +140,113 @@ public sealed class ContractPartener : EntitateFirma, IDocumentCuStare
         return Rezultat.Ok(c);
     }
 
-    /// <summary>Ciorna se modifică liber; contractul semnat doar prin acte adiționale.</summary>
-    public Rezultat Modifica(DateContract date)
+    /// <summary>Ciorna se modifică liber (inclusiv cea importată); contractul semnat prin <see cref="Corecteaza"/> sau acte adiționale.</summary>
+    public Rezultat Modifica(DateContract date, ConditiiContract? conditii = null)
     {
         if (Stare != StareContract.Ciorna)
-            return Rezultat.Esuat(Eroare.Validare($"Contractul {NumarAfisat} e semnat: se modifică doar prin act adițional."));
+            return Rezultat.Esuat(Eroare.Validare($"Contractul {NumarAfisat} e semnat: se corectează cu motiv sau prin act adițional."));
         var probleme = Valideaza(date);
         if (date.ProiectId != ProiectId) probleme.Add("Contractul rămâne pe proiectul lui.");
+        if (conditii is not null) probleme.AddRange(ConditiiContract.Valideaza(conditii));
         if (probleme.Count > 0)
             return Rezultat.Esuat(Eroare.Validare(string.Join(" ", probleme)));
         Aplica(date);
+        if (conditii is not null)
+            AplicaConditii(conditii);
         return Rezultat.Ok();
+    }
+
+    /// <summary>Condițiile din fișă pe ciornă (la creare / import).</summary>
+    public Rezultat SeteazaConditii(ConditiiContract conditii)
+    {
+        if (Stare != StareContract.Ciorna)
+            return Rezultat.Esuat(Eroare.Validare($"Contractul {NumarAfisat} e semnat: se corectează cu motiv."));
+        var probleme = ConditiiContract.Valideaza(conditii);
+        if (probleme.Count > 0)
+            return Rezultat.Esuat(Eroare.Validare(string.Join(" ", probleme)));
+        AplicaConditii(conditii);
+        return Rezultat.Ok();
+    }
+
+    /// <summary>
+    /// Corectura contractului semnat (D-56): datele de bază și condițiile se schimbă cu motiv, iar corectura păstrează ce s-a
+    /// schimbat („câmp: vechi → nou”). Proiectul nu se schimbă. Valoarea se schimbă de regulă prin act adițional; corectura e
+    /// pentru datele introduse / importate greșit.
+    /// </summary>
+    public Rezultat<CorectieContract> Corecteaza(DateContract date, ConditiiContract conditii, string motiv, string utilizatorNume, DateTimeOffset moment)
+    {
+        if (Stare != StareContract.Activ)
+            return Rezultat.Esuat<CorectieContract>(Eroare.Validare("Ciorna se modifică direct, fără corectură."));
+        if (string.IsNullOrWhiteSpace(motiv) || motiv.Trim().Length > 1000)
+            return Rezultat.Esuat<CorectieContract>(Eroare.Validare("Motivul corecturii este obligatoriu (cel mult 1000 de caractere)."));
+        if (string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat<CorectieContract>(Eroare.Validare("Utilizatorul este obligatoriu."));
+        var probleme = Valideaza(date);
+        if (date.ProiectId != ProiectId) probleme.Add("Contractul rămâne pe proiectul lui.");
+        probleme.AddRange(ConditiiContract.Valideaza(conditii));
+        if (probleme.Count > 0)
+            return Rezultat.Esuat<CorectieContract>(Eroare.Validare(string.Join(" ", probleme)));
+
+        var inainte = Rezumat();
+        Aplica(date);
+        AplicaConditii(conditii);
+        var dupa = Rezumat();
+        var modificari = dupa.Where(x => inainte.GetValueOrDefault(x.Key) != x.Value)
+            .Select(x => $"{x.Key}: {inainte.GetValueOrDefault(x.Key) ?? "—"} → {x.Value ?? "—"}").ToList();
+        if (modificari.Count == 0)
+            return Rezultat.Esuat<CorectieContract>(Eroare.Validare("Nu s-a schimbat nimic."));
+        return Rezultat.Ok(new CorectieContract(Id, motiv, modificari, utilizatorNume, moment));
+    }
+
+    /// <summary>Datele contractului ca text (pentru istoricul corecturilor).</summary>
+    private Dictionary<string, string?> Rezumat()
+    {
+        static string? P(decimal v) => v == 0 ? null : $"{v * 100:0.####}%";
+        return new Dictionary<string, string?>
+        {
+            ["Nr. partener"] = NumarExtern, ["Data"] = DataSemnarii.ToString("dd.MM.yyyy"), ["Partener"] = $"{PartenerDenumire} {PartenerCui}".Trim(),
+            ["Tip"] = Tip.ToString(), ["Obiect"] = Obiect, ["Moneda"] = Moneda, ["Valoare"] = Valoare.ToString("N2"),
+            ["Poziții"] = Linii.Count == 0 ? null : string.Join("; ", Linii.Select(l => $"{l.Denumire} {l.Cantitate:0.###} {l.UnitateMasura} × {l.PretUnitar:0.####}")),
+            ["Început"] = DataInceput?.ToString("dd.MM.yyyy"), ["Termen"] = DataSfarsit?.ToString("dd.MM.yyyy"), ["Termen plată (zile)"] = TermenPlataZile?.ToString(),
+            ["Garanție bună execuție"] = P(ProcentGarantie), ["Avans"] = Avans.ToString("N2"), ["Taxare inversă"] = TaxareInversa ? "da" : "nu",
+            ["Observații"] = Observatii, ["Tip preț"] = TipPret, ["Durată"] = Durata, ["Amplasament"] = Amplasament, ["Stadiu"] = StareText,
+            ["Predare amplasament"] = DataPredareAmplasament?.ToString("dd.MM.yyyy"), ["PVRTL"] = DataPvrtl?.ToString("dd.MM.yyyy"),
+            // Membrii și tranșele ca text lizibil (JSON-ul din bază poate avea altă formatare, deci nu se compară brut).
+            ["Asociere"] = Membri.Count == 0 ? null : string.Join("; ", Membri.Select(m => $"{m.Denumire} {m.Cota * 100:0.##}%{(m.EsteFirmaActiva ? " (firma)" : "")}")),
+            ["Tranșe avans"] = TranseAvans.Count == 0 ? null : string.Join(" + ", TranseAvans.Select(t => $"{t.Procent * 100:0.##}%{(t.Descriere is null ? "" : $" {t.Descriere}")}")), ["Garanție avans"] = P(ProcentGarantieAvans),
+            ["Garanție tehnică"] = P(ProcentGarantieTehnica), ["Luni garanție tehnică"] = LuniGarantieTehnica?.ToString(),
+            ["Penalitate execuție / zi"] = P(PenalitateExecutieZi), ["Plafon penalități execuție"] = P(PlafonPenalitateExecutie),
+            ["Penalitate plată / zi"] = P(PenalitatePlataZi), ["Plafon penalități plată"] = P(PlafonPenalitatePlata),
+        };
+    }
+
+    private void AplicaConditii(ConditiiContract c)
+    {
+        static string? T(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+        TipPret = T(c.TipPret);
+        Durata = T(c.Durata);
+        Amplasament = T(c.Amplasament);
+        StareText = T(c.StareText);
+        DataPredareAmplasament = c.DataPredareAmplasament;
+        DataPvrtl = c.DataPvrtl;
+        MembriJson = JsonSerializer.Serialize(c.Membri.Select(m => m with
+        {
+            Denumire = m.Denumire.Trim(),
+            Cui = string.IsNullOrWhiteSpace(m.Cui) ? null : ValidareFiscala.NormalizeazaCui(m.Cui),
+        }).ToList(), Json);
+        TranseAvansJson = JsonSerializer.Serialize(c.TranseAvans.OrderBy(t => t.Numar).Select((t, i) => t with { Numar = i + 1, Descriere = T(t.Descriere) }).ToList(), Json);
+        _membri = null;
+        _transe = null;
+        ProcentGarantieAvans = c.ProcentGarantieAvans;
+        ProcentGarantieTehnica = c.ProcentGarantieTehnica;
+        LuniGarantieTehnica = c.LuniGarantieTehnica;
+        PenalitateExecutieZi = c.PenalitateExecutieZi;
+        PlafonPenalitateExecutie = c.PlafonPenalitateExecutie;
+        PenalitatePlataZi = c.PenalitatePlataZi;
+        PlafonPenalitatePlata = c.PlafonPenalitatePlata;
+        // Cu tranșe, avansul e procentul lor din valoarea contractului.
+        if (TranseAvans.Count > 0)
+            Avans = Rotunjire.Lei.Aplica(Valoare * TranseAvans.Sum(t => t.Procent));
     }
 
     /// <summary>Contractul a fost semnat: intră în vigoare și nu se mai modifică (regula 6); facturile se pot lega de el.</summary>
@@ -186,7 +311,7 @@ public sealed class ContractPartener : EntitateFirma, IDocumentCuStare
         DataSfarsit = d.DataSfarsit;
         TermenPlataZile = d.TermenPlataZile;
         ProcentGarantie = d.ProcentGarantie;
-        Avans = Rotunjire.Lei.Aplica(d.Avans);
+        Avans = TranseAvans.Count > 0 ? Rotunjire.Lei.Aplica(Valoare * TranseAvans.Sum(t => t.Procent)) : Rotunjire.Lei.Aplica(d.Avans);
         TaxareInversa = d.TaxareInversa;
         Observatii = string.IsNullOrWhiteSpace(d.Observatii) ? null : d.Observatii.Trim();
     }
@@ -212,12 +337,32 @@ public sealed class ActAditional : EntitateFirma
     public DateOnly? DataSfarsitNoua { get; private set; }
     public string CreatDeNume { get; private set; } = string.Empty;
 
+    /// <summary>Actul propus (nesemnat) nu schimbă valoarea și termenul contractului până la semnare (D-56).</summary>
+    public bool Semnat { get; private set; } = true;
+    public string? SemnatDeNume { get; private set; }
+
+    /// <summary>Actul propus a fost semnat: de acum intră în valoarea și termenul contractului.</summary>
+    public Rezultat Semneaza(DateOnly data, string utilizatorNume)
+    {
+        if (Semnat)
+            return Rezultat.Esuat(Eroare.Validare($"Actul adițional nr. {Numar} e deja semnat."));
+        if (string.IsNullOrWhiteSpace(utilizatorNume))
+            return Rezultat.Esuat(Eroare.Validare("Utilizatorul este obligatoriu."));
+        if (data < Data)
+            return Rezultat.Esuat(Eroare.Validare("Semnarea nu poate fi înaintea datei actului."));
+        Semnat = true;
+        Data = data;
+        SemnatDeNume = utilizatorNume.Trim();
+        return Rezultat.Ok();
+    }
+
     public static Rezultat<ActAditional> Creeaza(
         ContractPartener contract, InchidereContract? inchidere, int numar, string? numarExtern, DateOnly data, string obiect, decimal diferentaValoare,
-        DateOnly? dataSfarsitNoua, decimal valoareActuala, string utilizatorNume)
+        DateOnly? dataSfarsitNoua, decimal valoareActuala, string utilizatorNume, bool semnat = true, bool laImport = false)
     {
         var p = new List<string>();
-        if (contract.Stare != StareContract.Activ) p.Add("Actele adiționale se încheie la contractele semnate (active).");
+        // La importul fișei, contractul intră ca ciornă (de verificat), dar actele lui adiționale există deja.
+        if (contract.Stare != StareContract.Activ && !laImport) p.Add("Actele adiționale se încheie la contractele semnate (active).");
         if (inchidere is not null) p.Add($"Contractul {contract.NumarAfisat} e închis ({inchidere.Tip}).");
         if (numar < 1) p.Add("Numărul actului adițional nu este valid.");
         if (data < contract.DataSemnarii) p.Add("Actul adițional nu poate fi dinaintea contractului.");
@@ -239,6 +384,8 @@ public sealed class ActAditional : EntitateFirma
             DiferentaValoare = Rotunjire.Lei.Aplica(diferentaValoare),
             DataSfarsitNoua = dataSfarsitNoua,
             CreatDeNume = utilizatorNume.Trim(),
+            Semnat = semnat,
+            SemnatDeNume = semnat ? utilizatorNume.Trim() : null,
         });
     }
 }

@@ -17,6 +17,13 @@ internal sealed class InterogareFacturiContract(FacturiDbContext db) : IInteroga
         return facturi.GroupBy(f => f.ContractId).ToDictionary(g => g.Key,
             g => (IReadOnlyList<FacturaPeContract>)g.Select(f => new FacturaPeContract(f.Id, f.Numar, f.DataEmitere, f.TotalFaraTva, f.Moneda)).ToList());
     }
+
+    public async Task<FacturaPentruFisa?> PentruFisaAsync(Guid facturaId, CancellationToken ct = default)
+    {
+        var f = await db.FacturiPrimite.AsNoTracking().FirstOrDefaultAsync(x => x.Id == facturaId && !db.Anulari.Any(a => a.FacturaId == x.Id), ct);
+        return f is null ? null : new FacturaPentruFisa(f.Id, f.Numar, f.DataEmitere, f.DataScadenta, f.Moneda, f.TotalFaraTva, f.TotalTva, f.TotalDePlata,
+            f.ContractId, f.Linii.Select(l => new LinieFacturaPentruFisa(l.Denumire, l.ValoareFaraTva)).ToList());
+    }
 }
 
 /// <summary>Facturile legate de o notă de comandă (pentru ștergerea avizului și a notei generate din el, D-40).</summary>

@@ -1,5 +1,5 @@
-import { PlusOutlined, WarningOutlined } from '@ant-design/icons'
-import { Alert, Button, Card, Flex, Input, Segmented, Select, Table, Tag, Tooltip, Typography } from 'antd'
+import { PlusOutlined, WarningOutlined, UploadOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Flex, Input, Segmented, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { useState } from 'react'
 import { stariContract, tipuriContract, useContracte } from '../../api/contracte'
 import type { Contract } from '../../api/contracte'
@@ -8,6 +8,7 @@ import { AntetPagina } from '../../layout/AntetPagina'
 import { etichetaProiect, formatData, formatLei } from '../../util/format'
 import { DetaliiContract, ProgresContract } from './DetaliiContract'
 import { EditorContract } from './EditorContract'
+import { ImportFisaContract } from './ImportFisaContract'
 
 /**
  * Contractele cu subantreprenori și parteneri (D-41), pe un proiect (tab-ul din fișa proiectului) sau pe toate: valoarea
@@ -23,12 +24,18 @@ export function ListaContracte({ proiectId }: { proiectId?: string }) {
   const contracte = useContracte({ proiectId: proiectId ?? proiectAles, stare: stare === 'Toate' ? undefined : stare, cauta })
   const [deschis, setDeschis] = useState<Contract>()
   const [nou, setNou] = useState(false)
+  const [importDeschis, setImport] = useState(false)
 
   const total = (contracte.data ?? []).filter((c) => c.stare !== 'Ciorna' && c.moneda === 'RON')
   return (
     <Card
       title={proiectId ? 'Contracte cu subantreprenori și parteneri' : undefined}
-      extra={<Button type="primary" icon={<PlusOutlined />} disabled={!are('creare')} onClick={() => setNou(true)}>Contract nou</Button>}
+      extra={(
+        <Space>
+          <Button icon={<UploadOutlined />} disabled={!are('creare')} onClick={() => setImport(true)}>Importă fișă (Excel)</Button>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!are('creare')} onClick={() => setNou(true)}>Contract nou</Button>
+        </Space>
+      )}
     >
       <Flex gap={8} wrap style={{ marginBottom: 12 }}>
         {!proiectId && (
@@ -84,6 +91,8 @@ export function ListaContracte({ proiectId }: { proiectId?: string }) {
         ]}
       />
       <EditorContract deschis={nou} proiectId={proiectId} onInchide={() => setNou(false)} onSalvat={(c) => setDeschis(c)} />
+      <ImportFisaContract deschis={importDeschis} proiectId={proiectId} onInchide={() => setImport(false)}
+        onImportat={(id, pid) => setDeschis({ id, proiectId: pid } as Contract)} />
       <DetaliiContract proiectId={deschis?.proiectId} id={deschis?.id} onInchide={() => setDeschis(undefined)}
         permisiuni={{ editare: are('editare'), aprobare: are('aprobare') }} />
     </Card>

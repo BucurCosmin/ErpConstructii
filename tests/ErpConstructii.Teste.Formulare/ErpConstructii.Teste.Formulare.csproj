@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!--
     Teste pentru generarea și citirea formularelor Word (Open XML). Construiesc șablonul în memorie,
     deci nu au nevoie de fișiere externe.
@@ -23,5 +23,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Formulare\ErpConstructii.Formulare.Infrastructure\ErpConstructii.Formulare.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Devize\ErpConstructii.Devize.Infrastructure\ErpConstructii.Devize.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Contracte\ErpConstructii.Contracte\ErpConstructii.Contracte.csproj" />
   </ItemGroup>
 </Project>

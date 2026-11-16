@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <!--
     Infrastructură comună: contractul de modul, baza DbContext pe schema modulului,
     interceptorii pentru Row-Level Security și audit.
@@ -10,6 +10,8 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="EFCore.NamingConventions" />
+    <!-- Citirea foilor .xlsx (CititorFoiXlsx): fișe / exporturi Excel. -->
+    <PackageReference Include="DocumentFormat.OpenXml" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ErpConstructii.SharedKernel\ErpConstructii.SharedKernel.csproj" />

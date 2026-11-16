@@ -18,13 +18,16 @@ public sealed record SituatieContract(
     decimal GarantieRetinuta,
     bool Depasit,
     DateOnly? Termen,
-    bool TermenDepasit)
+    bool TermenDepasit,
+    decimal ValoarePropusa = 0)
 {
     /// <summary>Situația contractului: valoare actualizată, facturat, rest, garanție reținută, termen. Funcție pură.</summary>
     public static SituatieContract Calculeaza(
         ContractPartener contract, IEnumerable<ActAditional> acte, IEnumerable<FacturaPeContract> facturi, bool inchis, DateOnly azi)
     {
-        var lista = acte.OrderBy(a => a.Numar).ToList();
+        // Actele propuse (nesemnate) nu schimbă valoarea / termenul; apar doar în valoarea propusă (D-56).
+        var toate = acte.OrderBy(a => a.Numar).ToList();
+        var lista = toate.Where(a => a.Semnat).ToList();
         var valoare = contract.Valoare + lista.Sum(a => a.DiferentaValoare);
         // Facturile în altă monedă decât contractul nu se adună (se văd în listă).
         var facturat = facturi.Where(f => string.Equals(f.Moneda, contract.Moneda, StringComparison.OrdinalIgnoreCase)).Sum(f => f.TotalFaraTva);
@@ -38,7 +41,8 @@ public sealed record SituatieContract(
             Rotunjire.Lei.Aplica(facturat * contract.ProcentGarantie),
             facturat > valoare,
             termen,
-            !inchis && contract.Stare == StareContract.Activ && termen is { } t && azi > t);
+            !inchis && contract.Stare == StareContract.Activ && termen is { } t && azi > t,
+            contract.Valoare + toate.Sum(a => a.DiferentaValoare));
     }
 }
 
@@ -63,4 +67,15 @@ public interface IInterogareContracte
 public interface IInterogareFacturiContract
 {
     Task<IReadOnlyDictionary<Guid, IReadOnlyList<FacturaPeContract>>> PeContracteAsync(IReadOnlyCollection<Guid> contracte, CancellationToken ct = default);
+
+    /// <summary>Factura neanulată, cu liniile ei (pentru propunerea rândului din fișa contractului, D-56); null dacă nu există.</summary>
+    Task<FacturaPentruFisa?> PentruFisaAsync(Guid facturaId, CancellationToken ct = default);
 }
+
+/// <summary>O linie a facturii, fără TVA (negativă la stornări, ex. „Storno avans 5%”).</summary>
+public sealed record LinieFacturaPentruFisa(string Denumire, decimal ValoareFaraTva);
+
+/// <summary>Factura primită a firmei active, pentru fișa contractului.</summary>
+public sealed record FacturaPentruFisa(
+    Guid Id, string Numar, DateOnly DataEmitere, DateOnly? DataScadenta, string Moneda, decimal TotalFaraTva, decimal TotalTva, decimal TotalDePlata,
+    Guid? ContractId, IReadOnlyList<LinieFacturaPentruFisa> Linii);
