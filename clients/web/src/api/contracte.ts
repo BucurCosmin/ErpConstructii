@@ -220,6 +220,12 @@ export interface FacturaFisa {
   observatii: string | null
   /** Total RON − plăți confirmate. */
   sold: number
+  /** Factura din modulul Facturi care pare a fi aceeași (rând preluat din fișa Excel, încă nelegat). */
+  facturaPropusaId: string | null
+  facturaPropusaNumar: string | null
+  /** Numărul și suma se potrivesc: se poate lega fără verificare. */
+  propunereSigura: boolean
+  propunereDiferente: string | null
 }
 
 export interface PlataContract {
@@ -236,7 +242,7 @@ export interface PlataContract {
   observatii: string | null
 }
 
-export type FacturaFisaCerere = Omit<FacturaFisa, 'id' | 'ordine' | 'sold'>
+export type FacturaFisaCerere = Omit<FacturaFisa, 'id' | 'ordine' | 'sold' | 'facturaPropusaId' | 'facturaPropusaNumar' | 'propunereSigura' | 'propunereDiferente'>
 export type PlataCerere = Omit<PlataContract, 'id' | 'ordine'>
 
 export interface AvansTransa { numar: number; procent: number; contractual: number; facturat: number }
@@ -424,7 +430,7 @@ export interface FisaCitita {
   riscuri: { element: string; prevedere: string | null; stare: string | null }[]
   instrumente: { tip: TipInstrument; descriere: string | null; emitent: string | null; numar: string | null; beneficiar: string | null; valoare: number | null; moneda: string | null; dataEmitere: string | null; dataExpirare: string | null }[]
   surse: { document: string; data: string | null; observatii: string | null }[]
-  facturi: Omit<FacturaFisa, 'id' | 'ordine' | 'sold'>[]
+  facturi: FacturaFisaCerere[]
   plati: { numarFactura: string; plata: Omit<PlataContract, 'id' | 'ordine'> }[]
   note: string[]
 }
@@ -451,3 +457,13 @@ export const useImportFisaContract = () =>
     f.append('date', JSON.stringify(date))
     return api.postFormular<{ id: string; numar: string; avertismente: string[] }>(`/api/contracte/proiecte/${proiectId}/import`, f)
   })
+
+/** Leagă rândul din fișă de factura din modulul Facturi (facturaId null = dezleagă). */
+export const useLeagaFacturaFisa = () =>
+  useModificare(({ proiectId, id, randId, facturaId }: { proiectId: string; id: string; randId: string; facturaId: string | null }) =>
+    api.post<unknown>(`/api/contracte/proiecte/${proiectId}/${id}/facturi-fisa/${randId}/legatura`, { facturaId }))
+
+/** Leagă toate rândurile din fișă care au o factură sigur potrivită în modulul Facturi; întoarce câte. */
+export const useLeagaToateFacturileFisa = () =>
+  useModificare(({ proiectId, id }: { proiectId: string; id: string }) =>
+    api.post<number>(`/api/contracte/proiecte/${proiectId}/${id}/facturi-fisa/legare-automata`, {}))

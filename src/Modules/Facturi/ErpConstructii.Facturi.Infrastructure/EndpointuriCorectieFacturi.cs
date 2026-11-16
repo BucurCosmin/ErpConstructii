@@ -71,7 +71,8 @@ internal static class EndpointuriCorectieFacturi
     private static async Task<IResult> Corecteaza(
         Guid id, CorecteazaFacturaCerere cerere, FacturiDbContext db, IEnumerable<IInterogareReceptiiFactura> receptii, IInterogareProiecte proiecte,
         IServiciuParteneri parteneri, IServiciuPermisiuni permisiuni, IUtilizatorCurent utilizator, IFirmaCurenta firma, ICeas ceas,
-        IEnumerable<IInterogareNoteComanda> noteComanda, IEnumerable<ErpConstructii.Contracte.IInterogareContracte> contracte, CancellationToken ct)
+        IEnumerable<IInterogareNoteComanda> noteComanda, IEnumerable<ErpConstructii.Contracte.IInterogareContracte> contracte,
+        IEnumerable<ErpConstructii.Contracte.ILegareFacturiContract> legare, CancellationToken ct)
     {
         if (utilizator.UtilizatorId is not { } uid || string.IsNullOrWhiteSpace(utilizator.Nume) || firma.FirmaId is not { } fid)
             return Results.Unauthorized();
@@ -133,6 +134,10 @@ internal static class EndpointuriCorectieFacturi
 
         db.Corectii.Add(r.Valoare);
         await db.SaveChangesAsync(ct);
+        // Factura legată acum de un contract își găsește rândul din fișa contractului (D-56).
+        if (date.ContractId is { } legatDe && legatDe != vechi.ContractId)
+            foreach (var l in legare)
+                await l.LeagaAsync(legatDe, f.Id, ct);
         return Results.Ok(new
         {
             mesaj = "Factura a fost corectată.",

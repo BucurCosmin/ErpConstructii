@@ -73,6 +73,8 @@ public sealed class ModulContracte : IModul
     {
         servicii.AdaugaDbContextModul<ContracteDbContext>(configurare, Nume);
         servicii.AddScoped<IInterogareContracte, InterogareContracte>();
+        // Facturile legate de contract în modulul Facturi își găsesc rândul din fișă (D-56).
+        servicii.AddScoped<ILegareFacturiContract, LegareFacturiContract>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)
@@ -426,7 +428,9 @@ public sealed class ModulContracte : IModul
             var fact = peContract.GetValueOrDefault(c.Id) ?? [];
             // „Facturat” = lucrările din fișă (în moneda contractului) + facturile legate care nu sunt încă în fișă.
             var dinFisa = facturiFisa[c.Id].ToList();
-            var inFisa = dinFisa.Where(f => f.FacturaId is not null).Select(f => f.FacturaId!.Value).ToHashSet();
+            // Rândurile din fișă care sunt, de fapt, facturi deja în modulul Facturi (propuse pentru legare): nu se numără de două ori.
+            var propuneri = PotrivireFacturiFisa.Gaseste(dinFisa, fact, EndpointuriFacturiPlati.MembruFirmaSauNimic(c)).ToDictionary(p => p.RandId);
+            var inFisa = dinFisa.Where(f => f.FacturaId is not null).Select(f => f.FacturaId!.Value).Concat(propuneri.Values.Select(p => p.FacturaId)).ToHashSet();
             var pentruSituatie = dinFisa.Where(f => f.Tip != TipFacturaContract.Avans).Select(f => new FacturaPeContract(f.Id, f.Numar, f.Data, f.Valoare, c.Moneda))
                 .Concat(fact.Where(f => !inFisa.Contains(f.Id))).ToList();
             var s = SituatieContract.Calculeaza(c, acte[c.Id], pentruSituatie, inchidere is not null, ceas.Azi);
@@ -448,7 +452,7 @@ public sealed class ModulContracte : IModul
                 detalii ? documente![c.Id].Select(d => new DocumentContractDto(d.Id, d.NumeFisier, d.Dimensiune, d.ActAditionalId, d.IncarcatDeNume, d.CreatLa)).ToList() : null,
                 detalii ? c.Conditii : null,
                 fise?.GetValueOrDefault(c.Id),
-                detalii ? dinFisa.Select(f => EndpointuriFacturiPlati.Dto(f, fisa!.SoldFactura.GetValueOrDefault(f.Id))).ToList() : null,
+                detalii ? dinFisa.Select(f => EndpointuriFacturiPlati.Dto(f, fisa!.SoldFactura.GetValueOrDefault(f.Id), propuneri.GetValueOrDefault(f.Id))).ToList() : null,
                 detalii ? plati![c.Id].Select(EndpointuriFacturiPlati.Dto).ToList() : null,
                 fisa);
         }).ToList();

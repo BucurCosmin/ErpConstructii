@@ -10,7 +10,11 @@ namespace ErpConstructii.Contracte.Infrastructure;
 
 public sealed record FacturaFisaDto(
     Guid Id, int Ordine, string Membru, Guid? FacturaId, string Numar, DateOnly Data, string Tip, int? TransaAvans, string? SituatiePlata, string? LunaExecutie,
-    decimal Valoare, decimal StornoAvans, decimal? Curs, decimal NetRon, decimal TvaRon, decimal TotalRon, DateOnly? Scadenta, string? Observatii, decimal Sold);
+    decimal Valoare, decimal StornoAvans, decimal? Curs, decimal NetRon, decimal TvaRon, decimal TotalRon, DateOnly? Scadenta, string? Observatii, decimal Sold,
+    Guid? FacturaPropusaId = null, string? FacturaPropusaNumar = null, bool PropunereSigura = false, string? PropunereDiferente = null);
+
+/// <summary>Legarea rândului din fișă de factura din modulul Facturi (null = dezlegare).</summary>
+public sealed record LegaturaFacturaCerere(Guid? FacturaId);
 
 public sealed record PlataDto(
     Guid Id, int Ordine, Guid? FacturaContractId, DateOnly Data, decimal SumaRon, string Instrument, string? Numar, DateOnly? Scadenta, bool Confirmata, string? Observatii);
@@ -46,6 +50,12 @@ internal static class EndpointuriFacturiPlati
         g.MapDelete($"{baza}/facturi-fisa/{{facturaFisaId:guid}}", StergeFactura).WithName("StergeFacturaFisa")
             .WithSummary("Scoate factura din fișă (plățile ei rămân, neatribuite)").Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound)
             .CerePermisiune(editare);
+        g.MapPost($"{baza}/facturi-fisa/{{facturaFisaId:guid}}/legatura", Leaga).WithName("LeagaFacturaFisa")
+            .WithSummary("Leagă rândul din fișă de factura din modulul Facturi (aceeași factură, preluată din fișa Excel) sau îl dezleagă (facturaId null)")
+            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(editare);
+        g.MapPost($"{baza}/facturi-fisa/legare-automata", LeagaToate).WithName("LeagaFacturiFisa")
+            .WithSummary("Leagă toate rândurile din fișă care au o factură sigur potrivită în modulul Facturi (același număr și sumă)")
+            .Produces<int>().Produces(StatusCodes.Status404NotFound).CerePermisiune(editare);
         g.MapPost($"{baza}/plati", AdaugaPlata).WithName("AdaugaPlataContract").WithSummary("Adaugă o plată (OP, bilet la ordin, CEC, compensare)")
             .Produces(StatusCodes.Status201Created).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound).CerePermisiune(editare);
         g.MapPut($"{baza}/plati/{{plataId:guid}}", ModificaPlata).WithName("ModificaPlataContract").WithSummary("Modifică o plată (ex. biletul la ordin încasat → confirmată)")
@@ -54,9 +64,9 @@ internal static class EndpointuriFacturiPlati
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).CerePermisiune(editare);
     }
 
-    internal static FacturaFisaDto Dto(FacturaContract f, decimal sold) => new(
+    internal static FacturaFisaDto Dto(FacturaContract f, decimal sold, PotrivireFactura? p = null) => new(
         f.Id, f.Ordine, f.Membru, f.FacturaId, f.Numar, f.Data, f.Tip.ToString(), f.TransaAvans, f.SituatiePlata, f.LunaExecutie, f.Valoare, f.StornoAvans, f.Curs,
-        f.NetRon, f.TvaRon, f.TotalRon, f.Scadenta, f.Observatii, sold);
+        f.NetRon, f.TvaRon, f.TotalRon, f.Scadenta, f.Observatii, sold, p?.FacturaId, p?.FacturaNumar, p?.Sigura ?? false, p?.Diferente);
 
     internal static PlataDto Dto(PlataContract p) =>
         new(p.Id, p.Ordine, p.FacturaContractId, p.Data, p.SumaRon, p.Instrument.ToString(), p.Numar, p.Scadenta, p.Confirmata, p.Observatii);
@@ -65,6 +75,8 @@ internal static class EndpointuriFacturiPlati
         await db.Contracte.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id && c.ProiectId == proiectId, ct);
 
     /// <summary>Membrul firmei active (facturile din modulul Facturi îi aparțin): cel marcat, altfel primul, altfel „Firma”.</summary>
+    internal static string? MembruFirmaSauNimic(ContractPartener c) => c.Membri.Count == 0 ? null : MembruFirma(c);
+
     private static string MembruFirma(ContractPartener c) =>
         c.Membri.FirstOrDefault(m => m.EsteFirmaActiva)?.Denumire ?? c.Membri.FirstOrDefault()?.Denumire ?? "Firma";
 
@@ -158,6 +170,36 @@ internal static class EndpointuriFacturiPlati
         return Results.NoContent();
     }
 
+    private static async Task<IResult> Leaga(
+        Guid proiectId, Guid id, Guid facturaFisaId, LegaturaFacturaCerere cerere, ContracteDbContext db, IEnumerable<IInterogareFacturiContract> facturi, CancellationToken ct)
+    {
+        var c = await ContractAsync(db, proiectId, id, ct);
+        var rand = c is null ? null : await db.FacturiFisa.FirstOrDefaultAsync(x => x.Id == facturaFisaId && x.ContractId == id, ct);
+        if (c is null || rand is null)
+            return Results.NotFound();
+        if (cerere.FacturaId is not { } fid)
+        {
+            rand.Dezleaga();
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        }
+
+        if (await VerificaLegaturaAsync(db, facturi, c, fid, rand.Id, ct) is { } eroare)
+            return Results.BadRequest(new { mesaj = eroare });
+        rand.LeagaDe((await facturi.First().PentruFisaAsync(fid, ct))!);
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> LeagaToate(
+        Guid proiectId, Guid id, ContracteDbContext db, IEnumerable<IInterogareFacturiContract> facturi, CancellationToken ct)
+    {
+        var c = await ContractAsync(db, proiectId, id, ct);
+        if (c is null)
+            return Results.NotFound();
+        return Results.Ok(await LegareFacturiContract.LeagaSigureAsync(db, facturi, c, ct));
+    }
+
     private static Rezultat<DatePlata> Date(PlataCerere c) =>
         Enum.TryParse<InstrumentPlata>(c.Instrument ?? nameof(InstrumentPlata.OrdinDePlata), true, out var instrument)
             ? Rezultat.Ok(new DatePlata(c.FacturaContractId, c.Data, c.SumaRon, instrument, c.Numar, c.Scadenta, c.Confirmata, c.Observatii))
@@ -208,5 +250,40 @@ internal static class EndpointuriFacturiPlati
         db.Plati.Remove(p);
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
+    }
+}
+
+/// <summary>
+/// Legarea automată a facturilor din fișă de facturile din modulul Facturi (D-56): apelată de Facturi după ce o factură a
+/// fost legată de contract (import, corectură) și din fișă („Leagă toate”). Leagă doar potrivirile sigure
+/// (<see cref="PotrivireFacturiFisa"/>); celelalte rămân propuneri în fișă.
+/// </summary>
+internal sealed class LegareFacturiContract(ContracteDbContext db, IEnumerable<IInterogareFacturiContract> facturi) : ILegareFacturiContract
+{
+    public async Task<bool> LeagaAsync(Guid contractId, Guid facturaId, CancellationToken ct = default)
+    {
+        var c = await db.Contracte.AsNoTracking().FirstOrDefaultAsync(x => x.Id == contractId, ct);
+        return c is not null && await LeagaSigureAsync(db, facturi, c, ct, facturaId) > 0;
+    }
+
+    /// <summary>Leagă rândurile cu potrivire sigură (toate facturile contractului, sau doar <paramref name="doarFactura"/>); întoarce câte.</summary>
+    internal static async Task<int> LeagaSigureAsync(
+        ContracteDbContext db, IEnumerable<IInterogareFacturiContract> facturi, ContractPartener c, CancellationToken ct, Guid? doarFactura = null)
+    {
+        if (facturi.FirstOrDefault() is not { } interogare)
+            return 0;
+        var randuri = await db.FacturiFisa.Where(f => f.ContractId == c.Id).ToListAsync(ct);
+        var legate = (await interogare.PeContracteAsync([c.Id], ct)).GetValueOrDefault(c.Id) ?? [];
+        var potriviri = PotrivireFacturiFisa.Gaseste(randuri, legate.Where(f => doarFactura is null || f.Id == doarFactura).ToList(),
+            EndpointuriFacturiPlati.MembruFirmaSauNimic(c)).Where(p => p.Sigura).ToList();
+        foreach (var p in potriviri)
+        {
+            if (await interogare.PentruFisaAsync(p.FacturaId, ct) is { } f)
+                randuri.Single(r => r.Id == p.RandId).LeagaDe(f);
+        }
+
+        if (potriviri.Count > 0)
+            await db.SaveChangesAsync(ct);
+        return potriviri.Count;
     }
 }

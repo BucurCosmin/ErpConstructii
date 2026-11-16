@@ -95,6 +95,27 @@ public sealed class FacturaContract : RandFisaContract
         Observatii = Text(d.Observatii, 2000);
         return Rezultat.Ok();
     }
+
+    /// <summary>
+    /// Leagă rândul de factura din modulul Facturi (aceeași factură, preluată întâi din fișa Excel). Sumele lipsă din rând
+    /// (net / TVA / total RON, scadența) se completează din factură; cele existente rămân (au fost verificate în fișă).
+    /// </summary>
+    public void LeagaDe(FacturaPentruFisa f)
+    {
+        FacturaId = f.Id;
+        var inLei = string.Equals(f.Moneda, "RON", StringComparison.OrdinalIgnoreCase);
+        if (inLei && NetRon == 0 && TotalRon == 0)
+        {
+            NetRon = Rotunjire.Lei.Aplica(f.TotalFaraTva);
+            TvaRon = Rotunjire.Lei.Aplica(f.TotalTva);
+            TotalRon = Rotunjire.Lei.Aplica(f.TotalDePlata);
+        }
+
+        Scadenta ??= f.DataScadenta;
+    }
+
+    /// <summary>Rândul nu mai e legat de factura din modulul Facturi (legătură greșită).</summary>
+    public void Dezleaga() => FacturaId = null;
 }
 
 public enum InstrumentPlata

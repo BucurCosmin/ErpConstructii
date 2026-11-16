@@ -1,9 +1,10 @@
-import { CheckOutlined, DeleteOutlined, EditOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
-import { App, AutoComplete, Button, Checkbox, Col, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Row, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { CheckOutlined, DeleteOutlined, DisconnectOutlined, EditOutlined, FileSearchOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons'
+import { Alert, App, AutoComplete, Button, Checkbox, Col, DatePicker, Form, Input, InputNumber, Modal, Popconfirm, Row, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
+import { Link } from 'react-router'
 import type { TableColumnsType } from 'antd'
 import dayjs, { type Dayjs } from 'dayjs'
 import { useState } from 'react'
-import { instrumentePlata, propunereFacturaFisa, tipuriFacturaContract, useFacturaFisa, usePlataContract } from '../../api/contracte'
+import { instrumentePlata, propunereFacturaFisa, tipuriFacturaContract, useFacturaFisa, useLeagaFacturaFisa, useLeagaToateFacturileFisa, usePlataContract } from '../../api/contracte'
 import type { Contract, FacturaFisa, FacturaFisaCerere, InstrumentPlata, PlataContract, SituatieMembru, TipFacturaContract } from '../../api/contracte'
 import { LinkFactura } from '../../componente/LinkFactura'
 import { NumarRo } from '../../componente/NumarRo'
@@ -46,6 +47,8 @@ export function FacturiPlatiContract({ c, poateEdita }: { c: Contract; poateEdit
   const { message } = App.useApp()
   const salveazaFactura = useFacturaFisa()
   const salveazaPlata = usePlataContract()
+  const leaga = useLeagaFacturaFisa()
+  const leagaToate = useLeagaToateFacturileFisa()
   const [formFactura] = Form.useForm<ValoriFactura>()
   const [formPlata] = Form.useForm<Omit<PlataContract, 'id' | 'ordine' | 'data' | 'scadenta'> & { data: Dayjs; scadenta?: Dayjs | null }>()
   const [factura, setFactura] = useState<{ id?: string } | null>(null)
@@ -57,8 +60,12 @@ export function FacturiPlatiContract({ c, poateEdita }: { c: Contract; poateEdit
   const facturiFisa = c.facturiFisa ?? []
   const plati = c.plati ?? []
   const membri = (c.conditii?.membri.length ? c.conditii.membri.map((m) => m.denumire) : ['Firma'])
-  const inFisa = new Set(facturiFisa.map((f) => f.facturaId).filter(Boolean))
+  // Facturile din modulul Facturi deja în fișă (legate) sau propuse pentru un rând din fișă nu mai apar ca „neadăugate”.
+  const inFisa = new Set([...facturiFisa.map((f) => f.facturaId), ...facturiFisa.map((f) => f.facturaPropusaId)].filter(Boolean))
   const legateNeadaugate = (c.facturi ?? []).filter((f) => !inFisa.has(f.id))
+  const propuneriSigure = facturiFisa.filter((f) => !f.facturaId && f.facturaPropusaId && f.propunereSigura)
+  const membruFirma = c.conditii?.membri.find((m) => m.esteFirmaActiva)?.denumire
+  const altuiMembru = (f: FacturaFisa) => !!membruFirma && (c.conditii?.membri.length ?? 0) > 1 && f.membru.trim().toUpperCase() !== membruFirma.trim().toUpperCase()
   const eurContract = c.moneda !== 'RON'
   const eroare = (e: unknown) => message.error((e as Error).message)
 
@@ -121,6 +128,38 @@ export function FacturiPlatiContract({ c, poateEdita }: { c: Contract; poateEdit
   const coloaneFacturi: TableColumnsType<FacturaFisa> = [
     { title: 'Antreprenor', dataIndex: 'membru', width: 150, ellipsis: true },
     { title: 'Factura', width: 130, render: (_, f) => (f.facturaId ? <LinkFactura id={f.facturaId} numar={f.numar} /> : f.numar) },
+    {
+      title: <Tooltip title="Dacă factura e înregistrată în modulul Facturi; numărul ei deschide factura">În sistem</Tooltip>, width: 150,
+      render: (_, f) => {
+        if (f.facturaId)
+          return (
+            <Space size={2}>
+              <Link to={`/facturi?factura=${f.facturaId}`}><Tag color="green" icon={<FileSearchOutlined />} style={{ cursor: 'pointer' }}>în Facturi</Tag></Link>
+              {poateEdita && (
+                <Popconfirm title="Dezlegi rândul de factura din modulul Facturi?" okText="Dezleagă" cancelText="Nu"
+                  onConfirm={() => leaga.mutateAsync({ proiectId: c.proiectId, id: c.id, randId: f.id, facturaId: null }).catch(eroare)}>
+                  <Tooltip title="Dezleagă (legătură greșită)"><Button size="small" type="text" icon={<DisconnectOutlined />} /></Tooltip>
+                </Popconfirm>
+              )}
+            </Space>
+          )
+        if (f.facturaPropusaId)
+          return (
+            <Tooltip title={f.propunereSigura ? `Factura ${f.facturaPropusaNumar} e în modulul Facturi (număr și sumă potrivite).` : `Factura ${f.facturaPropusaNumar} e în modulul Facturi, cu diferențe: ${f.propunereDiferente}`}>
+              <Space size={2}>
+                <Link to={`/facturi?factura=${f.facturaPropusaId}`}><FileSearchOutlined /></Link>
+                {poateEdita
+                  ? <Button size="small" type={f.propunereSigura ? 'primary' : 'default'} danger={!f.propunereSigura} icon={<LinkOutlined />} loading={leaga.isPending}
+                      onClick={() => leaga.mutateAsync({ proiectId: c.proiectId, id: c.id, randId: f.id, facturaId: f.facturaPropusaId }).catch(eroare)}>Leagă</Button>
+                  : <Tag color="gold">găsită</Tag>}
+              </Space>
+            </Tooltip>
+          )
+        if (altuiMembru(f))
+          return <Tooltip title={`Emisă către ${f.membru}: nu e în modulul Facturi al firmei.`}><Tag>altui membru</Tag></Tooltip>
+        return <Tooltip title="Factura nu e (încă) în modulul Facturi; când se importă acolo legată de contract, rândul se leagă singur."><Tag color="default">doar în fișă</Tag></Tooltip>
+      },
+    },
     { title: 'Data', dataIndex: 'data', width: 95, render: formatData },
     { title: 'Tip', width: 100, render: (_, f) => `${tipuriFacturaContract[f.tip]}${f.transaAvans ? ` T${f.transaAvans}` : ''}` },
     { title: 'Situație plată', dataIndex: 'situatiePlata', width: 120, ellipsis: true },
@@ -159,7 +198,17 @@ export function FacturiPlatiContract({ c, poateEdita }: { c: Contract; poateEdit
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <SituatieMembri c={c} />
 
-      <Table<FacturaFisa> className="tabel-compact" size="small" pagination={false} rowKey="id" dataSource={facturiFisa} columns={coloaneFacturi} scroll={{ x: 1600 }}
+      {propuneriSigure.length > 0 && (
+        <Alert type="info" showIcon
+          title={`${propuneriSigure.length} ${propuneriSigure.length === 1 ? 'factură din fișă e' : 'facturi din fișă sunt'} deja în modulul Facturi (același număr și sumă): leagă-le, ca să nu apară de două ori și să le poți deschide.`}
+          action={poateEdita && (
+            <Button size="small" type="primary" icon={<LinkOutlined />} loading={leagaToate.isPending}
+              onClick={() => leagaToate.mutateAsync({ proiectId: c.proiectId, id: c.id }).then((n) => message.success(`${n} facturi au fost legate.`), eroare)}>
+              Leagă toate
+            </Button>
+          )} />
+      )}
+      <Table<FacturaFisa> className="tabel-compact" size="small" pagination={false} rowKey="id" dataSource={facturiFisa} columns={coloaneFacturi} scroll={{ x: 1750 }}
         locale={{ emptyText: 'Nicio factură în fișă: adaugă facturile legate din modulul Facturi (mai jos) sau facturile celuilalt membru al asocierii.' }}
         title={() => (
           <Space>
@@ -169,14 +218,14 @@ export function FacturiPlatiContract({ c, poateEdita }: { c: Contract; poateEdit
         )}
         summary={() => t && facturiFisa.length > 0 ? (
           <Table.Summary.Row>
-            <Table.Summary.Cell index={0} colSpan={5}><b>Total</b></Table.Summary.Cell>
-            <Table.Summary.Cell index={5} align="right"><b>{lei(t.lucrariFacturate + t.avansFacturat)}</b></Table.Summary.Cell>
-            <Table.Summary.Cell index={6} align="right"><b>{lei(t.avansRecuperat)}</b></Table.Summary.Cell>
-            {eurContract && <Table.Summary.Cell index={7} />}
-            <Table.Summary.Cell index={8} align="right"><b>{lei(t.facturatNetRon)}</b></Table.Summary.Cell>
-            <Table.Summary.Cell index={9} align="right"><b>{lei(t.facturatTvaRon)}</b></Table.Summary.Cell>
-            <Table.Summary.Cell index={10} align="right"><b>{lei(t.facturatTotalRon)}</b></Table.Summary.Cell>
-            <Table.Summary.Cell index={11} align="right"><b>{lei(t.sold)}</b></Table.Summary.Cell>
+            <Table.Summary.Cell index={0} colSpan={6}><b>Total</b></Table.Summary.Cell>
+            <Table.Summary.Cell index={6} align="right"><b>{lei(t.lucrariFacturate + t.avansFacturat)}</b></Table.Summary.Cell>
+            <Table.Summary.Cell index={7} align="right"><b>{lei(t.avansRecuperat)}</b></Table.Summary.Cell>
+            {eurContract && <Table.Summary.Cell index={8} />}
+            <Table.Summary.Cell index={9} align="right"><b>{lei(t.facturatNetRon)}</b></Table.Summary.Cell>
+            <Table.Summary.Cell index={10} align="right"><b>{lei(t.facturatTvaRon)}</b></Table.Summary.Cell>
+            <Table.Summary.Cell index={11} align="right"><b>{lei(t.facturatTotalRon)}</b></Table.Summary.Cell>
+            <Table.Summary.Cell index={12} align="right"><b>{lei(t.sold)}</b></Table.Summary.Cell>
           </Table.Summary.Row>
         ) : null} />
 

@@ -1,4 +1,4 @@
-﻿using ErpConstructii.Contracte;
+using ErpConstructii.Contracte;
 using ErpConstructii.Aprovizionare;
 using System.IO.Compression;
 using System.Text.Json;
@@ -486,6 +486,7 @@ public sealed class ModulFacturi : IModul
         IUtilizatorCurent utilizator,
         IEnumerable<IInterogareNoteComanda> noteComanda,
         IEnumerable<IInterogareContracte> contracte,
+        IEnumerable<ILegareFacturiContract> legare,
         CancellationToken ct)
     {
         ConfirmaFacturaCerere? cerere;
@@ -616,6 +617,10 @@ public sealed class ModulFacturi : IModul
 
         db.FacturiPrimite.Add(rezultat.Valoare);
         await db.SaveChangesAsync(ct);
+        // Factura legată de contract își găsește rândul din fișa contractului (aceeași factură, preluată din fișa Excel; D-56).
+        if (contract is not null)
+            foreach (var l in legare)
+                await l.LeagaAsync(contract.Id, rezultat.Valoare.Id, ct);
         return Results.Created($"/api/facturi/primite/{rezultat.Valoare.Id}", CaDto(rezultat.Valoare, null));
     }
 
