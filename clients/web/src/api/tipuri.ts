@@ -124,6 +124,8 @@ export interface VersiuneDeviz {
   stadiuFizic: string | null
   /** Versiunea din care a pornit (ciorna de lucru, D-53); null la devizul importat. */
   versiuneAnterioaraId: string | null
+  /** Obiectivul proiectului căruia îi aparține devizul (D-59). */
+  obiectivId: string | null
 }
 
 export interface ValoriResurse {
@@ -323,6 +325,9 @@ export interface FisiereImportDeviz {
   componente?: Record<string, TipResursa> | null
   /** Importul pe obiecte: devizul în care intră obiectul (null = deviz nou). */
   versiuneTintaId?: string | null
+  /** Obiectivul proiectului în care intră devizul (D-59), sau denumirea unui obiectiv nou. */
+  obiectivId?: string | null
+  obiectivNou?: string | null
 }
 
 // ---------------------------------------------------------------- Administrare

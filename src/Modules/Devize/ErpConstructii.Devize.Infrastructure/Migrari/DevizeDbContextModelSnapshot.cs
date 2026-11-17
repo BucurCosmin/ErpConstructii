@@ -478,6 +478,14 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
+                    b.Property<string>("StareAnterioara")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("Aprobata")
+                        .HasColumnName("stare_anterioara");
+
                     b.Property<Guid>("VersiuneInlocuitaId")
                         .HasColumnType("uuid")
                         .HasColumnName("versiune_inlocuita_id");
@@ -496,6 +504,125 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasDatabaseName("ix_inlocuiri_versiuni_versiune_noua_id");
 
                     b.ToTable("inlocuiri_versiuni", "devize");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Devize.MutareObiectivDeviz", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("FacutaDe")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("facuta_de");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<DateTimeOffset>("La")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("la");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv");
+
+                    b.Property<Guid>("ObiectivNouId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("obiectiv_nou_id");
+
+                    b.Property<Guid>("ObiectivVechiId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("obiectiv_vechi_id");
+
+                    b.Property<Guid>("VersiuneId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_mutari_obiectiv");
+
+                    b.HasIndex("VersiuneId")
+                        .HasDatabaseName("ix_mutari_obiectiv_versiune_id");
+
+                    b.ToTable("mutari_obiectiv", "devize");
+                });
+
+            modelBuilder.Entity("ErpConstructii.Devize.ObiectivDeviz", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("Denumire")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("denumire");
+
+                    b.Property<string>("Descriere")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("descriere");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<int>("Ordine")
+                        .HasColumnType("integer")
+                        .HasColumnName("ordine");
+
+                    b.Property<Guid>("ProiectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proiect_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_obiective");
+
+                    b.HasIndex("FirmaId", "ProiectId")
+                        .HasDatabaseName("ix_obiective_firma_id_proiect_id");
+
+                    b.ToTable("obiective", "devize");
                 });
 
             modelBuilder.Entity("ErpConstructii.Devize.ResursaCatalog", b =>
@@ -616,6 +743,78 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                     b.ToTable("resurse_catalog", "devize");
                 });
 
+            modelBuilder.Entity("ErpConstructii.Devize.RevenireVersiuneDeviz", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("FacutaDe")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("facuta_de");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<DateTimeOffset>("La")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("la");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv");
+
+                    b.Property<string>("StareReadusa")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("stare_readusa");
+
+                    b.Property<Guid>("VersiuneReadusaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_readusa_id");
+
+                    b.Property<string>("VersiuneStearsa")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("versiune_stearsa");
+
+                    b.Property<Guid>("VersiuneStearsaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_stearsa_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_reveniri_versiuni");
+
+                    b.HasIndex("VersiuneReadusaId")
+                        .HasDatabaseName("ix_reveniri_versiuni_versiune_readusa_id");
+
+                    b.ToTable("reveniri_versiuni", "devize");
+                });
+
             modelBuilder.Entity("ErpConstructii.Devize.VersiuneDeviz", b =>
                 {
                     b.Property<Guid>("Id")
@@ -700,6 +899,10 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("character varying(500)")
                         .HasColumnName("obiectiv");
 
+                    b.Property<Guid>("ObiectivId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("obiectiv_id");
+
                     b.Property<string>("PoliticaRotunjire")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -745,6 +948,9 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
 
                     b.HasKey("Id")
                         .HasName("pk_versiuni");
+
+                    b.HasIndex("ObiectivId")
+                        .HasDatabaseName("ix_versiuni_obiectiv_id");
 
                     b.HasIndex("FirmaId", "ProiectId", "Tip", "Numar")
                         .IsUnique()

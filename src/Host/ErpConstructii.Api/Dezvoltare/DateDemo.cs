@@ -1,4 +1,4 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using ErpConstructii.Devize;
 using ErpConstructii.Devize.Calcul;
 using ErpConstructii.Devize.Infrastructure;
@@ -185,7 +185,11 @@ public static class DateDemo
             if (cuDeviz)
             {
                 await using var devize = ActivatorUtilities.CreateInstance<DevizeDbContext>(sp, sp.GetRequiredService<DbContextOptions<DevizeDbContext>>());
-                devize.Versiuni.Add(DevizOferta(lista[0].Id));
+                var obiectiv = ObiectivDeviz.Creeaza(lista[0].Id, "Bloc locuințe P+8", null, 0).Valoare;
+                devize.Obiective.Add(obiectiv);
+                var deviz = DevizOferta(lista[0].Id);
+                deviz.SeteazaObiectiv(obiectiv.Id);
+                devize.Versiuni.Add(deviz);
                 await devize.SaveChangesAsync(ct);
             }
         }

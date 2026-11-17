@@ -71,7 +71,11 @@ function useOperatie<T, R = unknown>(proiectId: string, fn: (v: T) => Promise<R>
   const qc = useQueryClient()
   return useMutation({
     mutationFn: fn,
-    onSuccess: () => qc.invalidateQueries({ queryKey: chei.devize(proiectId) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: chei.devize(proiectId) })
+      // Bugetul urmează devizele de referință ale obiectivelor (D-59).
+      void qc.invalidateQueries({ queryKey: ['proiecte', proiectId, 'buget'] })
+    },
   })
 }
 
@@ -87,8 +91,10 @@ export const useRedenumesteDeviz = (proiectId: string) =>
   useOperatie(proiectId, ({ versiuneId, denumire }: { versiuneId: string; denumire: string }) =>
     api.put(`${baza(proiectId)}/${versiuneId}`, { denumire }))
 
+/** Șterge versiunea (D-59): ciorna oricând; cea aprobată / importată dacă e ultima din istorie, cu motiv. */
 export const useStergeDeviz = (proiectId: string) =>
-  useOperatie(proiectId, (versiuneId: string) => api.delete(`${baza(proiectId)}/${versiuneId}`))
+  useOperatie(proiectId, ({ versiuneId, motiv }: { versiuneId: string; motiv?: string }) =>
+    api.delete(`${baza(proiectId)}/${versiuneId}${motiv ? `?motiv=${encodeURIComponent(motiv)}` : ''}`))
 
 export const useAprobaDeviz = (proiectId: string) =>
   useOperatie(proiectId, (versiuneId: string) => api.post(`${baza(proiectId)}/${versiuneId}/aprobare`, {}))
@@ -151,3 +157,33 @@ export const useAplicaPreturi = (proiectId: string) =>
   useOperatie(proiectId, ({ versiuneId, preturi }: { versiuneId: string; preturi: { cod: string; pret: number }[] }) =>
     api.post<{ versiuneId: string; numar: number; versiuneNoua: boolean; articoleModificate: number }>(
       `${baza(proiectId)}/${versiuneId}/preturi-achizitie`, { preturi }))
+
+// ---------------------------------------------------------------- obiectivele proiectului (D-59)
+
+export interface Obiectiv {
+  id: string
+  denumire: string
+  descriere: string | null
+  ordine: number
+  versiuni: number
+  /** Versiunea după care se urmăresc bugetul și consumurile obiectivului. */
+  referinta: { versiuneId: string; tip: string; numar: number; denumire: string; stare: string } | null
+}
+
+export const useObiective = (proiectId: string) =>
+  useQuery({ queryKey: [...chei.devize(proiectId), 'obiective'], queryFn: () => api.get<Obiectiv[]>(`${baza(proiectId)}/obiective`) })
+
+export const useCreeazaObiectiv = (proiectId: string) =>
+  useOperatie(proiectId, (c: { denumire: string; descriere?: string | null }) => api.post<Obiectiv>(`${baza(proiectId)}/obiective`, c))
+
+export const useModificaObiectiv = (proiectId: string) =>
+  useOperatie(proiectId, ({ id, ...c }: { id: string; denumire: string; descriere?: string | null }) => api.put(`${baza(proiectId)}/obiective/${id}`, c))
+
+export const useStergeObiectiv = (proiectId: string) =>
+  useOperatie(proiectId, ({ id, motiv }: { id: string; motiv?: string }) =>
+    api.delete(`${baza(proiectId)}/obiective/${id}${motiv ? `?motiv=${encodeURIComponent(motiv)}` : ''}`))
+
+/** Mută versiunea (cu toată istoria ei) la alt obiectiv. */
+export const useMutaDeviz = (proiectId: string) =>
+  useOperatie(proiectId, ({ versiuneId, obiectivId, motiv }: { versiuneId: string; obiectivId: string; motiv?: string }) =>
+    api.put(`${baza(proiectId)}/${versiuneId}/obiectiv`, { obiectivId, motiv }))

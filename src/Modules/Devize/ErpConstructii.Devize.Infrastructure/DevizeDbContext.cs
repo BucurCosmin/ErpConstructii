@@ -17,6 +17,51 @@ public sealed class DevizeDbContext(DbContextOptions<DevizeDbContext> optiuni) :
     public DbSet<ResursaCatalog> Resurse => Set<ResursaCatalog>();
     public DbSet<FisierSursaDeviz> Fisiere => Set<FisierSursaDeviz>();
     public DbSet<InlocuireVersiuneDeviz> Inlocuiri => Set<InlocuireVersiuneDeviz>();
+
+    // Obiectivele proiectului, fiecare cu istoria devizului lui (D-59).
+    public DbSet<ObiectivDeviz> Obiective => Set<ObiectivDeviz>();
+    public DbSet<RevenireVersiuneDeviz> Reveniri => Set<RevenireVersiuneDeviz>();
+    public DbSet<MutareObiectivDeviz> Mutari => Set<MutareObiectivDeviz>();
+}
+
+internal sealed class ConfigurareObiectiv : IEntityTypeConfiguration<ObiectivDeviz>
+{
+    public void Configure(EntityTypeBuilder<ObiectivDeviz> b)
+    {
+        b.ToTable("obiective");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Denumire).HasMaxLength(200).IsRequired();
+        b.Property(x => x.Descriere).HasMaxLength(1000);
+        b.HasIndex(x => new { x.FirmaId, x.ProiectId });
+    }
+}
+
+internal sealed class ConfigurareRevenire : IEntityTypeConfiguration<RevenireVersiuneDeviz>
+{
+    public void Configure(EntityTypeBuilder<RevenireVersiuneDeviz> b)
+    {
+        b.ToTable("reveniri_versiuni");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.VersiuneStearsa).HasMaxLength(300).IsRequired();
+        b.Property(x => x.StareReadusa).HasConversion<string>().HasMaxLength(30);
+        b.Property(x => x.Motiv).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.FacutaDe).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.DocumentCorectatId);
+        b.HasIndex(x => x.VersiuneReadusaId);
+    }
+}
+
+internal sealed class ConfigurareMutare : IEntityTypeConfiguration<MutareObiectivDeviz>
+{
+    public void Configure(EntityTypeBuilder<MutareObiectivDeviz> b)
+    {
+        b.ToTable("mutari_obiectiv");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Motiv).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.FacutaDe).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.DocumentCorectatId);
+        b.HasIndex(x => x.VersiuneId);
+    }
 }
 
 /// <summary>Istoricul înlocuirii versiunilor aprobate (corectura care permite starea „înlocuită”).</summary>
@@ -29,6 +74,8 @@ internal sealed class ConfigurareInlocuire : IEntityTypeConfiguration<InlocuireV
         b.Ignore(x => x.DocumentCorectatId);
         b.HasIndex(x => x.VersiuneInlocuitaId);
         b.HasIndex(x => x.VersiuneNouaId);
+        b.Property(x => x.StareAnterioara).HasConversion<string>().HasMaxLength(30).HasDefaultValue(StareVersiuneDeviz.Aprobata)
+            .HasSentinel((StareVersiuneDeviz)(-1));
     }
 }
 
@@ -66,6 +113,7 @@ internal sealed class ConfigurareVersiune : IEntityTypeConfiguration<VersiuneDev
     {
         b.HasKey(x => x.Id);
         b.HasIndex(x => new { x.FirmaId, x.ProiectId, x.Tip, x.Numar }).IsUnique();
+        b.HasIndex(x => x.ObiectivId);
         b.Property(x => x.Denumire).HasMaxLength(300);
         b.Property(x => x.Sursa).HasMaxLength(100);
         b.Property(x => x.Tip).HasConversion<string>().HasMaxLength(30);

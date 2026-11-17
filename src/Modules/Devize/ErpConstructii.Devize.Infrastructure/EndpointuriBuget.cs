@@ -9,8 +9,16 @@ namespace ErpConstructii.Devize.Infrastructure;
 
 public sealed record VersiuneBugetDto(Guid Id, string Tip, int Numar, string Denumire, string Stare);
 
-/// <summary>Bugetul proiectului față de costurile reale; <paramref name="Versiune"/> null = proiectul nu are încă deviz.</summary>
-public sealed record BugetProiectDto(VersiuneBugetDto? Versiune, IReadOnlyList<RandBuget> Articole, RezumatBuget Rezumat);
+/// <summary>Devizul de referință al unui obiectiv (D-59).</summary>
+public sealed record ReferintaBugetDto(Guid ObiectivId, string Obiectiv, VersiuneBugetDto Versiune);
+
+/// <summary>
+/// Bugetul proiectului (sau al unui obiectiv, <paramref name="ObiectivId"/>) față de costurile reale; <paramref name="Versiune"/> null =
+/// fără deviz. Pe un obiectiv intră doar costurile pe articolele lui: cheltuielile generale, serviciile și materialele cumpărate
+/// sunt ale proiectului.
+/// </summary>
+public sealed record BugetProiectDto(VersiuneBugetDto? Versiune, IReadOnlyList<RandBuget> Articole, RezumatBuget Rezumat,
+    IReadOnlyList<ReferintaBugetDto>? Referinte = null, IReadOnlyList<ObiectivDto>? Obiective = null, Guid? ObiectivId = null);
 
 /// <summary>Un document care a adus costuri (pentru detaliul unui rând al bugetului).</summary>
 public sealed record CostDto(DateOnly Data, string Natura, string? Componenta, string Document, Guid? DocumentId, string Descriere, decimal Valoare);
@@ -43,20 +51,35 @@ internal static class EndpointuriBuget
         return toate;
     }
 
-    private static async Task<IResult> Buget(Guid proiectId, DevizeDbContext db, IEnumerable<ISursaCosturi> surse, CancellationToken ct)
+    /// <param name="obiectivId">Doar obiectivul acesta; fără el, toate obiectivele proiectului (D-59).</param>
+    private static async Task<IResult> Buget(Guid proiectId, Guid? obiectivId, DevizeDbContext db, IEnumerable<ISursaCosturi> surse, CancellationToken ct)
     {
         var costuri = await CosturiAsync(surse, proiectId, ct);
-        var v = await InterogareDevize.ReferintaAsync(db, proiectId, ct);
-        if (v is null)
-            return Results.Ok(new BugetProiectDto(null, [], CalculBuget.Calculeaza([], costuri).Rezumat));
+        var obiective = await EndpointuriObiective.ObiectiveAsync(db, proiectId, ct);
+        var referinte = await InterogareDevize.ReferinteAsync(db, proiectId, obiectivId, ct);
+        if (referinte.Count == 0)
+            return Results.Ok(new BugetProiectDto(null, [], CalculBuget.Calculeaza([], obiectivId is null ? costuri : []).Rezumat, [], obiective, obiectivId));
 
-        // Bugetul articolului = valoarea liniei, cu rotunjirea versiunii (ca în recapitulație).
-        var p = v.Parametri();
-        var capitole = v.Capitole.ToDictionary(c => c.Id);
-        var deviz = v.Articole().Select(a => new ArticolBugetDeviz(a.CheieStabila, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate,
-            string.Join(" / ", v.Cale(capitole[a.CapitolId]).Select(c => c.Denumire)), CalculatorDeviz.ValoareLinie(a.CaLinie(), p.RotunjireLinie))).ToList();
-        var buget = CalculBuget.Calculeaza(deviz, costuri);
-        return Results.Ok(new BugetProiectDto(new VersiuneBugetDto(v.Id, v.Tip.ToString(), v.Numar, v.Denumire, v.Stare.ToString()), buget.Articole, buget.Rezumat));
+        // Bugetul articolului = valoarea liniei, cu rotunjirea versiunii (ca în recapitulație). Cu mai multe obiective, capitolul
+        // începe cu obiectivul.
+        var multe = obiectivId is null && referinte.Count > 1;
+        var deviz = new List<ArticolBugetDeviz>();
+        foreach (var (o, v) in referinte)
+        {
+            var p = v.Parametri();
+            var capitole = v.Capitole.ToDictionary(c => c.Id);
+            deviz.AddRange(v.Articole().Select(a => new ArticolBugetDeviz(a.CheieStabila, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate,
+                (multe ? $"{o.Denumire} / " : string.Empty) + string.Join(" / ", v.Cale(capitole[a.CapitolId]).Select(c => c.Denumire)),
+                CalculatorDeviz.ValoareLinie(a.CaLinie(), p.RotunjireLinie))));
+        }
+
+        // Pe un obiectiv: doar costurile pe articolele lui.
+        var chei = deviz.Select(a => a.CheieStabila).ToHashSet();
+        var alese = obiectivId is null ? costuri : costuri.Where(c => c.ArticolDevizCheie is { } k && chei.Contains(k)).ToList();
+        var buget = CalculBuget.Calculeaza(deviz, alese);
+        var dto = referinte.Select(r => new ReferintaBugetDto(r.Obiectiv.Id, r.Obiectiv.Denumire,
+            new VersiuneBugetDto(r.Versiune.Id, r.Versiune.Tip.ToString(), r.Versiune.Numar, r.Versiune.Denumire, r.Versiune.Stare.ToString()))).ToList();
+        return Results.Ok(new BugetProiectDto(dto[0].Versiune, buget.Articole, buget.Rezumat, dto, obiective, obiectivId));
     }
 
     private static async Task<IResult> Costuri(Guid proiectId, string? articol, IEnumerable<ISursaCosturi> surse, CancellationToken ct)

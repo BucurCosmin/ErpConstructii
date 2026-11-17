@@ -183,6 +183,7 @@ export function DetaliiDeviz() {
   const [cauta, setCauta] = useState('')
   const [deEditat, setDeEditat] = useState<{ capitolId: string; articol?: ArticolDeviz }>()
   const [redenumire, setRedenumire] = useState<string>()
+  const [motivStergere, setMotivStergere] = useState<string>()
   const [formArticol] = Form.useForm<ValoriArticol>()
   const [seExporta, setSeExporta] = useState(false)
 
@@ -470,14 +471,11 @@ export function DetaliiDeviz() {
                 permis={permisiuni.data?.includes('date.preturi_cost') ?? false} />
             )}
             {ciorna && poateEdita && (
-              <>
-                <Button icon={<EditOutlined />} onClick={() => setRedenumire(data?.versiune.denumire ?? '')}>Redenumește</Button>
-                <Popconfirm title="Ștergi această ciornă de deviz?" description="Se șterg și fișierele ei originale." okText="Șterge"
-                  okButtonProps={{ danger: true }} cancelText="Nu"
-                  onConfirm={() => sterge.mutateAsync(versiuneId).then(() => { message.success('Ciorna a fost ștearsă.'); navigheaza(`/proiecte/${proiectId}?tab=devize`) }, eroare)}>
-                  <Button danger icon={<DeleteOutlined />}>Șterge</Button>
-                </Popconfirm>
-              </>
+              <Button icon={<EditOutlined />} onClick={() => setRedenumire(data?.versiune.denumire ?? '')}>Redenumește</Button>
+            )}
+            {/* Ștergerea (D-59): ciorna oricând; versiunea aprobată / importată dacă e ultima din istorie, cu motiv. */}
+            {poateEdita && data && data.versiune.stare !== 'Inlocuita' && !ciornaExistenta && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setMotivStergere('')}>Șterge</Button>
             )}
             {ciornaExistenta ? (
               <Button icon={<CopyOutlined />} onClick={() => navigheaza(`/proiecte/${proiectId}/devize/${ciornaExistenta.id}`)}>
@@ -804,6 +802,27 @@ export function DetaliiDeviz() {
         </Form>
       </Modal>
 
+      <Modal
+        open={motivStergere !== undefined}
+        title={ciorna ? 'Ștergi această ciornă de deviz?' : 'Ștergi această versiune de deviz?'}
+        okText="Șterge"
+        okButtonProps={{ danger: true, disabled: !ciorna && !motivStergere?.trim(), loading: sterge.isPending }}
+        cancelText="Renunță"
+        onCancel={() => setMotivStergere(undefined)}
+        onOk={() => sterge.mutateAsync({ versiuneId, motiv: motivStergere?.trim() || undefined })
+          .then(() => { message.success('Versiunea a fost ștearsă.'); setMotivStergere(undefined); navigheaza(`/proiecte/${proiectId}?tab=devize`) }, eroare)}
+        destroyOnHidden
+      >
+        <Typography.Paragraph>
+          {ciorna
+            ? 'Se șterg și fișierele ei originale.'
+            : 'Versiunea în vigoare se șterge (ex. import greșit), cu fișierele ei; dacă înlocuise o versiune mai veche, aceea revine în vigoare. Ștergerea e refuzată dacă articolele au documente (bonuri de consum).'}
+        </Typography.Paragraph>
+        {!ciorna && (
+          <Input.TextArea rows={2} maxLength={1000} placeholder="Motivul (obligatoriu, rămâne în istoric)" value={motivStergere}
+            onChange={(e) => setMotivStergere(e.target.value)} />
+        )}
+      </Modal>
       <Modal
         open={redenumire !== undefined}
         title="Redenumește versiunea"

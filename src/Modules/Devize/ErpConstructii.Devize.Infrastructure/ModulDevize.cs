@@ -1,4 +1,4 @@
-﻿using ErpConstructii.Devize.Calcul;
+using ErpConstructii.Devize.Calcul;
 using ErpConstructii.Devize.Analize;
 using ErpConstructii.Devize.Import;
 using ErpConstructii.Identitate;
@@ -18,7 +18,7 @@ namespace ErpConstructii.Devize.Infrastructure;
 public sealed record VersiuneDto(
     Guid Id, string Tip, int Numar, string Denumire, string Stare, string Sursa, string Moneda = "RON", decimal? Curs = null,
     string PoliticaRotunjire = "Standard", string? Obiectiv = null, string? Obiect = null, string? StadiuFizic = null,
-    Guid? VersiuneAnterioaraId = null);
+    Guid? VersiuneAnterioaraId = null, Guid? ObiectivId = null);
 
 /// <param name="PretUnitar">Costul direct unitar, în lei, pe resurse.</param>
 /// <param name="Valoare">Costul direct al articolului (cantitate × preț unitar, cu rotunjirea versiunii).</param>
@@ -83,7 +83,7 @@ public sealed class ModulDevize : IModul
                 .Where(v => v.ProiectId == proiectId)
                 .OrderBy(v => v.Tip).ThenBy(v => v.Numar)
                 .Select(v => new VersiuneDto(v.Id, v.Tip.ToString(), v.Numar, v.Denumire, v.Stare.ToString(), v.Sursa, v.Moneda, v.Curs,
-                    v.PoliticaRotunjire.ToString(), v.Obiectiv, v.Obiect, v.StadiuFizic, v.VersiuneAnterioaraId))
+                    v.PoliticaRotunjire.ToString(), v.Obiectiv, v.Obiect, v.StadiuFizic, v.VersiuneAnterioaraId, v.ObiectivId))
                 .ToListAsync(ct))
             .CerePermisiune(vizualizare);
 
@@ -104,6 +104,8 @@ public sealed class ModulDevize : IModul
         EndpointuriImportDeviz.Mapeaza(grup);
         // Lucrul pe versiune: redenumire, ștergere, editarea articolelor, versiune nouă, aprobare, PDF, Excel.
         EndpointuriEditareDeviz.Mapeaza(grup);
+        // Obiectivele proiectului, fiecare cu istoria devizului lui; ștergerea și mutarea versiunilor (D-59).
+        EndpointuriObiective.Mapeaza(grup);
         EndpointuriAnalizaDeviz.Mapeaza(grup);
         // Componentele (resursele) unui articol, ca în extrasul de resurse.
         EndpointuriCatalogPreturi.MapeazaPeVersiune(grup);
@@ -128,7 +130,7 @@ public sealed class ModulDevize : IModul
 
         return new StructuraDevizDto(
             new VersiuneDto(v.Id, v.Tip.ToString(), v.Numar, v.Denumire, v.Stare.ToString(), v.Sursa, v.Moneda, v.Curs,
-                v.PoliticaRotunjire.ToString(), v.Obiectiv, v.Obiect, v.StadiuFizic, v.VersiuneAnterioaraId),
+                v.PoliticaRotunjire.ToString(), v.Obiectiv, v.Obiect, v.StadiuFizic, v.VersiuneAnterioaraId, v.ObiectivId),
             parametri,
             v.Recapitulatie(),
             v.Radacini.Select(Capitol).ToList());

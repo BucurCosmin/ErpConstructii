@@ -52,7 +52,9 @@ function Consum({ buget, consumat }: { buget: number; consumat: number }) {
  * facturate, materiale cumpărate și neconsumate).
  */
 export function BugetProiect({ proiectId }: { proiectId: string }) {
-  const { data, isLoading, error } = useBugetProiect(proiectId)
+  // Bugetul pe obiectiv sau pe tot proiectul (D-59).
+  const [obiectiv, setObiectiv] = useState<string>()
+  const { data, isLoading, error } = useBugetProiect(proiectId, obiectiv)
   const { token } = theme.useToken()
   const [cauta, setCauta] = useState('')
   const [filtru, setFiltru] = useState<'toate' | 'cu-costuri' | 'depasite'>('toate')
@@ -131,9 +133,32 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
     },
   ]
 
+  const obiective = data.obiective ?? []
+  const referinte = data.referinte ?? []
   return (
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      {v ? (
+    <Space orientation="vertical" size={12} style={{ width: "100%" }}>
+      {obiective.length > 1 && (
+        <Space wrap>
+          <Typography.Text strong>Obiectivul:</Typography.Text>
+          <Segmented<string> value={obiectiv ?? ''} onChange={(x) => setObiectiv(x || undefined)}
+            options={[{ value: '', label: 'Tot proiectul' }, ...obiective.map((o) => ({ value: o.id, label: o.denumire }))]} />
+          {obiectiv && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Pe un obiectiv intră doar costurile pe articolele devizului lui; cheltuielile generale, serviciile și materialele cumpărate sunt ale proiectului.
+            </Typography.Text>
+          )}
+        </Space>
+      )}
+      {referinte.length > 1 ? (
+        <Alert type={referinte.every((x) => x.versiune.stare === 'Aprobata') ? 'info' : 'warning'} showIcon
+          title={<>Buget după devizele obiectivelor:{' '}
+            {referinte.map((x, i) => (
+              <span key={x.obiectivId}>{i > 0 && ' · '}<b>{x.obiectiv}</b>: <Link to={`/proiecte/${proiectId}/devize/${x.versiune.id}`}>
+                {tipuriVersiune[x.versiune.tip as keyof typeof tipuriVersiune] ?? x.versiune.tip} nr. {x.versiune.numar}</Link>{' '}
+                <Tag color={stariVersiune[x.versiune.stare].culoare}>{stariVersiune[x.versiune.stare].eticheta}</Tag></span>
+            ))}</>}
+          description="Costurile pe articole sunt deocamdată materialele consumate (bonuri de consum); serviciile facturate apar separat, ca nerepartizate." />
+      ) : v ? (
         <Alert type={v.stare === 'Aprobata' ? 'info' : 'warning'} showIcon
           title={<>Buget după <Link to={`/proiecte/${proiectId}/devize/${v.id}`}>{tipuriVersiune[v.tip as keyof typeof tipuriVersiune] ?? v.tip} nr. {v.numar} · {v.denumire}</Link>{' '}
             <Tag color={stariVersiune[v.stare].culoare}>{stariVersiune[v.stare].eticheta}</Tag>

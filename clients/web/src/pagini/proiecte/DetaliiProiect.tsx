@@ -1,18 +1,18 @@
 import { EditOutlined, EnvironmentOutlined, InboxOutlined, RollbackOutlined, UploadOutlined } from '@ant-design/icons'
-import { Alert, App, Button, Card, Col, Descriptions, Empty, Popconfirm, Progress, Result, Row, Skeleton, Table, Tabs, Tag, Typography } from 'antd'
+import { Alert, App, Button, Card, Col, Descriptions, Empty, Popconfirm, Progress, Result, Row, Skeleton, Tabs, Tag, Typography } from 'antd'
 import { useState } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
+import { Link, useParams, useSearchParams } from 'react-router'
 import { EroareApi } from '../../api/client'
 import { useDevize, usePermisiuni, useProiect } from '../../api/interogari'
-import type { VersiuneDeviz } from '../../api/tipuri'
 import { AntetPagina } from '../../layout/AntetPagina'
-import { formatData, stariProiect, stariVersiune, timpScurs, tipuriVersiune } from '../../util/format'
+import { formatData, stariProiect, timpScurs } from '../../util/format'
 import { ImportDeviz } from '../devize/ImportDeviz'
 import { useArhiveazaProiect, useReactiveazaProiect } from '../../api/proiecte'
 import { EditareProiect } from './EditareProiect'
 import { SantiereProiect } from './SantiereProiect'
 import { BugetProiect } from './BugetProiect'
 import { ListaContracte } from '../contracte/ListaContracte'
+import { ObiectiveDevize } from '../devize/ObiectiveDevize'
 import { GraficProiect } from '../grafic/GraficProiect'
 
 export function DetaliiProiect() {
@@ -21,7 +21,6 @@ export function DetaliiProiect() {
   const proiect = useProiect(proiectId)
   const devize = useDevize(proiectId)
   const permisiuni = usePermisiuni()
-  const navigheaza = useNavigate()
   const [importDeschis, setImportDeschis] = useState(false)
   const [editareDeschisa, setEditareDeschisa] = useState(false)
   const { message } = App.useApp()
@@ -162,44 +161,8 @@ export function DetaliiProiect() {
               key: 'devize',
               label: `Devize${devize.data ? ` (${devize.data.length})` : ''}`,
               children: (
-                <Table<VersiuneDeviz>
-                  rowKey="id"
-                  loading={devize.isLoading}
-                  dataSource={devize.data}
-                  pagination={false}
-                  onRow={(v) => ({ onClick: () => navigheaza(`/proiecte/${proiectId}/devize/${v.id}`), style: { cursor: 'pointer' } })}
-                  locale={{
-                    emptyText: (
-                      <Empty description="Proiectul nu are încă devize">
-                        {poateImporta && (
-                          <Button type="primary" icon={<UploadOutlined />} onClick={() => setImportDeschis(true)}>
-                            Importă primul deviz
-                          </Button>
-                        )}
-                      </Empty>
-                    ),
-                  }}
-                  columns={[
-                    { title: 'Tip', dataIndex: 'tip', width: 170, render: (t: VersiuneDeviz['tip']) => tipuriVersiune[t] },
-                    { title: 'Nr.', dataIndex: 'numar', width: 70 },
-                    { title: 'Denumire', dataIndex: 'denumire' },
-                    {
-                      title: 'Sursă',
-                      dataIndex: 'sursa',
-                      width: 200,
-                      render: (s: string, v: VersiuneDeviz) => {
-                        const din = v.versiuneAnterioaraId && devize.data?.find((x) => x.id === v.versiuneAnterioaraId)
-                        return v.versiuneAnterioaraId ? `modificare din nr. ${din ? din.numar : '?'}` : s === 'isdp' ? 'import ISDP' : s
-                      },
-                    },
-                    {
-                      title: 'Stare',
-                      dataIndex: 'stare',
-                      width: 130,
-                      render: (s: VersiuneDeviz['stare']) => <Tag color={stariVersiune[s].culoare}>{stariVersiune[s].eticheta}</Tag>,
-                    },
-                  ]}
-                />
+                <ObiectiveDevize proiectId={proiectId} poateImporta={poateImporta} poateEdita={permisiuni.data?.includes('ofertare.editare') ?? false}
+                  laImport={() => setImportDeschis(true)} />
               ),
             },
             {

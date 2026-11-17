@@ -2,6 +2,7 @@ import { InboxOutlined, PaperClipOutlined } from '@ant-design/icons'
 import { Alert, App, Button, Col, Collapse, Descriptions, Input, Modal, Row, Select, Space, Steps, Table, Tag, Typography, Upload } from 'antd'
 import { useState } from 'react'
 import { useConfirmaImport, useDevize, usePrevizualizareImport } from '../../api/interogari'
+import { useObiective } from '../../api/devize'
 import type {
   ArticolImport, ComparatieTotal, DiferentaArticol, PrevizualizareImport, ProblemaImport, ResursaImport, SectiuneImport, TipResursa, TipVersiuneDeviz,
 } from '../../api/tipuri'
@@ -48,6 +49,9 @@ const componenteDeviz: { value: TipResursa; label: string }[] = [
 /** Valoare „deviz nou” în alegerea devizului țintă (importul pe obiecte). */
 const DevizNou = 'nou'
 
+/** Valoare „obiectiv nou” în alegerea obiectivului. */
+const ObiectivNou = 'obiectiv-nou'
+
 /**
  * Importul devizului în proiect (REQ-IMP-03, D-50): devizul ISDP „Deviz ofertă cu resurse” (.xls) și, opțional, lista F3
  * (.xlsx), care dă cursul și prețurile de ofertă. Previzualizarea arată recapitulația (fișier vs. recalcul), problemele,
@@ -67,6 +71,10 @@ export function ImportDeviz({ proiectId, deschis, laInchidere }: Props) {
   const [componente, setComponente] = useState<Record<string, TipResursa>>({})
   const [tinta, setTinta] = useState<string>()
   const devize = useDevize(proiectId)
+  // Obiectivul în care intră devizul (D-59): unul existent sau unul nou (cu denumirea scrisă).
+  const obiective = useObiective(proiectId)
+  const [obiectiv, setObiectiv] = useState<string>()
+  const [obiectivNou, setObiectivNou] = useState('')
   const previzualizeaza = usePrevizualizareImport(proiectId)
   const confirma = useConfirmaImport(proiectId)
   const { message } = App.useApp()
@@ -80,6 +88,8 @@ export function ImportDeviz({ proiectId, deschis, laInchidere }: Props) {
     setEroare(null)
     setComponente({})
     setTinta(undefined)
+    setObiectiv(undefined)
+    setObiectivNou('')
     laInchidere()
   }
 
@@ -126,7 +136,17 @@ export function ImportDeviz({ proiectId, deschis, laInchidere }: Props) {
     if (!fisier) return
     try {
       const t = tintaAleasa(rezultat)
-      const r = await confirma.mutateAsync({ ...optiuni(fisier, f3, componente, t), tip, denumire })
+      const listaOb = obiective.data ?? []
+      const ales = obiectiv ?? (listaOb.length === 1 ? listaOb[0].id : undefined)
+      if (!(rezultat?.peObiecte && t !== DevizNou) && listaOb.length > 1 && !ales) {
+        setEroare('Alege obiectivul proiectului în care intră devizul (sau unul nou).')
+        return
+      }
+      const r = await confirma.mutateAsync({
+        ...optiuni(fisier, f3, componente, t), tip, denumire,
+        obiectivId: ales && ales !== ObiectivNou ? ales : null,
+        obiectivNou: ales === ObiectivNou || listaOb.length === 0 ? obiectivNou || null : null,
+      })
       if (r.obiect)
         message.success(`Obiectul ${r.obiect} a fost ${r.inlocuit ? 'înlocuit' : 'adăugat'} în ${r.ciornaNoua ? 'ciorna nouă de lucru' : 'ciorna de lucru'} nr. ${r.numar}.`)
       else
@@ -435,6 +455,24 @@ export function ImportDeviz({ proiectId, deschis, laInchidere }: Props) {
               }] : []),
             ]}
           />
+
+          {!peObiectExistent && (
+            <Space wrap>
+              <Typography.Text strong>Obiectivul proiectului:</Typography.Text>
+              <Select style={{ minWidth: 300 }} placeholder="alege obiectivul"
+                value={obiectiv ?? ((obiective.data ?? []).length === 1 ? obiective.data![0].id : (obiective.data ?? []).length === 0 ? ObiectivNou : undefined)}
+                onChange={setObiectiv}
+                options={[...(obiective.data ?? []).map((o) => ({ value: o.id, label: `${o.denumire}${o.versiuni ? ` (${o.versiuni} versiuni)` : ''}` })),
+                  { value: ObiectivNou, label: 'Obiectiv nou…' }]} />
+              {(obiectiv === ObiectivNou || (obiective.data ?? []).length === 0) && (
+                <Input style={{ width: 280 }} value={obiectivNou} onChange={(e) => setObiectivNou(e.target.value)} maxLength={200}
+                  placeholder={`Denumirea obiectivului (implicit: ${denumire || rezultat.denumire})`} />
+              )}
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Fiecare obiectiv are devizul lui, cu istoria versiunilor; reimportul se compară cu devizul aceluiași obiectiv.
+              </Typography.Text>
+            </Space>
+          )}
 
           {!peObiectExistent && <Space wrap>
             Denumire:

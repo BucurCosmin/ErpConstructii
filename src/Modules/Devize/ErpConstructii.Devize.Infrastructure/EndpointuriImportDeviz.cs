@@ -97,20 +97,21 @@ internal static class EndpointuriImportDeviz
 
     /// <param name="componente">Alegerea componentelor de preț neclare, JSON {"C":"Utilaj"} (D-58).</param>
     /// <param name="versiuneTintaId">Importul pe obiecte: devizul în care se adaugă / înlocuiește obiectul.</param>
+    /// <param name="obiectivId">Obiectivul proiectului în care intră devizul (D-59); reimportul se compară doar cu devizele lui.</param>
     private static async Task<IResult> Previzualizeaza(
         Guid proiectId, IFormFile fisier, IFormFile? f3, [FromForm] decimal? curs, [FromForm] string? moneda, [FromForm] string? componente,
-        [FromForm] Guid? versiuneTintaId, RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
+        [FromForm] Guid? versiuneTintaId, [FromForm] Guid? obiectivId, RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
     {
-        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, componente, versiuneTintaId, registru, db, ct);
+        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, componente, versiuneTintaId, obiectivId, registru, db, ct);
         return eroare ?? Results.Ok(p!.Previzualizare);
     }
 
     private static async Task<IResult> Confirma(
         Guid proiectId, IFormFile fisier, IFormFile? f3, [FromForm] decimal? curs, [FromForm] string? moneda, [FromForm] string? denumire,
-        [FromForm] string? componente, [FromForm] Guid? versiuneTintaId, TipVersiuneDeviz tip, RegistruImportatori registru, DevizeDbContext db,
-        CancellationToken ct)
+        [FromForm] string? componente, [FromForm] Guid? versiuneTintaId, [FromForm] Guid? obiectivId, [FromForm] string? obiectivNou,
+        TipVersiuneDeviz tip, RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
     {
-        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, componente, versiuneTintaId, registru, db, ct);
+        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, componente, versiuneTintaId, obiectivId, registru, db, ct);
         if (eroare is not null)
             return eroare;
         if (!p!.Previzualizare.PoateFiConfirmat || p.Versiune is null || p.Canonic is null)
@@ -118,12 +119,35 @@ internal static class EndpointuriImportDeviz
         if (p.Canonic.PeObiecte && versiuneTintaId is { } tinta)
             return await AdaugaObiectAsync(proiectId, tinta, p, db, ct);
 
+        // Obiectivul devizului (D-59): cel ales, unul nou, singurul proiectului, sau (primul deviz) unul nou cu numele devizului.
+        Guid obiectiv;
+        var existente = await db.Obiective.Where(o => o.ProiectId == proiectId).Select(o => o.Id).ToListAsync(ct);
+        if (obiectivId is { } oid)
+        {
+            if (!existente.Contains(oid))
+                return Results.BadRequest(new { mesaj = "Obiectivul ales nu e al proiectului." });
+            obiectiv = oid;
+        }
+        else if (!string.IsNullOrWhiteSpace(obiectivNou) || existente.Count == 0)
+        {
+            var nou = await EndpointuriObiective.CreeazaAsync(db, proiectId,
+                string.IsNullOrWhiteSpace(obiectivNou) ? (string.IsNullOrWhiteSpace(denumire) ? p.Canonic.Denumire : denumire) : obiectivNou, null, ct);
+            if (nou.Esec)
+                return Results.BadRequest(new { mesaj = nou.Eroare.Mesaj });
+            obiectiv = nou.Valoare.Id;
+        }
+        else if (existente.Count == 1)
+            obiectiv = existente[0];
+        else
+            return Results.BadRequest(new { mesaj = "Proiectul are mai multe obiective: alege obiectivul devizului (sau unul nou)." });
+
         // Versiunea nouă: număr pe tip, cheile stabile ale articolelor potrivite cu versiunea anterioară din aceeași sursă.
         var numar = await db.Versiuni.Where(v => v.ProiectId == proiectId && v.Tip == tip).MaxAsync(v => (int?)v.Numar, ct) + 1 ?? 1;
         // Denumirea dată de utilizator are prioritate față de titlul din fișier.
         var canonic = string.IsNullOrWhiteSpace(denumire) ? p.Canonic : p.Canonic with { Denumire = denumire.Trim().Length > 300 ? denumire.Trim()[..300] : denumire.Trim() };
         var versiune = ConvertorDevizCanonic.CaVersiune(canonic, proiectId, tip, numar, p.Importator.FormatId, null, p.Versiune.Parametri());
-        if (p.Existenta is not null)
+        versiune.SeteazaObiectiv(obiectiv);
+        if (p.Existenta is not null && p.Existenta.ObiectivId == obiectiv)
             PotrivireReimport.Potriveste([.. versiune.Articole()], [.. p.Existenta.Articole()]);
 
         var fisiere = p.Anexe.Select(a => (Sursa: a, Principal: false)).Prepend((Sursa: p.Principal, Principal: true))
@@ -210,7 +234,7 @@ internal static class EndpointuriImportDeviz
     }
 
     private static async Task<(Pregatire? Pregatire, IResult? Eroare)> PregatesteAsync(
-        Guid proiectId, IFormFile? fisier, IFormFile? f3, decimal? curs, string? moneda, string? componente, Guid? versiuneTintaId,
+        Guid proiectId, IFormFile? fisier, IFormFile? f3, decimal? curs, string? moneda, string? componente, Guid? versiuneTintaId, Guid? obiectivId,
         RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
     {
         if (fisier is null || fisier.Length == 0)
@@ -283,7 +307,8 @@ internal static class EndpointuriImportDeviz
                 }
                 // Reimport: versiunea anterioară a proiectului din aceeași sursă (cea mai recentă).
                 else if (await db.Versiuni.AsNoTracking()
-                    .Where(v => v.ProiectId == proiectId && v.Sursa == $"import:{importator.FormatId}" && v.Stare != StareVersiuneDeviz.Inlocuita)
+                    .Where(v => v.ProiectId == proiectId && v.Sursa == $"import:{importator.FormatId}" && v.Stare != StareVersiuneDeviz.Inlocuita
+                                && (obiectivId == null || v.ObiectivId == obiectivId))
                     .OrderByDescending(v => v.CreatLa).Select(v => (Guid?)v.Id).FirstOrDefaultAsync(ct) is { } ide
                     && await ModulDevize.IncarcaAsync(db, ide, ct) is { } ex)
                 {

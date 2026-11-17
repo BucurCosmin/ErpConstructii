@@ -59,6 +59,8 @@ function formularImport(f: FisiereImportDeviz) {
   if (f.denumire?.trim()) date.append('denumire', f.denumire.trim())
   if (f.componente && Object.keys(f.componente).length > 0) date.append('componente', JSON.stringify(f.componente))
   if (f.versiuneTintaId) date.append('versiuneTintaId', f.versiuneTintaId)
+  if (f.obiectivId) date.append('obiectivId', f.obiectivId)
+  if (f.obiectivNou?.trim()) date.append('obiectivNou', f.obiectivNou.trim())
   return date
 }
 

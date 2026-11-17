@@ -1,4 +1,4 @@
-﻿using ErpConstructii.Aprovizionare;
+using ErpConstructii.Aprovizionare;
 using ErpConstructii.Facturi;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure;
@@ -112,6 +112,8 @@ public sealed class ModulStocuri : IModul
         // Prețurile din recepții și costurile din consum, pentru catalogul și bugetul din Devize (D-55).
         servicii.AddScoped<ErpConstructii.Devize.ISursaPreturi, SursaPreturiReceptii>();
         servicii.AddScoped<ErpConstructii.Devize.ISursaCosturi, SursaCosturiConsum>();
+        // Ștergerea unui deviz verifică întâi că articolele lui nu au bonuri de consum (D-59).
+        servicii.AddScoped<ErpConstructii.Devize.IUtilizariArticoleDeviz, UtilizariArticoleConsum>();
         // Bonurile de consum pentru alocarea pe graficul de execuție (D-57).
         servicii.AddScoped<ErpConstructii.Grafic.ISursaDocumenteCost, SursaDocumenteConsum>();
     }

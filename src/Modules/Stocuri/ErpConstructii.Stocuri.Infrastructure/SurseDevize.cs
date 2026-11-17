@@ -43,3 +43,29 @@ internal sealed class SursaCosturiConsum(StocuriDbContext db) : ISursaCosturi
             .ToList();
     }
 }
+
+/// <summary>
+/// Articolele de deviz folosite de bonurile de consum ale proiectului (D-59): un deviz nu se șterge cu articole consumate,
+/// ca bonurile să nu rămână fără articol.
+/// </summary>
+internal sealed class UtilizariArticoleConsum(StocuriDbContext db) : IUtilizariArticoleDeviz
+{
+    public async Task<IReadOnlyDictionary<Guid, string>> FolositeAsync(Guid proiectId, IReadOnlyCollection<Guid> chei, CancellationToken ct = default)
+    {
+        if (chei.Count == 0)
+            return new Dictionary<Guid, string>();
+        var cautate = chei.ToHashSet();
+        var bonuri = await db.BonuriConsum.AsNoTracking().Where(b => b.ProiectId == proiectId).ToListAsync(ct);
+        var rezultat = new Dictionary<Guid, string>();
+        foreach (var b in bonuri)
+        {
+            foreach (var l in b.Linii)
+            {
+                if (l.ArticolDevizCheie is { } k && cautate.Contains(k))
+                    rezultat.TryAdd(k, b.NumarAfisat);
+            }
+        }
+
+        return rezultat;
+    }
+}

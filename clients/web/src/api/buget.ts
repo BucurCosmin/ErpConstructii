@@ -32,10 +32,17 @@ export interface RezumatBuget {
   procentCosturi: number | null
 }
 
+export interface VersiuneBuget { id: string; tip: string; numar: number; denumire: string; stare: 'Ciorna' | 'Aprobata' | 'Inlocuita' }
+
 export interface BugetProiect {
-  versiune: { id: string; tip: string; numar: number; denumire: string; stare: 'Ciorna' | 'Aprobata' | 'Inlocuita' } | null
+  versiune: VersiuneBuget | null
   articole: RandBuget[]
   rezumat: RezumatBuget
+  /** Devizul de referință al fiecărui obiectiv inclus (D-59). */
+  referinte: { obiectivId: string; obiectiv: string; versiune: VersiuneBuget }[] | null
+  obiective: { id: string; denumire: string; versiuni: number }[] | null
+  /** Obiectivul ales; null = tot proiectul. */
+  obiectivId: string | null
 }
 
 export interface CostDocument {
@@ -48,8 +55,14 @@ export interface CostDocument {
   valoare: number
 }
 
-export const useBugetProiect = (proiectId: string) =>
-  useQuery({ queryKey: ['proiecte', proiectId, 'buget'], queryFn: () => api.get<BugetProiect>(`/api/proiecte/${proiectId}/buget`) })
+/** Bugetul tot proiectului sau al unui obiectiv (D-59). */
+export const useBugetProiect = (proiectId: string, obiectivId?: string) =>
+  useQuery({
+    queryKey: ['proiecte', proiectId, 'buget', obiectivId ?? 'toate'],
+    queryFn: () => api.get<BugetProiect>(`/api/proiecte/${proiectId}/buget${obiectivId ? `?obiectivId=${obiectivId}` : ''}`),
+    // La schimbarea obiectivului rămâne afișat bugetul anterior până vine cel nou (fără să dispară alegerea).
+    placeholderData: (anterior) => anterior,
+  })
 
 /** Documentele cu costuri ale unui rând: cheia articolului, „generale”, „servicii” sau „materiale”. */
 export const useCosturiBuget = (proiectId: string, articol: string | undefined) =>

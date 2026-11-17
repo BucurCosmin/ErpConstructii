@@ -53,8 +53,10 @@ internal static class EndpointuriEditareDeviz
 
         g.MapPut("/{versiuneId:guid}", Redenumeste).WithName("RedenumesteDeviz").WithSummary("Redenumește versiunea (ciornă)")
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status400BadRequest).CerePermisiune(editare);
-        g.MapDelete("/{versiuneId:guid}", Sterge).WithName("StergeDeviz").WithSummary("Șterge versiunea (doar ciornă), cu fișierele ei originale")
-            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status409Conflict).CerePermisiune(editare);
+        g.MapDelete("/{versiuneId:guid}", EndpointuriObiective.StergeVersiune).WithName("StergeDeviz")
+            .WithSummary("Șterge versiunea (ciorna oricând; cea aprobată / importată dacă e ultima din istorie, cu ?motiv=), cu fișierele ei; versiunea înlocuită de ea revine în vigoare")
+            .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status403Forbidden)
+            .Produces(StatusCodes.Status409Conflict).CerePermisiune(editare);
         g.MapPost("/{versiuneId:guid}/versiune-noua", VersiuneNoua).WithName("VersiuneNouaDeviz")
             .WithSummary("Ciornă nouă pornită din versiune (aceleași articole și chei stabile); la aprobare o înlocuiește")
             .Produces(StatusCodes.Status201Created).CerePermisiune(editare);
@@ -95,18 +97,6 @@ internal static class EndpointuriEditareDeviz
         return Results.NoContent();
     }
 
-    private static async Task<IResult> Sterge(Guid proiectId, Guid versiuneId, DevizeDbContext db, CancellationToken ct)
-    {
-        var v = await PentruModificareAsync(db, proiectId, versiuneId, ct);
-        if (v is null)
-            return Results.NotFound();
-        if (v.EsteBlocat)
-            return Results.Conflict(new { mesaj = "Versiunea aprobată nu se șterge (poate fi folosită de alte module); creează o versiune nouă." });
-        db.Versiuni.Remove(v);
-        await db.SaveChangesAsync(ct);
-        return Results.NoContent();
-    }
-
     private static async Task<IResult> VersiuneNoua(Guid proiectId, Guid versiuneId, VersiuneNouaCerere? cerere, DevizeDbContext db, CancellationToken ct)
     {
         var v = await ModulDevize.IncarcaAsync(db, versiuneId, ct);
@@ -135,8 +125,10 @@ internal static class EndpointuriEditareDeviz
         {
             // Versiunea din care a pornit ciorna (aprobată, sau devizul importat neaprobat) devine „înlocuită”. La cea aprobată,
             // schimbarea stării e însoțită de corectura ei (istoricul înlocuirii), regula 6; la ciornă rămâne ca istoric.
+            // Starea dinainte se păstrează: ștergerea versiunii noi o readuce (D-59).
+            var stareVeche = veche.Stare;
             veche.Inlocuieste();
-            db.Inlocuiri.Add(new InlocuireVersiuneDeviz(veche.Id, v.Id, ceas.Acum));
+            db.Inlocuiri.Add(new InlocuireVersiuneDeviz(veche.Id, v.Id, ceas.Acum, stareVeche));
         }
 
         await db.SaveChangesAsync(ct);

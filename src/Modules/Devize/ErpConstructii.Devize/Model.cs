@@ -69,6 +69,9 @@ public sealed class VersiuneDeviz : EntitateFirma, IDocumentCuStare
     public StareVersiuneDeviz Stare { get; private set; }
     public Guid? VersiuneAnterioaraId { get; private set; }
 
+    /// <summary>Obiectivul proiectului căruia îi aparține devizul (D-59); versiunile lui formează istoria devizului obiectivului.</summary>
+    public Guid ObiectivId { get; private set; }
+
     /// <summary>De unde vine: „import:isdp”, „manual”, „copie:{id}”.</summary>
     public string Sursa { get; private set; } = "manual";
 
@@ -111,6 +114,26 @@ public sealed class VersiuneDeviz : EntitateFirma, IDocumentCuStare
     public IEnumerable<ArticolDeviz> Articole() => Radacini.SelectMany(ArticoleSub);
 
     public bool EsteBlocat => Stare != StareVersiuneDeviz.Ciorna;
+
+    /// <summary>
+    /// Obiectivul versiunii: la creare, pe ciornă, sau la mutarea între obiective (D-59); la versiunea blocată, mutarea merge doar
+    /// împreună cu corectura ei (<see cref="MutareObiectivDeviz"/>, verificată la salvare).
+    /// </summary>
+    public void SeteazaObiectiv(Guid obiectivId) => ObiectivId = obiectivId;
+
+    /// <summary>
+    /// Versiunea înlocuită redevine în vigoare (ștergerea versiunii care o înlocuise, D-59): starea dinaintea înlocuirii.
+    /// Se salvează doar împreună cu <see cref="RevenireVersiuneDeviz"/> (corectura ei, regula 6).
+    /// </summary>
+    public Rezultat Reactiveaza(StareVersiuneDeviz stare)
+    {
+        if (Stare != StareVersiuneDeviz.Inlocuita)
+            return Rezultat.Esuat(Eroare.Validare("Doar o versiune înlocuită poate reveni în vigoare."));
+        if (stare == StareVersiuneDeviz.Inlocuita)
+            return Rezultat.Esuat(Eroare.Validare("Starea readusă trebuie să fie ciornă sau aprobată."));
+        Stare = stare;
+        return Rezultat.Ok();
+    }
 
     public void SeteazaSursa(string sursa, Guid? fisierId)
     {
@@ -354,6 +377,7 @@ public sealed class VersiuneDeviz : EntitateFirma, IDocumentCuStare
             Moneda = Moneda,
             Curs = Curs,
             PoliticaRotunjire = PoliticaRotunjire,
+            ObiectivId = ObiectivId,
             Obiectiv = Obiectiv,
             Obiect = Obiect,
             StadiuFizic = StadiuFizic,
@@ -840,12 +864,43 @@ public sealed class InlocuireVersiuneDeviz : EntitateFirma, ICorectieDocument
 {
     private InlocuireVersiuneDeviz() { }
 
-    public InlocuireVersiuneDeviz(Guid versiuneInlocuitaId, Guid versiuneNouaId, DateTimeOffset la) =>
-        (VersiuneInlocuitaId, VersiuneNouaId, La) = (versiuneInlocuitaId, versiuneNouaId, la);
+    public InlocuireVersiuneDeviz(Guid versiuneInlocuitaId, Guid versiuneNouaId, DateTimeOffset la, StareVersiuneDeviz stareAnterioara = StareVersiuneDeviz.Aprobata) =>
+        (VersiuneInlocuitaId, VersiuneNouaId, La, StareAnterioara) = (versiuneInlocuitaId, versiuneNouaId, la, stareAnterioara);
 
     public Guid VersiuneInlocuitaId { get; private set; }
     public Guid VersiuneNouaId { get; private set; }
     public DateTimeOffset La { get; private set; }
 
+    /// <summary>Starea versiunii înlocuite dinaintea înlocuirii (ciornă / aprobată), ca ștergerea celei noi s-o poată readuce (D-59).</summary>
+    public StareVersiuneDeviz StareAnterioara { get; private set; } = StareVersiuneDeviz.Aprobata;
+
     public Guid DocumentCorectatId => VersiuneInlocuitaId;
+}
+
+/// <summary>
+/// Mutarea unei versiuni (cu ciornele pornite din ea) la alt obiectiv al proiectului (D-59): corectura versiunii blocate, cu
+/// obiectivul vechi și motivul, ca istoric.
+/// </summary>
+public sealed class MutareObiectivDeviz : EntitateFirma, ICorectieDocument
+{
+    private MutareObiectivDeviz() { }
+
+    public MutareObiectivDeviz(Guid versiuneId, Guid obiectivVechiId, Guid obiectivNouId, string motiv, string facutaDe, DateTimeOffset la)
+    {
+        VersiuneId = versiuneId;
+        ObiectivVechiId = obiectivVechiId;
+        ObiectivNouId = obiectivNouId;
+        Motiv = motiv.Length > 1000 ? motiv[..1000] : motiv;
+        FacutaDe = facutaDe.Length > 200 ? facutaDe[..200] : facutaDe;
+        La = la;
+    }
+
+    public Guid VersiuneId { get; private set; }
+    public Guid ObiectivVechiId { get; private set; }
+    public Guid ObiectivNouId { get; private set; }
+    public string Motiv { get; private set; } = string.Empty;
+    public string FacutaDe { get; private set; } = string.Empty;
+    public DateTimeOffset La { get; private set; }
+
+    public Guid DocumentCorectatId => VersiuneId;
 }
