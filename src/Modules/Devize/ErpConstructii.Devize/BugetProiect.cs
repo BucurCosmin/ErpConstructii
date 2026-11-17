@@ -4,14 +4,16 @@ using ErpConstructii.SharedKernel;
 namespace ErpConstructii.Devize;
 
 /// <summary>Un articol al devizului de referință, cu bugetul lui (cost direct pe resurse, calculat cu rotunjirea versiunii).</summary>
-public sealed record ArticolBugetDeviz(Guid CheieStabila, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, string Capitol, ValoriResurse Buget);
+/// <param name="Cale">Capitolele de deasupra articolului, de la rădăcină (arborele bugetului); null = doar <paramref name="Capitol"/>.</param>
+public sealed record ArticolBugetDeviz(Guid CheieStabila, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, string Capitol, ValoriResurse Buget,
+    IReadOnlyList<string>? Cale = null);
 
 /// <param name="Cheie">Null pentru „cheltuieli generale” (costuri fără articol).</param>
 /// <param name="Realizat">Costurile reale ale articolului, pe resurse (deocamdată materialele consumate).</param>
 /// <param name="Documente">Câte documente au adus costuri pe articol.</param>
 public sealed record RandBuget(
     Guid? Cheie, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, string Capitol, ValoriResurse Buget, ValoriResurse Realizat,
-    int Documente, bool InDeviz);
+    int Documente, bool InDeviz, IReadOnlyList<string>? Cale = null);
 
 /// <param name="BugetDirect">Costul direct al devizului de referință (fără CAM, indirecte, profit, TVA).</param>
 /// <param name="ConsumPeArticole">Costurile pe articolele devizului (materialele consumate pe ele).</param>
@@ -41,7 +43,7 @@ public static class CalculBuget
         var peArticol = consumuri.Where(c => c.ArticolDevizCheie is not null).GroupBy(c => c.ArticolDevizCheie!.Value).ToDictionary(g => g.Key, g => g.ToList());
 
         var randuri = deviz.Select(a => Rand(a.CheieStabila, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.Capitol, a.Buget,
-            peArticol.GetValueOrDefault(a.CheieStabila) ?? [], true)).ToList();
+            peArticol.GetValueOrDefault(a.CheieStabila) ?? [], true, a.Cale)).ToList();
 
         var cunoscute = deviz.Select(a => a.CheieStabila).ToHashSet();
         foreach (var (cheie, lista) in peArticol.Where(x => !cunoscute.Contains(x.Key)))
@@ -68,10 +70,11 @@ public static class CalculBuget
     }
 
     private static RandBuget Rand(
-        Guid? cheie, string simbol, string denumire, string um, decimal cantitate, string capitol, ValoriResurse buget, List<CostRealizat> costuri, bool inDeviz)
+        Guid? cheie, string simbol, string denumire, string um, decimal cantitate, string capitol, ValoriResurse buget, List<CostRealizat> costuri, bool inDeviz,
+        IReadOnlyList<string>? cale = null)
     {
         decimal Pe(TipResursa t) => Rotunjire.Lei.Aplica(costuri.Where(c => (c.Componenta ?? TipResursa.Material) == t).Sum(c => c.Valoare));
         var realizat = new ValoriResurse(Pe(TipResursa.Material), Pe(TipResursa.Manopera), Pe(TipResursa.Utilaj), Pe(TipResursa.Transport), Pe(TipResursa.Echipament));
-        return new RandBuget(cheie, simbol, denumire, um, cantitate, capitol, buget, realizat, costuri.Select(c => c.Document).Distinct().Count(), inDeviz);
+        return new RandBuget(cheie, simbol, denumire, um, cantitate, capitol, buget, realizat, costuri.Select(c => c.Document).Distinct().Count(), inDeviz, cale);
     }
 }

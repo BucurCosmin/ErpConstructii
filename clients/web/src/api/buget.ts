@@ -16,6 +16,8 @@ export interface RandBuget {
   documente: number
   /** Fals pentru „cheltuieli generale” și articolele care nu mai sunt în devizul de referință. */
   inDeviz: boolean
+  /** Capitolele de deasupra articolului, de la rădăcină (obiectivul, când bugetul are mai multe). */
+  cale: string[] | null
 }
 
 export interface RezumatBuget {

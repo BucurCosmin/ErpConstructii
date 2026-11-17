@@ -1,4 +1,5 @@
-import { Alert, Card, Col, Empty, Input, Modal, Progress, Row, Segmented, Select, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography, theme } from 'antd'
+import { MinusSquareOutlined, PlusSquareOutlined } from '@ant-design/icons'
+import { Alert, Button, Card, Col, Empty, Input, Modal, Progress, Row, Segmented, Select, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
@@ -6,15 +7,34 @@ import { useBugetProiect, useCosturiBuget } from '../../api/buget'
 import type { CostDocument, RandBuget } from '../../api/buget'
 import { formatCantitate, formatData, formatLei, formatProcent, stariVersiune, tipuriVersiune } from '../../util/format'
 
-/** Rând al tabelului: un capitol (cu sumele articolelor lui) sau un articol. */
+/** Rând al tabelului: un capitol (cu sumele articolelor de sub el, pe toate nivelurile) sau un articol. */
 interface RandTabel {
   cheie: string
   capitol?: string
+  /** Nivelul capitolului în arbore (0 = primul nivel: obiectivul / obiectul). */
+  nivel?: number
+  /** Capitolul are capitole sau articole sub el (se poate închide). */
+  areCopii?: boolean
   rand?: RandBuget
   buget: number
   bugetMaterial: number
   consumat: number
 }
+
+/** Un capitol din arborele bugetului, cu sumele articolelor de sub el. */
+interface NodBuget {
+  cheie: string
+  denumire: string
+  nivel: number
+  copii: NodBuget[]
+  articole: RandBuget[]
+  buget: number
+  bugetMaterial: number
+  consumat: number
+}
+
+/** Separă denumirile capitolelor în cheia nodului (nu apare în denumiri). */
+const SEPARATOR = '\u241f'
 
 const naturi: Record<CostDocument['natura'], string> = { Consum: 'consum', AchizitieMateriale: 'materiale cumpărate', Serviciu: 'serviciu' }
 
@@ -56,34 +76,76 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
   const [alegere, setAlegere] = useState('')
   const { data, isLoading, error } = useBugetProiect(proiectId,
     alegere.startsWith('v:') ? { versiuneId: alegere.slice(2) } : alegere.startsWith('o:') ? { obiectivId: alegere.slice(2) } : {})
-  const { token } = theme.useToken()
   const [cauta, setCauta] = useState('')
   const [filtru, setFiltru] = useState<'toate' | 'cu-costuri' | 'depasite'>('toate')
   const [documente, setDocumente] = useState<{ titlu: string; articol: string }>()
+  // Capitolele închise din arbore (cheile lor); la căutare se arată tot.
+  const [inchise, setInchise] = useState<Set<string>>(new Set())
 
-  const arbore = useMemo(() => {
-    if (!data) return []
+  // Arborele capitolelor (obiectiv → obiect → capitole, pe oricâte niveluri), cu sumele pe fiecare nod.
+  const { noduri, adancime } = useMemo(() => {
+    const radacina: NodBuget = { cheie: '', denumire: '', nivel: -1, copii: [], articole: [], buget: 0, bugetMaterial: 0, consumat: 0 }
+    if (!data) return { noduri: radacina, adancime: 0 }
     const t = cauta.trim().toLowerCase()
     const pastreaza = (r: RandBuget) =>
       (!t || r.simbol.toLowerCase().includes(t) || r.denumire.toLowerCase().includes(t))
       && (filtru === 'toate' || (filtru === 'cu-costuri' ? r.realizat.total > 0 : r.realizat.material > r.buget.material + 0.005))
-    const grupuri = new Map<string, RandBuget[]>()
+    const dupaCheie = new Map<string, NodBuget>()
+    let adancime = 0
     for (const r of data.articole.filter(pastreaza)) {
-      const g = r.inDeviz ? r.capitol : 'Costuri fără articol în deviz'
-      grupuri.set(g, [...(grupuri.get(g) ?? []), r])
+      const cale = !r.inDeviz ? ['Costuri fără articol în deviz'] : r.cale?.length ? r.cale : [r.capitol || '—']
+      adancime = Math.max(adancime, cale.length)
+      let nod = radacina
+      for (let i = 0; i < cale.length; i++) {
+        const cheie = cale.slice(0, i + 1).join(SEPARATOR)
+        let copil = dupaCheie.get(cheie)
+        if (!copil) {
+          copil = { cheie, denumire: cale[i], nivel: i, copii: [], articole: [], buget: 0, bugetMaterial: 0, consumat: 0 }
+          dupaCheie.set(cheie, copil)
+          nod.copii.push(copil)
+        }
+        copil.buget += r.buget.total
+        copil.bugetMaterial += r.buget.material
+        copil.consumat += r.realizat.total
+        nod = copil
+      }
+      nod.articole.push(r)
     }
-    // Listă plată: rândul capitolului (cu sumele lui), apoi articolele lui (rândurile articolelor se desfac în documente).
-    return [...grupuri.entries()].flatMap(([capitol, randuri]): RandTabel[] => [
-      {
-        cheie: `c-${capitol}`,
-        capitol,
-        buget: randuri.reduce((s, r) => s + r.buget.total, 0),
-        bugetMaterial: randuri.reduce((s, r) => s + r.buget.material, 0),
-        consumat: randuri.reduce((s, r) => s + r.realizat.total, 0),
-      },
-      ...randuri.map((r) => ({ cheie: r.cheie ?? 'generale', rand: r, buget: r.buget.total, bugetMaterial: r.buget.material, consumat: r.realizat.total })),
-    ])
+    return { noduri: radacina, adancime }
   }, [data, cauta, filtru])
+
+  const toateCheile = useMemo(() => {
+    const chei: { cheie: string; nivel: number }[] = []
+    const parcurge = (n: NodBuget) => n.copii.forEach((c) => { chei.push({ cheie: c.cheie, nivel: c.nivel }); parcurge(c) })
+    parcurge(noduri)
+    return chei
+  }, [noduri])
+
+  // Lista plată afișată: capitolele deschise cu ce e sub ele (rândurile articolelor se desfac în documente).
+  const cuCautare = !!cauta.trim()
+  const arbore = useMemo(() => {
+    const randuri: RandTabel[] = []
+    const parcurge = (n: NodBuget) => {
+      for (const c of n.copii) {
+        randuri.push({ cheie: `c-${c.cheie}`, capitol: c.denumire, nivel: c.nivel, areCopii: c.copii.length + c.articole.length > 0,
+          buget: c.buget, bugetMaterial: c.bugetMaterial, consumat: c.consumat })
+        if (cuCautare || !inchise.has(c.cheie)) parcurge(c)
+      }
+      for (const r of n.articole)
+        randuri.push({ cheie: r.cheie ?? 'generale', rand: r, buget: r.buget.total, bugetMaterial: r.buget.material, consumat: r.realizat.total })
+    }
+    parcurge(noduri)
+    return randuri
+  }, [noduri, inchise, cuCautare])
+
+  const comuta = (cheie: string) => setInchise((x) => {
+    const n = new Set(x)
+    if (n.has(cheie)) n.delete(cheie)
+    else n.add(cheie)
+    return n
+  })
+  /** Deschide arborele până la nivelul dat (1 = doar primul nivel); 0 = tot. */
+  const laNivel = (nivel: number) => setInchise(new Set(nivel === 0 ? [] : toateCheile.filter((c) => c.nivel >= nivel - 1).map((c) => c.cheie)))
 
   if (isLoading) return <Skeleton active />
   if (error) return <Alert type="error" showIcon title={(error as Error).message} />
@@ -94,7 +156,19 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
   const coloane: TableColumnsType<RandTabel> = [
     {
       title: 'Simbol', width: 150, fixed: 'left',
-      render: (_, x) => x.capitol ? <Typography.Text strong>{x.capitol}</Typography.Text> : <Typography.Text code>{x.rand!.simbol}</Typography.Text>,
+      render: (_, x) => {
+        if (!x.capitol) return <Typography.Text code>{x.rand!.simbol}</Typography.Text>
+        const cheie = x.cheie.slice(2)
+        const inchis = !cuCautare && inchise.has(cheie)
+        return (
+          <span style={{ display: 'flex', alignItems: 'flex-start', gap: 4, paddingInlineStart: (x.nivel ?? 0) * 18 }}>
+            <Button type="text" size="small" style={{ width: 20, height: 20, minWidth: 20, padding: 0, flex: 'none' }} disabled={!x.areCopii || cuCautare}
+              icon={inchis ? <PlusSquareOutlined /> : <MinusSquareOutlined />} onClick={() => comuta(cheie)}
+              aria-label={inchis ? 'Deschide capitolul' : 'Închide capitolul'} />
+            <Typography.Text strong style={{ cursor: x.areCopii ? 'pointer' : undefined }} onClick={() => x.areCopii && comuta(cheie)}>{x.capitol}</Typography.Text>
+          </span>
+        )
+      },
       onCell: (x) => (x.capitol ? { colSpan: 2 } : {}),
     },
     { title: 'Denumire', render: (_, x) => x.rand?.denumire, onCell: (x) => (x.capitol ? { colSpan: 0 } : {}) },
@@ -217,6 +291,14 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
         <Card size="small" styles={{ body: { padding: 0 } }}
           title={
             <Space wrap>
+              {adancime > 1 && (
+                <Space.Compact size="small">
+                  {Array.from({ length: Math.min(adancime, 4) }, (_, i) => (
+                    <Tooltip key={i} title={`Deschide arborele până la nivelul ${i + 1}`}><Button size="small" onClick={() => laNivel(i + 1)}>{i + 1}</Button></Tooltip>
+                  ))}
+                  <Tooltip title="Deschide tot arborele, până la articole"><Button size="small" onClick={() => laNivel(0)}>Tot</Button></Tooltip>
+                </Space.Compact>
+              )}
               <Input.Search allowClear size="small" placeholder="Caută simbol sau denumire" style={{ width: 240 }} onChange={(e) => setCauta(e.target.value)} />
               <Segmented size="small" value={filtru} onChange={setFiltru}
                 options={[{ value: 'toate', label: 'Toate' }, { value: 'cu-costuri', label: 'Cu costuri' }, { value: 'depasite', label: 'Depășite' }]} />
@@ -229,7 +311,7 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
               expandedRowRender: (x) => <DocumenteCost proiectId={proiectId} articol={x.rand?.cheie ?? 'generale'} />,
               rowExpandable: (x) => !!x.rand && x.rand.documente > 0,
             }}
-            onRow={(x) => ({ style: x.capitol ? { background: token.colorFillSecondary } : undefined })}
+            rowClassName={(x) => (x.capitol ? (x.nivel === 0 ? 'rand-capitol rand-capitol-0' : 'rand-capitol') : '')}
             locale={{ emptyText: <Empty description="Niciun articol pentru filtrul ales" /> }} />
         </Card>
       )}

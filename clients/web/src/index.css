@@ -58,3 +58,11 @@ body,
 .tabel-text-complet .ant-table-tbody > tr > td.numeric {
   white-space: nowrap;
 }
+
+/* Rândurile de capitol din arborele bugetului: fundal opac pe toate celulele (și pe cele fixe). */
+.tabel-text-complet tr.rand-capitol > td {
+  background: #f5f6f8 !important;
+}
+.tabel-text-complet tr.rand-capitol-0 > td {
+  background: #e9ecf1 !important;
+}

@@ -96,9 +96,13 @@ internal static class EndpointuriBuget
         {
             var p = v.Parametri();
             var capitole = v.Capitole.ToDictionary(c => c.Id);
-            deviz.AddRange(v.Articole().Select(a => new ArticolBugetDeviz(a.CheieStabila, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate,
-                (multe ? $"{o.Denumire} / " : string.Empty) + string.Join(" / ", v.Cale(capitole[a.CapitolId]).Select(c => c.Denumire)),
-                CalculatorDeviz.ValoareLinie(a.CaLinie(), p.RotunjireLinie))));
+            deviz.AddRange(v.Articole().Select(a =>
+            {
+                // Calea în arbore: obiectivul (când sunt mai multe), apoi capitolele de la rădăcină.
+                var cale = (multe ? [o.Denumire] : Array.Empty<string>()).Concat(v.Cale(capitole[a.CapitolId]).Select(c => c.Denumire)).ToList();
+                return new ArticolBugetDeviz(a.CheieStabila, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, string.Join(" / ", cale),
+                    CalculatorDeviz.ValoareLinie(a.CaLinie(), p.RotunjireLinie), cale);
+            }));
         }
 
         // Pe un obiectiv: doar costurile pe articolele lui.
