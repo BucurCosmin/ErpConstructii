@@ -122,6 +122,12 @@ public sealed class VersiuneDeviz : EntitateFirma, IDocumentCuStare
     public void SeteazaObiectiv(Guid obiectivId) => ObiectivId = obiectivId;
 
     /// <summary>
+    /// Versiunea din care a pornit a fost ștearsă (D-59): se leagă de cea dinaintea ei (null = devizul rămâne fără istorie în urmă).
+    /// La versiunea blocată, se salvează doar împreună cu <see cref="StergereVersiuneDeviz"/> (corectura ei, regula 6).
+    /// </summary>
+    public void RelegaDe(Guid? versiuneAnterioaraId) => VersiuneAnterioaraId = versiuneAnterioaraId;
+
+    /// <summary>
     /// Versiunea înlocuită redevine în vigoare (ștergerea versiunii care o înlocuise, D-59): starea dinaintea înlocuirii.
     /// Se salvează doar împreună cu <see cref="RevenireVersiuneDeviz"/> (corectura ei, regula 6).
     /// </summary>

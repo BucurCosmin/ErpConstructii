@@ -815,6 +815,86 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                     b.ToTable("reveniri_versiuni", "devize");
                 });
 
+            modelBuilder.Entity("ErpConstructii.Devize.StergereVersiuneDeviz", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("FacutaDe")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("facuta_de");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<DateTimeOffset>("La")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("la");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<string>("Motiv")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("motiv");
+
+                    b.Property<Guid>("ObiectivId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("obiectiv_id");
+
+                    b.Property<Guid>("ProiectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proiect_id");
+
+                    b.Property<string>("StareStearsa")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("stare_stearsa");
+
+                    b.Property<Guid?>("VersiuneRelegataId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_relegata_id");
+
+                    b.Property<string>("VersiuneStearsa")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("versiune_stearsa");
+
+                    b.Property<Guid>("VersiuneStearsaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("versiune_stearsa_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_stergeri_versiuni");
+
+                    b.HasIndex("FirmaId", "ProiectId")
+                        .HasDatabaseName("ix_stergeri_versiuni_firma_id_proiect_id");
+
+                    b.ToTable("stergeri_versiuni", "devize");
+                });
+
             modelBuilder.Entity("ErpConstructii.Devize.VersiuneDeviz", b =>
                 {
                     b.Property<Guid>("Id")

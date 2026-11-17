@@ -18,6 +18,7 @@ import {
 } from '../../api/devize'
 import type { ArticolCerere, ArticolComparat, DiferentaVersiune, RezultatEditareDeviz } from '../../api/devize'
 import { useDeviz, useDevize, usePermisiuni, useProiect } from '../../api/interogari'
+import { descriereStergere, stergereCuMotiv } from './ObiectiveDevize'
 import type { ArticolDeviz, CapitolDeviz, ValoriResurse } from '../../api/tipuri'
 import { NumarRo } from '../../componente/NumarRo'
 import { AntetPagina } from '../../layout/AntetPagina'
@@ -205,6 +206,8 @@ export function DetaliiDeviz() {
   const toate = useDevize(proiectId)
   const ciornaExistenta = toate.data?.find((v) => v.versiuneAnterioaraId === versiuneId && v.stare === 'Ciorna')
   const anterioara = toate.data?.find((v) => v.id === data?.versiune.versiuneAnterioaraId)
+  const versiuneaAceasta = toate.data?.find((v) => v.id === versiuneId)
+  const cuMotiv = !!versiuneaAceasta && stergereCuMotiv(versiuneaAceasta, toate.data ?? [])
   const diferente = useDiferenteDeviz(proiectId, versiuneId, !!data?.versiune.versiuneAnterioaraId)
   const doarOferta = !!diferente.data && diferente.data.totalFaraTvaVechi === 0 && diferente.data.totalFaraTvaNou === 0
     && (diferente.data.ofertaVeche !== 0 || diferente.data.ofertaNoua !== 0)
@@ -473,8 +476,8 @@ export function DetaliiDeviz() {
             {ciorna && poateEdita && (
               <Button icon={<EditOutlined />} onClick={() => setRedenumire(data?.versiune.denumire ?? '')}>Redenumește</Button>
             )}
-            {/* Ștergerea (D-59): ciorna oricând; versiunea aprobată / importată dacă e ultima din istorie, cu motiv. */}
-            {poateEdita && data && data.versiune.stare !== 'Inlocuita' && !ciornaExistenta && (
+            {/* Ștergerea (D-59): oricare versiune; cea aprobată / din istorie cu motiv. */}
+            {poateEdita && data && (
               <Button danger icon={<DeleteOutlined />} onClick={() => setMotivStergere('')}>Șterge</Button>
             )}
             {ciornaExistenta ? (
@@ -806,7 +809,7 @@ export function DetaliiDeviz() {
         open={motivStergere !== undefined}
         title={ciorna ? 'Ștergi această ciornă de deviz?' : 'Ștergi această versiune de deviz?'}
         okText="Șterge"
-        okButtonProps={{ danger: true, disabled: !ciorna && !motivStergere?.trim(), loading: sterge.isPending }}
+        okButtonProps={{ danger: true, disabled: cuMotiv && !motivStergere?.trim(), loading: sterge.isPending }}
         cancelText="Renunță"
         onCancel={() => setMotivStergere(undefined)}
         onOk={() => sterge.mutateAsync({ versiuneId, motiv: motivStergere?.trim() || undefined })
@@ -814,11 +817,9 @@ export function DetaliiDeviz() {
         destroyOnHidden
       >
         <Typography.Paragraph>
-          {ciorna
-            ? 'Se șterg și fișierele ei originale.'
-            : 'Versiunea în vigoare se șterge (ex. import greșit), cu fișierele ei; dacă înlocuise o versiune mai veche, aceea revine în vigoare. Ștergerea e refuzată dacă articolele au documente (bonuri de consum).'}
+          {versiuneaAceasta && descriereStergere(versiuneaAceasta, toate.data ?? [])}
         </Typography.Paragraph>
-        {!ciorna && (
+        {cuMotiv && (
           <Input.TextArea rows={2} maxLength={1000} placeholder="Motivul (obligatoriu, rămâne în istoric)" value={motivStergere}
             onChange={(e) => setMotivStergere(e.target.value)} />
         )}

@@ -4,6 +4,7 @@ using ErpConstructii.Infrastructure.Autorizare;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 
 namespace ErpConstructii.Devize.Infrastructure;
 
@@ -18,7 +19,11 @@ public sealed record ReferintaBugetDto(Guid ObiectivId, string Obiectiv, Versiun
 /// sunt ale proiectului.
 /// </summary>
 public sealed record BugetProiectDto(VersiuneBugetDto? Versiune, IReadOnlyList<RandBuget> Articole, RezumatBuget Rezumat,
-    IReadOnlyList<ReferintaBugetDto>? Referinte = null, IReadOnlyList<ObiectivDto>? Obiective = null, Guid? ObiectivId = null);
+    IReadOnlyList<ReferintaBugetDto>? Referinte = null, IReadOnlyList<ObiectivDto>? Obiective = null, Guid? ObiectivId = null,
+    IReadOnlyList<DevizBugetDto>? Devize = null, Guid? VersiuneId = null);
+
+/// <summary>O versiune de deviz a proiectului, de ales în ecranul bugetului (oricare, nu doar cea de referință).</summary>
+public sealed record DevizBugetDto(Guid Id, Guid ObiectivId, string Tip, int Numar, string Denumire, string Stare);
 
 /// <summary>Un document care a adus costuri (pentru detaliul unui rând al bugetului).</summary>
 public sealed record CostDto(DateOnly Data, string Natura, string? Componenta, string Document, Guid? DocumentId, string Descriere, decimal Valoare);
@@ -52,13 +57,36 @@ internal static class EndpointuriBuget
     }
 
     /// <param name="obiectivId">Doar obiectivul acesta; fără el, toate obiectivele proiectului (D-59).</param>
-    private static async Task<IResult> Buget(Guid proiectId, Guid? obiectivId, DevizeDbContext db, IEnumerable<ISursaCosturi> surse, CancellationToken ct)
+    /// <param name="versiuneId">Un deviz anume al proiectului (oricare versiune), în locul referinței.</param>
+    private static async Task<IResult> Buget(Guid proiectId, Guid? obiectivId, Guid? versiuneId, DevizeDbContext db, IEnumerable<ISursaCosturi> surse,
+        CancellationToken ct)
     {
         var costuri = await CosturiAsync(surse, proiectId, ct);
         var obiective = await EndpointuriObiective.ObiectiveAsync(db, proiectId, ct);
-        var referinte = await InterogareDevize.ReferinteAsync(db, proiectId, obiectivId, ct);
+        var ordine = obiective.Select((o, i) => (o.Id, i)).ToDictionary(x => x.Id, x => x.i);
+        var devize = (await db.Versiuni.AsNoTracking().Where(v => v.ProiectId == proiectId)
+                .Select(v => new { v.Id, v.ObiectivId, v.Tip, v.Numar, v.Denumire, v.Stare }).ToListAsync(ct))
+            .OrderBy(v => ordine.GetValueOrDefault(v.ObiectivId, int.MaxValue)).ThenByDescending(v => v.Numar)
+            .Select(v => new DevizBugetDto(v.Id, v.ObiectivId, v.Tip.ToString(), v.Numar, v.Denumire, v.Stare.ToString())).ToList();
+
+        IReadOnlyList<(ObiectivDeviz Obiectiv, VersiuneDeviz Versiune)> referinte;
+        if (versiuneId is { } vid)
+        {
+            var aleasa = await ModulDevize.IncarcaAsync(db, vid, ct);
+            var obiectiv = aleasa is null ? null : await db.Obiective.AsNoTracking().FirstOrDefaultAsync(o => o.Id == aleasa.ObiectivId, ct);
+            if (aleasa is null || aleasa.ProiectId != proiectId || obiectiv is null)
+                return Results.NotFound(new { mesaj = "Devizul nu există în proiect." });
+            referinte = [(obiectiv, aleasa)];
+            obiectivId = obiectiv.Id;
+        }
+        else
+        {
+            referinte = await InterogareDevize.ReferinteAsync(db, proiectId, obiectivId, ct);
+        }
+
         if (referinte.Count == 0)
-            return Results.Ok(new BugetProiectDto(null, [], CalculBuget.Calculeaza([], obiectivId is null ? costuri : []).Rezumat, [], obiective, obiectivId));
+            return Results.Ok(new BugetProiectDto(null, [], CalculBuget.Calculeaza([], obiectivId is null ? costuri : []).Rezumat, [], obiective, obiectivId,
+                devize, versiuneId));
 
         // Bugetul articolului = valoarea liniei, cu rotunjirea versiunii (ca în recapitulație). Cu mai multe obiective, capitolul
         // începe cu obiectivul.
@@ -79,7 +107,7 @@ internal static class EndpointuriBuget
         var buget = CalculBuget.Calculeaza(deviz, alese);
         var dto = referinte.Select(r => new ReferintaBugetDto(r.Obiectiv.Id, r.Obiectiv.Denumire,
             new VersiuneBugetDto(r.Versiune.Id, r.Versiune.Tip.ToString(), r.Versiune.Numar, r.Versiune.Denumire, r.Versiune.Stare.ToString()))).ToList();
-        return Results.Ok(new BugetProiectDto(dto[0].Versiune, buget.Articole, buget.Rezumat, dto, obiective, obiectivId));
+        return Results.Ok(new BugetProiectDto(dto[0].Versiune, buget.Articole, buget.Rezumat, dto, obiective, obiectivId, devize, versiuneId));
     }
 
     private static async Task<IResult> Costuri(Guid proiectId, string? articol, IEnumerable<ISursaCosturi> surse, CancellationToken ct)

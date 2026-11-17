@@ -75,8 +75,6 @@ export function ObiectiveDevize({ proiectId, poateImporta, poateEdita, laImport 
     }
   }
 
-  // Versiunile care se pot șterge din listă: cele în vigoare sau ciornele din care nu a pornit nicio altă versiune.
-  const poateSterge = (v: VersiuneDeviz) => v.stare !== 'Inlocuita' && !versiuni.some((x) => x.versiuneAnterioaraId === v.id)
 
   const coloane = (o: Obiectiv) => [
     { title: 'Tip', dataIndex: 'tip', width: 160, render: (t: VersiuneDeviz['tip']) => tipuriVersiune[t] },
@@ -105,11 +103,9 @@ export function ObiectiveDevize({ proiectId, poateImporta, poateEdita, laImport 
           {lista.length > 1 && (
             <Tooltip title="Mută la alt obiectiv (cu toată istoria)"><Button size="small" type="text" icon={<SwapOutlined />} onClick={() => deschide({ tip: 'muta', versiune: v })} /></Tooltip>
           )}
-          {poateSterge(v) && (
-            <Tooltip title={v.stare === 'Ciorna' ? 'Șterge ciorna' : 'Șterge versiunea (import greșit); cea pe care o înlocuise revine în vigoare'}>
-              <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => deschide({ tip: 'sterge-versiune', versiune: v })} />
-            </Tooltip>
-          )}
+          <Tooltip title={v.stare === 'Ciorna' ? 'Șterge ciorna' : v.stare === 'Inlocuita' ? 'Șterge versiunea din istoric' : 'Șterge versiunea (ex. import greșit); cea pe care o înlocuise revine în vigoare'}>
+            <Button size="small" type="text" danger icon={<DeleteOutlined />} onClick={() => deschide({ tip: 'sterge-versiune', versiune: v })} />
+          </Tooltip>
         </Space>
       ),
     }] : []),
@@ -136,7 +132,8 @@ export function ObiectiveDevize({ proiectId, poateImporta, poateEdita, laImport 
       'sterge-versiune': 'Șterge versiunea de deviz',
       'muta': 'Mută devizul la alt obiectiv',
     }[dialog.tip]
-    const cereMotiv = dialog.tip === 'muta' || (dialog.tip === 'sterge-obiectiv' && dialog.cuAprobate) || (dialog.tip === 'sterge-versiune' && dialog.versiune.stare !== 'Ciorna')
+    const cereMotiv = dialog.tip === 'muta' || (dialog.tip === 'sterge-obiectiv' && dialog.cuAprobate)
+      || (dialog.tip === 'sterge-versiune' && stergereCuMotiv(dialog.versiune, versiuni))
     return (
       <Modal open title={titlu} onCancel={() => setDialog(undefined)} onOk={() => void confirma()} destroyOnHidden
         okText={dialog.tip.startsWith('sterge') ? 'Șterge' : 'Salvează'} okButtonProps={{ danger: dialog.tip.startsWith('sterge') }} cancelText="Renunță"
@@ -159,9 +156,7 @@ export function ObiectiveDevize({ proiectId, poateImporta, poateEdita, laImport 
           {dialog.tip === 'sterge-versiune' && (
             <Typography.Paragraph>
               {tipuriVersiune[dialog.versiune.tip]} nr. {dialog.versiune.numar} — {dialog.versiune.denumire}.{' '}
-              {dialog.versiune.stare === 'Ciorna'
-                ? 'Ciorna se șterge cu fișierele ei originale.'
-                : 'Versiunea în vigoare se șterge (ex. import greșit): dacă înlocuise o versiune mai veche, aceea revine în vigoare. Versiunile din istoric rămân.'}
+              {descriereStergere(dialog.versiune, versiuni)}
             </Typography.Paragraph>
           )}
           {dialog.tip === 'muta' && (
@@ -219,4 +214,23 @@ export function ObiectiveDevize({ proiectId, poateImporta, poateEdita, laImport 
       {dialogul()}
     </Space>
   )
+}
+
+/** Ștergerea cere motiv (și dreptul de aprobare) pentru versiunile blocate sau din care au pornit alte versiuni blocate. */
+export const stergereCuMotiv = (v: VersiuneDeviz, toate: VersiuneDeviz[]) =>
+  v.stare !== 'Ciorna' || toate.some((x) => x.versiuneAnterioaraId === v.id && x.stare !== 'Ciorna')
+
+/** Ce se întâmplă la ștergerea versiunii (D-59), pentru dialogul de confirmare. */
+export function descriereStergere(v: VersiuneDeviz, toate: VersiuneDeviz[]) {
+  const ciorne = toate.filter((x) => x.versiuneAnterioaraId === v.id && x.stare === 'Ciorna')
+  const parti = [
+    v.stare === 'Ciorna'
+      ? 'Ciorna se șterge cu fișierele ei originale.'
+      : v.stare === 'Inlocuita'
+        ? 'Versiunea din istoric se șterge, cu fișierele ei; versiunea mai nouă rămâne în vigoare, iar istoria se leagă peste cea ștearsă.'
+        : 'Versiunea în vigoare se șterge (ex. import greșit), cu fișierele ei: dacă înlocuise o versiune mai veche, aceea revine în vigoare.',
+  ]
+  if (ciorne.length > 0) parti.push(`Se șterge și ciorna de lucru pornită din ea (nr. ${ciorne.map((c) => c.numar).join(', ')}).`)
+  parti.push('Ștergerea e refuzată dacă articolele ei au documente (bonuri de consum).')
+  return parti.join(' ')
 }

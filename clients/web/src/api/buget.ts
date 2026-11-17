@@ -43,7 +43,14 @@ export interface BugetProiect {
   obiective: { id: string; denumire: string; versiuni: number }[] | null
   /** Obiectivul ales; null = tot proiectul. */
   obiectivId: string | null
+  /** Toate versiunile de deviz ale proiectului, de ales (D-59). */
+  devize: (VersiuneBuget & { obiectivId: string })[] | null
+  /** Devizul ales anume (în locul referinței); null = referința. */
+  versiuneId: string | null
 }
+
+/** Ce buget se vede: tot proiectul, un obiectiv (devizul lui de referință) sau un deviz anume. */
+export type AlegereBuget = { obiectivId?: string; versiuneId?: string }
 
 export interface CostDocument {
   data: string
@@ -55,11 +62,12 @@ export interface CostDocument {
   valoare: number
 }
 
-/** Bugetul tot proiectului sau al unui obiectiv (D-59). */
-export const useBugetProiect = (proiectId: string, obiectivId?: string) =>
+/** Bugetul tot proiectului, al unui obiectiv sau al unui deviz anume (D-59). */
+export const useBugetProiect = (proiectId: string, alegere: AlegereBuget = {}) =>
   useQuery({
-    queryKey: ['proiecte', proiectId, 'buget', obiectivId ?? 'toate'],
-    queryFn: () => api.get<BugetProiect>(`/api/proiecte/${proiectId}/buget${obiectivId ? `?obiectivId=${obiectivId}` : ''}`),
+    queryKey: ['proiecte', proiectId, 'buget', alegere.versiuneId ? `v:${alegere.versiuneId}` : alegere.obiectivId ? `o:${alegere.obiectivId}` : 'toate'],
+    queryFn: () => api.get<BugetProiect>(`/api/proiecte/${proiectId}/buget${alegere.versiuneId ? `?versiuneId=${alegere.versiuneId}`
+      : alegere.obiectivId ? `?obiectivId=${alegere.obiectivId}` : ''}`),
     // La schimbarea obiectivului rămâne afișat bugetul anterior până vine cel nou (fără să dispară alegerea).
     placeholderData: (anterior) => anterior,
   })

@@ -54,7 +54,7 @@ internal static class EndpointuriEditareDeviz
         g.MapPut("/{versiuneId:guid}", Redenumeste).WithName("RedenumesteDeviz").WithSummary("Redenumește versiunea (ciornă)")
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status400BadRequest).CerePermisiune(editare);
         g.MapDelete("/{versiuneId:guid}", EndpointuriObiective.StergeVersiune).WithName("StergeDeviz")
-            .WithSummary("Șterge versiunea (ciorna oricând; cea aprobată / importată dacă e ultima din istorie, cu ?motiv=), cu fișierele ei; versiunea înlocuită de ea revine în vigoare")
+            .WithSummary("Șterge versiunea, oricare din istorie (ciorna oricând; cea aprobată / importată / înlocuită cu ?motiv=), cu fișierele și ciornele de lucru pornite din ea; versiunea înlocuită de ea revine în vigoare, iar istoria se reface peste ea")
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status403Forbidden)
             .Produces(StatusCodes.Status409Conflict).CerePermisiune(editare);
         g.MapPost("/{versiuneId:guid}/versiune-noua", VersiuneNoua).WithName("VersiuneNouaDeviz")

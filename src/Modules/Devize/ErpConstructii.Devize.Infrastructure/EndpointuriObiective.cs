@@ -151,9 +151,12 @@ internal static class EndpointuriObiective
     // ---------------------------------------------------------------- ștergerea unei versiuni
 
     /// <summary>
-    /// Șterge versiunea (D-59): ciorna oricând, versiunea aprobată sau importată doar dacă e ultima din istorie (nu e înlocuită și
-    /// nu a pornit nicio ciornă din ea), cu motiv și drept de aprobare. Versiunea pe care o înlocuise redevine în vigoare
-    /// (corectura <see cref="RevenireVersiuneDeviz"/>). Refuzată dacă articolele ei, care nu mai rămân în alt deviz, au documente.
+    /// Șterge versiunea (D-59), oricare din istoria devizului: ciorna oricând; versiunea importată, aprobată sau înlocuită cu motiv
+    /// și drept de aprobare. Ciornele de lucru pornite din ea se șterg odată cu ea (modificări neaprobate ale ei). Versiunile
+    /// blocate pornite din ea se leagă de versiunea dinaintea ei, iar lanțul înlocuirilor se reface: dacă era în vigoare, versiunea
+    /// pe care o înlocuise revine (<see cref="RevenireVersiuneDeviz"/>); dacă era în istoric, versiunea mai nouă înlocuiește direct
+    /// pe cea mai veche. Refuzată dacă articolele ei, care nu mai rămân în alt deviz, au documente. Istoricul:
+    /// <see cref="StergereVersiuneDeviz"/>.
     /// </summary>
     internal static async Task<IResult> StergeVersiune(
         Guid proiectId, Guid versiuneId, string? motiv, DevizeDbContext db, IEnumerable<IUtilizariArticoleDeviz> utilizari, IServiciuPermisiuni permisiuni,
@@ -163,34 +166,68 @@ internal static class EndpointuriObiective
             .FirstOrDefaultAsync(x => x.Id == versiuneId && x.ProiectId == proiectId, ct);
         if (v is null)
             return Results.NotFound();
-        if (v.Stare == StareVersiuneDeviz.Inlocuita)
-            return Results.Conflict(new { mesaj = "Versiunea e în istoric (înlocuită de una mai nouă): se șterge doar versiunea în vigoare sau o ciornă." });
-        var copie = await db.Versiuni.AsNoTracking().Where(x => x.ProiectId == proiectId && x.VersiuneAnterioaraId == v.Id)
-            .OrderByDescending(x => x.Numar).Select(x => new { x.Tip, x.Numar }).FirstOrDefaultAsync(ct);
-        if (copie is not null)
-            return Results.Conflict(new { mesaj = $"Din această versiune a pornit {Eticheta(copie.Tip, copie.Numar)}: șterge-o întâi pe aceea." });
-        if (v.EsteBlocat)
+        var idsCiorne = await db.Versiuni.Where(x => x.ProiectId == proiectId && x.VersiuneAnterioaraId == v.Id && x.Stare == StareVersiuneDeviz.Ciorna)
+            .Select(x => x.Id).ToListAsync(ct);
+        var ciorne = await db.Versiuni.Include(x => x.Capitole).ThenInclude(c => c.Articole).AsSplitQuery()
+            .Where(x => idsCiorne.Contains(x.Id)).ToListAsync(ct);
+        var copii = await db.Versiuni.Where(x => x.ProiectId == proiectId && x.VersiuneAnterioaraId == v.Id && x.Stare != StareVersiuneDeviz.Ciorna)
+            .ToListAsync(ct);
+        if (v.EsteBlocat || copii.Count > 0)
         {
             if (await RefuzAprobareAsync(proiectId, permisiuni, utilizator, firma, ct) is { } refuz)
                 return refuz;
             if (string.IsNullOrWhiteSpace(motiv))
-                return Results.BadRequest(new { mesaj = "Versiunea e aprobată: scrie motivul ștergerii (rămâne în istoric)." });
+                return Results.BadRequest(new { mesaj = "Versiunea e aprobată sau face parte din istoria devizului: scrie motivul ștergerii (rămâne în istoric)." });
         }
 
-        if (await RefuzUtilizariAsync(db, proiectId, [v], utilizari, ct) is { } folosit)
+        if (await RefuzUtilizariAsync(db, proiectId, [v, .. ciorne], utilizari, ct) is { } folosit)
             return folosit;
 
+        var motivFinal = string.IsNullOrWhiteSpace(motiv) ? "ștergerea ciornei" : motiv.Trim();
+        var eticheta = $"{Eticheta(v.Tip, v.Numar)} — {v.Denumire}";
+        var cine = utilizator.Nume ?? string.Empty;
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
-        // Versiunea înlocuită de aceasta revine în vigoare, cu starea dinaintea înlocuirii.
-        var inlocuire = await db.Inlocuiri.Where(i => i.VersiuneNouaId == v.Id).OrderByDescending(i => i.La).FirstOrDefaultAsync(ct);
-        if (inlocuire is not null && await db.Versiuni.FirstOrDefaultAsync(x => x.Id == inlocuire.VersiuneInlocuitaId, ct) is { Stare: StareVersiuneDeviz.Inlocuita } veche)
+
+        // Lanțul înlocuirilor: O ← v (v o înlocuise pe O), v ← N (N a înlocuit-o pe v).
+        var inlocuireDeV = await db.Inlocuiri.Where(i => i.VersiuneNouaId == v.Id).OrderByDescending(i => i.La).FirstOrDefaultAsync(ct);
+        var inlocuireaLuiV = await db.Inlocuiri.Where(i => i.VersiuneInlocuitaId == v.Id).OrderByDescending(i => i.La).FirstOrDefaultAsync(ct);
+        var veche = inlocuireDeV is null ? null
+            : await db.Versiuni.FirstOrDefaultAsync(x => x.Id == inlocuireDeV.VersiuneInlocuitaId && x.ProiectId == proiectId, ct);
+        if (inlocuireaLuiV is not null)
         {
-            veche.Reactiveaza(inlocuire.StareAnterioara);
-            db.Reveniri.Add(new RevenireVersiuneDeviz(veche.Id, v.Id, $"{Eticheta(v.Tip, v.Numar)} — {v.Denumire}", inlocuire.StareAnterioara,
-                string.IsNullOrWhiteSpace(motiv) ? "ștergerea versiunii care o înlocuise" : motiv.Trim(), utilizator.Nume ?? string.Empty, ceas.Acum));
-            db.Inlocuiri.Remove(inlocuire);
+            // v era în istoric: versiunea mai nouă o înlocuiește direct pe cea mai veche (care rămâne în istoric).
+            db.Inlocuiri.Remove(inlocuireaLuiV);
+            if (inlocuireDeV is not null)
+            {
+                db.Inlocuiri.Remove(inlocuireDeV);
+                if (veche is not null)
+                    db.Inlocuiri.Add(new InlocuireVersiuneDeviz(veche.Id, inlocuireaLuiV.VersiuneNouaId, inlocuireaLuiV.La, inlocuireDeV.StareAnterioara));
+            }
+        }
+        else if (inlocuireDeV is not null)
+        {
+            // v era în vigoare: versiunea pe care o înlocuise revine, cu starea dinaintea înlocuirii.
+            if (veche is { Stare: StareVersiuneDeviz.Inlocuita })
+            {
+                veche.Reactiveaza(inlocuireDeV.StareAnterioara);
+                db.Reveniri.Add(new RevenireVersiuneDeviz(veche.Id, v.Id, eticheta, inlocuireDeV.StareAnterioara,
+                    string.IsNullOrWhiteSpace(motiv) ? "ștergerea versiunii care o înlocuise" : motiv.Trim(), cine, ceas.Acum));
+            }
+
+            db.Inlocuiri.Remove(inlocuireDeV);
         }
 
+        // Versiunile blocate pornite din v se leagă de versiunea dinaintea ei.
+        foreach (var c in copii)
+        {
+            c.RelegaDe(v.VersiuneAnterioaraId);
+            db.Stergeri.Add(new StergereVersiuneDeviz(proiectId, v.ObiectivId, v.Id, eticheta, v.Stare, c.Id, motivFinal, cine, ceas.Acum));
+        }
+
+        if (copii.Count == 0)
+            db.Stergeri.Add(new StergereVersiuneDeviz(proiectId, v.ObiectivId, v.Id, eticheta, v.Stare, null, motivFinal, cine, ceas.Acum));
+        foreach (var c in ciorne)
+            db.Versiuni.Remove(c);
         db.Versiuni.Remove(v);
         await db.SaveChangesAsync(ct);
         await tranzactie.CommitAsync(ct);

@@ -22,6 +22,7 @@ public sealed class DevizeDbContext(DbContextOptions<DevizeDbContext> optiuni) :
     public DbSet<ObiectivDeviz> Obiective => Set<ObiectivDeviz>();
     public DbSet<RevenireVersiuneDeviz> Reveniri => Set<RevenireVersiuneDeviz>();
     public DbSet<MutareObiectivDeviz> Mutari => Set<MutareObiectivDeviz>();
+    public DbSet<StergereVersiuneDeviz> Stergeri => Set<StergereVersiuneDeviz>();
 }
 
 internal sealed class ConfigurareObiectiv : IEntityTypeConfiguration<ObiectivDeviz>
@@ -48,6 +49,21 @@ internal sealed class ConfigurareRevenire : IEntityTypeConfiguration<RevenireVer
         b.Property(x => x.FacutaDe).HasMaxLength(200).IsRequired();
         b.Ignore(x => x.DocumentCorectatId);
         b.HasIndex(x => x.VersiuneReadusaId);
+    }
+}
+
+internal sealed class ConfigurareStergere : IEntityTypeConfiguration<StergereVersiuneDeviz>
+{
+    public void Configure(EntityTypeBuilder<StergereVersiuneDeviz> b)
+    {
+        b.ToTable("stergeri_versiuni");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.VersiuneStearsa).HasMaxLength(300).IsRequired();
+        b.Property(x => x.StareStearsa).HasConversion<string>().HasMaxLength(30);
+        b.Property(x => x.Motiv).HasMaxLength(1000).IsRequired();
+        b.Property(x => x.FacutaDe).HasMaxLength(200).IsRequired();
+        b.Ignore(x => x.DocumentCorectatId);
+        b.HasIndex(x => new { x.FirmaId, x.ProiectId });
     }
 }
 

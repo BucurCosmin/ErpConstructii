@@ -76,3 +76,45 @@ public interface IUtilizariArticoleDeviz
     /// <summary>Cheile stabile (dintre cele date) folosite de documente ale proiectului, cu un exemplu de document.</summary>
     Task<IReadOnlyDictionary<Guid, string>> FolositeAsync(Guid proiectId, IReadOnlyCollection<Guid> chei, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Ștergerea unei versiuni de deviz (D-59), ca istoric: ce versiune, din ce obiectiv, motivul. O versiune blocată care pornise
+/// din cea ștearsă (sau o înlocuise) se leagă de versiunea dinaintea ei; schimbarea ei e corectura de față
+/// (<see cref="VersiuneRelegataId"/>, regula 6). Fără versiune relegată, corectura e a versiunii șterse (rămâne în jurnal).
+/// </summary>
+public sealed class StergereVersiuneDeviz : EntitateFirma, ICorectieDocument
+{
+    private StergereVersiuneDeviz() { }
+
+    public StergereVersiuneDeviz(Guid proiectId, Guid obiectivId, Guid versiuneStearsaId, string versiuneStearsa, StareVersiuneDeviz stareStearsa,
+        Guid? versiuneRelegataId, string motiv, string facutaDe, DateTimeOffset la)
+    {
+        ProiectId = proiectId;
+        ObiectivId = obiectivId;
+        VersiuneStearsaId = versiuneStearsaId;
+        VersiuneStearsa = versiuneStearsa.Length > 300 ? versiuneStearsa[..300] : versiuneStearsa;
+        StareStearsa = stareStearsa;
+        VersiuneRelegataId = versiuneRelegataId;
+        Motiv = motiv.Length > 1000 ? motiv[..1000] : motiv;
+        FacutaDe = facutaDe.Length > 200 ? facutaDe[..200] : facutaDe;
+        La = la;
+    }
+
+    public Guid ProiectId { get; private set; }
+    public Guid ObiectivId { get; private set; }
+    public Guid VersiuneStearsaId { get; private set; }
+
+    /// <summary>„Ofertă nr. 3 — …”, ca istoric (versiunea ștearsă nu mai există).</summary>
+    public string VersiuneStearsa { get; private set; } = string.Empty;
+
+    public StareVersiuneDeviz StareStearsa { get; private set; }
+
+    /// <summary>Versiunea pornită din cea ștearsă, legată acum de versiunea dinaintea ei.</summary>
+    public Guid? VersiuneRelegataId { get; private set; }
+
+    public string Motiv { get; private set; } = string.Empty;
+    public string FacutaDe { get; private set; } = string.Empty;
+    public DateTimeOffset La { get; private set; }
+
+    public Guid DocumentCorectatId => VersiuneRelegataId ?? VersiuneStearsaId;
+}

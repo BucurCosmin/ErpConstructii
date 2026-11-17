@@ -1,4 +1,4 @@
-import { Alert, Card, Col, Empty, Input, Modal, Progress, Row, Segmented, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography, theme } from 'antd'
+import { Alert, Card, Col, Empty, Input, Modal, Progress, Row, Segmented, Select, Skeleton, Space, Statistic, Table, Tag, Tooltip, Typography, theme } from 'antd'
 import type { TableColumnsType } from 'antd'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
@@ -52,9 +52,10 @@ function Consum({ buget, consumat }: { buget: number; consumat: number }) {
  * facturate, materiale cumpărate și neconsumate).
  */
 export function BugetProiect({ proiectId }: { proiectId: string }) {
-  // Bugetul pe obiectiv sau pe tot proiectul (D-59).
-  const [obiectiv, setObiectiv] = useState<string>()
-  const { data, isLoading, error } = useBugetProiect(proiectId, obiectiv)
+  // Bugetul pe tot proiectul, pe un obiectiv sau pe un deviz anume (D-59): „” | „o:<id>” | „v:<id>”.
+  const [alegere, setAlegere] = useState('')
+  const { data, isLoading, error } = useBugetProiect(proiectId,
+    alegere.startsWith('v:') ? { versiuneId: alegere.slice(2) } : alegere.startsWith('o:') ? { obiectivId: alegere.slice(2) } : {})
   const { token } = theme.useToken()
   const [cauta, setCauta] = useState('')
   const [filtru, setFiltru] = useState<'toate' | 'cu-costuri' | 'depasite'>('toate')
@@ -135,16 +136,31 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
 
   const obiective = data.obiective ?? []
   const referinte = data.referinte ?? []
+  const devize = data.devize ?? []
   return (
     <Space orientation="vertical" size={12} style={{ width: "100%" }}>
-      {obiective.length > 1 && (
+      {devize.length > 0 && (
         <Space wrap>
-          <Typography.Text strong>Obiectivul:</Typography.Text>
-          <Segmented<string> value={obiectiv ?? ''} onChange={(x) => setObiectiv(x || undefined)}
-            options={[{ value: '', label: 'Tot proiectul' }, ...obiective.map((o) => ({ value: o.id, label: o.denumire }))]} />
-          {obiectiv && (
+          <Typography.Text strong>Devizul:</Typography.Text>
+          <Select value={alegere} onChange={setAlegere} style={{ minWidth: 420, maxWidth: '100%' }} popupMatchSelectWidth={false}
+            showSearch={{ optionFilterProp: 'label' }}
+            options={[
+              { value: '', label: obiective.length > 1 ? 'Tot proiectul (devizele de referință ale tuturor obiectivelor)' : 'Devizul de referință al proiectului' },
+              ...obiective.map((o) => ({
+                label: `Obiectivul ${o.denumire}`,
+                title: o.denumire,
+                options: [
+                  ...(obiective.length > 1 ? [{ value: `o:${o.id}`, label: `${o.denumire} — devizul de referință` }] : []),
+                  ...devize.filter((d) => d.obiectivId === o.id).map((d) => ({
+                    value: `v:${d.id}`,
+                    label: `${o.denumire} · ${tipuriVersiune[d.tip as keyof typeof tipuriVersiune] ?? d.tip} nr. ${d.numar} · ${d.denumire} (${stariVersiune[d.stare].eticheta.toLowerCase()})`,
+                  })),
+                ],
+              })),
+            ]} />
+          {alegere && (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Pe un obiectiv intră doar costurile pe articolele devizului lui; cheltuielile generale, serviciile și materialele cumpărate sunt ale proiectului.
+              Pe un obiectiv sau deviz intră doar costurile pe articolele lui; cheltuielile generale, serviciile și materialele cumpărate sunt ale proiectului.
             </Typography.Text>
           )}
         </Space>
