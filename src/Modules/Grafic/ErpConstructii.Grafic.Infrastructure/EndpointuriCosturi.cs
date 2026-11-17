@@ -1,3 +1,4 @@
+using ErpConstructii.Formulare;
 using ErpConstructii.Identitate;
 using ErpConstructii.Infrastructure.Autorizare;
 using ErpConstructii.SharedKernel;
@@ -15,6 +16,9 @@ public sealed record CosturiGraficDto(
     IReadOnlyList<SursaDocumentCost> Surse);
 
 public sealed record AlocareDocumentCerere(SursaDocumentCost Sursa, Guid DocumentId, IReadOnlyList<AlocareCeruta> Alocari);
+
+/// <summary>Raportul „valoare în grafic vs cost ERP” (D-57, etapa 3) pe actualizarea curentă.</summary>
+public sealed record BugetGraficDto(string Moneda, string Grafic, int? Actualizare, DateOnly? DataActualizare, RaportBugetGrafic Raport);
 
 public sealed record DocumentAles(SursaDocumentCost Sursa, Guid DocumentId);
 
@@ -45,6 +49,73 @@ internal static class EndpointuriCosturi
             .WithSummary("Alocă restul nealocat al documentelor alese pe o singură activitate / nod WBS; întoarce câte documente s-au schimbat")
             .Produces<int>().Produces(StatusCodes.Status400BadRequest).Produces(StatusCodes.Status404NotFound)
             .CerePermisiune(editare).CerePermisiune(Permisiuni.PreturiCost);
+
+        // Valoarea din grafic față de costurile ERP (D-57, etapa 3).
+        g.MapGet("/{graficId:guid}/costuri/buget", Buget).WithName("BugetGrafic")
+            .WithSummary("Valoarea planificată / executată din grafic față de costurile ERP alocate, pe arborele WBS: abatere, indice de cost, prognoză, alerte")
+            .Produces<BugetGraficDto>().Produces(StatusCodes.Status404NotFound).CerePermisiune(vizualizare).CerePermisiune(Permisiuni.PreturiCost);
+        g.MapGet("/{graficId:guid}/costuri/buget.xlsx", BugetExcel).WithName("BugetGraficExcel")
+            .WithSummary("Raportul buget / cost ca fișier Excel (arborele cu niveluri de grupare)")
+            .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound).CerePermisiune(vizualizare).CerePermisiune(Permisiuni.PreturiCost);
+        g.MapGet("/{graficId:guid}/costuri/buget.pdf", BugetPdf).WithName("BugetGraficPdf")
+            .WithSummary("Raportul buget / cost în PDF: nodurile până la nivelul ales (fără nivel: tot, cu activitățile), opțional doar alertele")
+            .Produces(StatusCodes.Status200OK).Produces(StatusCodes.Status404NotFound).CerePermisiune(vizualizare).CerePermisiune(Permisiuni.PreturiCost);
+    }
+
+    private sealed record ContextBuget(GraficExecutie Grafic, VersiuneGrafic? Versiune, RaportBugetGrafic Raport);
+
+    private static async Task<ContextBuget?> BugetAsync(
+        Guid proiectId, Guid graficId, decimal? prag, GraficDbContext db, IEnumerable<ISursaDocumenteCost> surse, ICursValutar curs, CancellationToken ct)
+    {
+        if (await ContextAsync(proiectId, graficId, db, surse, ct) is not { } c)
+            return null;
+        var costuri = await CalculeazaAsync(c, db, curs, ct);
+        var vid = c.Grafic.VersiuneCurentaId;
+        var versiune = vid is null ? null : await db.Versiuni.AsNoTracking().FirstOrDefaultAsync(v => v.Id == vid, ct);
+        var noduri = await db.Noduri.AsNoTracking().Where(n => n.VersiuneId == vid).OrderBy(n => n.Ordine).ToListAsync(ct);
+        var activitati = await db.Activitati.AsNoTracking().Where(a => a.VersiuneId == vid).OrderBy(a => a.Start).ThenBy(a => a.Cod).ToListAsync(ct);
+        var p = prag is > 0 and < 10 ? prag.Value : BugetGrafic.PragImplicit;
+        return new ContextBuget(c.Grafic, versiune,
+            BugetGrafic.Construieste(noduri.Select(n => n.Canonic()).ToList(), activitati.Select(a => a.Canonic()).ToList(), costuri, p));
+    }
+
+    private static string Actualizare(VersiuneGrafic? v) => v is null ? "—" : $"actualizarea nr. {v.Numar} din {v.DataActualizare:dd.MM.yyyy}";
+
+    private static string Fisier(GraficExecutie g, string extensie) =>
+        $"Buget_cost_{new string((g.CodSursa ?? g.Denumire).Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray())}.{extensie}";
+
+    private static async Task<IResult> Buget(
+        Guid proiectId, Guid graficId, decimal? prag, GraficDbContext db, IEnumerable<ISursaDocumenteCost> surse, ICursValutar curs, CancellationToken ct) =>
+        await BugetAsync(proiectId, graficId, prag, db, surse, curs, ct) is { } b
+            ? Results.Ok(new BugetGraficDto(b.Grafic.Moneda ?? "RON", b.Grafic.Denumire, b.Versiune?.Numar, b.Versiune?.DataActualizare, b.Raport))
+            : Results.NotFound();
+
+    private static async Task<IResult> BugetExcel(
+        Guid proiectId, Guid graficId, decimal? prag, GraficDbContext db, IEnumerable<ISursaDocumenteCost> surse, ICursValutar curs, ICeas ceas,
+        CancellationToken ct)
+    {
+        if (await BugetAsync(proiectId, graficId, prag, db, surse, curs, ct) is not { } b)
+            return Results.NotFound();
+        var continut = ExportBugetGrafic.Excel(b.Raport, b.Grafic.Denumire, Actualizare(b.Versiune), b.Grafic.Moneda ?? "RON", ceas.Acum);
+        return Results.File(continut, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", Fisier(b.Grafic, "xlsx"));
+    }
+
+    private static async Task<IResult> BugetPdf(
+        Guid proiectId, Guid graficId, decimal? prag, int? nivel, bool? doarAlerte, GraficDbContext db, IEnumerable<ISursaDocumenteCost> surse,
+        ICursValutar curs, IServiciuDocumente documente, IInterogareFirma firme, ErpConstructii.Proiecte.IInterogareProiecte proiecte, ICeas ceas,
+        CancellationToken ct)
+    {
+        if (await BugetAsync(proiectId, graficId, prag, db, surse, curs, ct) is not { } b)
+            return Results.NotFound();
+        var randuri = ExportBugetGrafic.Filtreaza(b.Raport, nivel is > 0 ? nivel : null, doarAlerte == true);
+        var selectie = (nivel is > 0 ? $"structura WBS până la nivelul {nivel}" : "tot graficul, cu activitățile") + (doarAlerte == true ? ", doar alertele" : string.Empty);
+        var proiect = await proiecte.CautaPentruDocumentAsync(proiectId, ct);
+        var f = await firme.FirmaActivaAsync(ct);
+        var antet = new AntetFirma(f?.Denumire ?? string.Empty, f?.Cui, f?.NrRegCom, f?.Adresa.Formatata());
+        var (aspect, date) = ExportBugetGrafic.Pdf(b.Raport, randuri, b.Grafic.Denumire, proiect is null ? string.Empty : $"{proiect.Cod} — {proiect.Denumire}",
+            Actualizare(b.Versiune), b.Grafic.Moneda ?? "RON", selectie, ceas.Acum);
+        var doc = await documente.PdfAsync("raport-buget-grafic", antet, aspect, date, Fisier(b.Grafic, "pdf"), ct);
+        return Results.File(doc.Continut, doc.TipContinut, doc.NumeFisier);
     }
 
     /// <summary>Graficul, structura actualizării curente și documentele proiectului.</summary>

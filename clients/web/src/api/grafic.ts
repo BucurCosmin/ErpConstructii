@@ -451,3 +451,48 @@ export const dinValoareTinta = (v: string): { tip: TipTinta; cheie: string } => 
   const [tip, ...rest] = v.split('\u0001')
   return { tip: tip as TipTinta, cheie: rest.join('\u0001') }
 }
+
+// ---------------------------------------------------------------- valoarea din grafic vs costul ERP (D-57, etapa 3)
+
+export interface RandBugetGrafic {
+  adancime: number
+  esteNod: boolean
+  cheie: string
+  cod: string
+  denumire: string
+  stadiu: StadiuActivitate | null
+  valoarePlanificata: number
+  procent: number
+  valoareExecutata: number
+  costErp: number
+  costErpLei: number
+  documente: number
+  faraCurs: number
+  /** Valoarea executată − costul ERP (negativ = cost peste valoarea executată). */
+  abatere: number
+  indiceCost: number | null
+  prognoza: number
+  procentConsumat: number | null
+  alerta: string | null
+}
+
+export interface BugetGrafic {
+  moneda: string
+  grafic: string
+  actualizare: number | null
+  dataActualizare: string | null
+  raport: { randuri: RandBugetGrafic[]; total: RandBugetGrafic; costFaraTinta: CostTinta; pragAlerta: number }
+}
+
+export const useBugetGrafic = (proiectId: string, graficId: string | undefined, prag: number, activ: boolean) =>
+  useQuery({
+    queryKey: [...cheie(proiectId), graficId, 'costuri', 'buget', prag],
+    queryFn: () => api.get<BugetGrafic>(`${baza(proiectId)}/${graficId}/costuri/buget?prag=${prag}`),
+    enabled: !!graficId && activ,
+  })
+
+export const bugetGraficExcel = (proiectId: string, graficId: string, prag: number) =>
+  api.getBinar(`${baza(proiectId)}/${graficId}/costuri/buget.xlsx?prag=${prag}`)
+
+export const bugetGraficPdf = (proiectId: string, graficId: string, prag: number, nivel: number | null, doarAlerte: boolean) =>
+  api.getBinar(`${baza(proiectId)}/${graficId}/costuri/buget.pdf?prag=${prag}${nivel ? `&nivel=${nivel}` : ''}${doarAlerte ? '&doarAlerte=true' : ''}`)

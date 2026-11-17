@@ -1,6 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- Exportul raportului buget / cost în Excel. -->
+    <PackageReference Include="DocumentFormat.OpenXml" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Infrastructure\ErpConstructii.Infrastructure.csproj" />
@@ -8,5 +10,7 @@
     <!-- Contractele publice ale altor module (regula 1); NU infrastructura lor. -->
     <ProjectReference Include="..\..\Identitate\ErpConstructii.Identitate\ErpConstructii.Identitate.csproj" />
     <ProjectReference Include="..\..\Proiecte\ErpConstructii.Proiecte\ErpConstructii.Proiecte.csproj" />
+    <!-- PDF-ul raportului prin IServiciuDocumente. -->
+    <ProjectReference Include="..\..\Formulare\ErpConstructii.Formulare\ErpConstructii.Formulare.csproj" />
   </ItemGroup>
 </Project>

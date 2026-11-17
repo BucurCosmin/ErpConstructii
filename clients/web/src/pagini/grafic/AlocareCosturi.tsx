@@ -234,7 +234,7 @@ export function AlocareCosturi({ proiectId, graficId, costuri, continutCurent, p
         title={deAlocat.length
           ? `${deAlocat.length} documente au costuri nealocate pe grafic: ${formatLei(nealocatLei)} lei.`
           : 'Toate costurile directe ale proiectului sunt alocate pe grafic.'}
-        description={`Alocat: ${formatLei(costuri.total.lei)} lei${costuri.total.monedaGrafic !== null ? ` = ${formatLei(costuri.total.monedaGrafic)} ${m}` : ''} (curs BNR din data fiecărui document).`
+        description={`Alocat: ${formatLei(costuri.total.lei)} lei${costuri.total.monedaGrafic !== null ? ` = ${formatLei(costuri.total.monedaGrafic)} ${m}${costuri.total.faraCurs ? ` (fără ${costuri.total.faraCurs} alocări fără curs BNR)` : ''}` : ''} (curs BNR din data fiecărui document).`
           + (costuri.faraTinta.lei ? ` Dintre care ${formatLei(costuri.faraTinta.lei)} lei pe ținte care nu mai sunt în actualizarea curentă.` : '')} />
       <Space wrap>
         <Segmented<FiltruStare> value={filtru} onChange={setFiltru}

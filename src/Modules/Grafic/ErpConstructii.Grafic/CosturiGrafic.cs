@@ -117,7 +117,7 @@ public sealed record StructuraGrafic(IReadOnlyDictionary<string, string?> Parint
 /// <summary>Cursurile unui document: moneda documentului și moneda graficului, la data documentului (BNR).</summary>
 public sealed record CursuriDocument(CursValutar? Document, CursValutar? Grafic);
 
-/// <summary>Suma costurilor alocate pe o țintă: în lei și în moneda graficului (null dacă lipsește un curs).</summary>
+/// <summary>Suma costurilor alocate pe o țintă: în lei și în moneda graficului (fără alocările cărora le lipsește cursul BNR: <paramref name="FaraCurs"/>).</summary>
 public sealed record CostTinta(decimal Lei, decimal? MonedaGrafic, int Documente, int FaraCurs);
 
 /// <summary>O alocare valorizată (pentru detaliul unei ținte).</summary>
@@ -380,6 +380,6 @@ public static class CalculCosturiGrafic
                 _grafic += grafic.Value;
         }
 
-        public CostTinta Cost() => new(_lei, _faraCurs > 0 ? null : _grafic, _documente.Count, _faraCurs);
+        public CostTinta Cost() => new(_lei, _grafic, _documente.Count, _faraCurs);
     }
 }

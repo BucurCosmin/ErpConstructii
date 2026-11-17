@@ -54,10 +54,19 @@ Exportul nu conține linii de bază (doar datele planificate curente).
 - Ecranul: Grafic → „Alocare costuri” (documentele cu starea alocării, alocarea pe linii, selecția în masă) și coloanele „Cost ERP (lei / moneda
   graficului)” în arbore; fișa activității → „Costuri ERP”.
 
-## Etapa 3 — costurile pe WBS / activitate
+## Etapa 3 — valoarea din grafic vs costul ERP (făcută)
 
-Buget din grafic vs costurile ERP alocate (coloanele există din etapa 2), abaterea, procentul fizic față de procentul consumat;
-rapoarte PDF / Excel. Facturile legate de un contract pot moșteni nodul WBS al contractului (legarea contract ↔ WBS).
+- `BugetGrafic` (pur): pe arborele WBS, în moneda graficului — valoarea planificată (costul planificat din Primavera), valoarea
+  executată (planificată × procentul de execuție, ca valoare câștigată), costul ERP alocat (etapa 2), abaterea (executat − cost),
+  indicele de cost (executat / cost), costul consumat din planificat, prognoza la terminare (cost + valoarea rămasă de executat).
+  Alerte: cost peste valoarea executată cu mai mult decât pragul (implicit 10%), cost fără valoare planificată, cost fără execuție.
+  Nodul: suma activităților de sub el; costul nodului include alocările directe pe nod. Totalul include costurile „fără țintă”.
+- Endpointurile `GET …/costuri/buget` (`?prag=`), `…/buget.xlsx` (tot arborele, cu niveluri de grupare Excel), `…/buget.pdf`
+  (`?nivel=&doarAlerte=`, formatul standard, pagină orizontală).
+- Ecranul: Grafic → „Buget vs cost” (totaluri, nivel / doar alerte / fără rânduri goale, pragul, Excel / PDF).
+- **Observație pe exportul pilot:** doar 120 de activități au resurse cu valoare; costurile alocate pe activitățile fără valoare
+  apar ca alertă „cost fără valoare planificată”. Alocarea pe nodul WBS părinte le compară cu valoarea nodului.
+- Rămâne: legarea contract ↔ nod WBS (facturile contractului moștenesc ținta), dacă propunerile după contract nu ajung.
 
 ## Etapa 4 — articole de deviz și progres
 

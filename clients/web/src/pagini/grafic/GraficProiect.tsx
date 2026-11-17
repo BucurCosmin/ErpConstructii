@@ -9,6 +9,7 @@ import type { ActivitateGrafic, ContinutGrafic, CostTinta, NodWbs } from '../../
 import { formatData, formatLei } from '../../util/format'
 import { descarcaFisier } from '../../util/pdf'
 import { AlocareCosturi } from './AlocareCosturi'
+import { BugetCostGrafic } from './BugetCostGrafic'
 import { ComparatieGrafic } from './ComparatieGrafic'
 import { DetaliuActivitate } from './DetaliuActivitate'
 import { ImportGrafic, zile } from './ImportGrafic'
@@ -93,7 +94,7 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
   // Costurile ERP alocate pe grafic: ca la buget (D-57, etapa 2).
   const vedeCosturi = (permisiuni.data?.includes('buget.vizualizare') && permisiuni.data.includes('date.preturi_cost')) ?? false
   const poateAloca = vedeCosturi && (permisiuni.data?.includes('buget.editare') ?? false)
-  const [vedere, setVedere] = useState<'grafic' | 'costuri'>('grafic')
+  const [vedere, setVedere] = useState<'grafic' | 'costuri' | 'buget'>('grafic')
   const sterge = useStergeVersiuneGrafic(proiectId)
 
   const [graficId, setGraficId] = useState<string>()
@@ -252,7 +253,7 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
             render: (_: unknown, r: Rand) => {
               const x = costErp(r)
               if (!x) return ''
-              return x.monedaGrafic === null ? <Tooltip title={`${x.faraCurs} alocări fără curs BNR`}>—</Tooltip> : formatLei(x.monedaGrafic)
+              return x.faraCurs > 0 ? <Tooltip title={`Fără ${x.faraCurs} alocări cărora le lipsește cursul BNR`}><Typography.Text type="warning">{formatLei(x.monedaGrafic ?? 0)}*</Typography.Text></Tooltip> : formatLei(x.monedaGrafic ?? 0)
             },
           },
         ]
@@ -350,18 +351,20 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
 
       {vedeCosturi && (
         <Space wrap>
-          <Segmented value={vedere} onChange={(v) => setVedere(v as 'grafic' | 'costuri')}
-            options={[{ value: 'grafic', label: 'Grafic' }, { value: 'costuri', label: `Alocare costuri${deAlocat ? ` (${deAlocat} de alocat)` : ''}` }]} />
+          <Segmented value={vedere} onChange={(v) => setVedere(v as 'grafic' | 'costuri' | 'buget')}
+            options={[{ value: 'grafic', label: 'Grafic' }, { value: 'costuri', label: `Alocare costuri${deAlocat ? ` (${deAlocat} de alocat)` : ''}` }, { value: 'buget', label: 'Buget vs cost' }]} />
           {k && (
             <Typography.Text type="secondary">
               Costuri ERP alocate: <b>{formatLei(k.total.lei)} lei</b>
-              {k.total.monedaGrafic !== null && <> = <b>{formatLei(k.total.monedaGrafic)} {moneda}</b></>}
+              {k.total.monedaGrafic !== null && <> = <b>{formatLei(k.total.monedaGrafic)} {moneda}</b>{k.total.faraCurs > 0 && <Typography.Text type="warning"> (fără {k.total.faraCurs} alocări fără curs BNR)</Typography.Text>}</>}
             </Typography.Text>
           )}
         </Space>
       )}
 
-      {vedere === 'costuri' && vedeCosturi && grafic ? (
+      {vedere === 'buget' && vedeCosturi && grafic ? (
+        <BugetCostGrafic proiectId={proiectId} graficId={grafic.id} laActivitate={setActivitate} />
+      ) : vedere === 'costuri' && vedeCosturi && grafic ? (
         k ? <AlocareCosturi proiectId={proiectId} graficId={grafic.id} costuri={k} continutCurent={continutCurent.data} poateEdita={poateAloca} /> : <Skeleton active />
       ) : (<>
       <Space wrap>
