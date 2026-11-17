@@ -246,7 +246,20 @@ export function DetaliiDeviz() {
     return numara(arbore)
   }, [arbore])
   const nrArticole = articole.length
-  const areEchipament = (data?.recapitulatie.cheltuieliDirecteResurse.echipament ?? 0) !== 0
+  // Devizul de ofertă (fără cost direct): recapitulația din valorile ofertei, pe obiecte și pe componente.
+  const oferta = useMemo(() => {
+    const zero = { material: 0, manopera: 0, utilaj: 0, transport: 0, echipament: 0, total: 0 }
+    const aduna = (lista: typeof articole) => lista.reduce((s, a) => {
+      const v = a.valoareOferta
+      return v ? { material: s.material + v.material, manopera: s.manopera + v.manopera, utilaj: s.utilaj + v.utilaj,
+        transport: s.transport + v.transport, echipament: s.echipament + v.echipament, total: s.total + v.total } : s
+    }, zero)
+    return {
+      total: aduna(articole),
+      obiecte: (data?.capitole ?? []).map((c) => ({ cod: c.cod, denumire: c.denumire, valoare: aduna(capitoleToate([c]).flatMap((x) => x.articole)).total })),
+    }
+  }, [articole, data])
+  const areEchipament = ((modOferta ? oferta.total.echipament : data?.recapitulatie.cheltuieliDirecteResurse.echipament) ?? 0) !== 0
   const areOferta = articole.some((a) => a.pretOfertaUnitar)
   const moneda = data?.versiune.moneda ?? 'RON'
   const formatOferta = (v: number) => (moneda === 'RON' ? formatLei(v) : `${v.toLocaleString('ro-RO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${moneda}`)
@@ -433,7 +446,7 @@ export function DetaliiDeviz() {
   ]
 
   const rec = data?.recapitulatie
-  const directe = rec?.cheltuieliDirecteResurse
+  const directe = modOferta ? oferta.total : rec?.cheltuieliDirecteResurse
 
   return (
     <>
@@ -703,9 +716,36 @@ export function DetaliiDeviz() {
         </Col>
 
         <Col xs={24} xl={14}>
-            <Card size="small" title="Recapitulație">
+            <Card size="small" title={modOferta ? `Recapitulație ofertă (${moneda})` : 'Recapitulație'}>
               <Skeleton loading={isLoading} active>
-                {rec && data && directe && (
+                {modOferta && data && (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {[
+                        ...oferta.obiecte.map((o) => ({ e: [o.cod, o.denumire].filter(Boolean).join(' — '), v: o.valoare })),
+                        { e: 'Total pe obiecte', v: oferta.total.total, b: true, linie: true },
+                        { e: 'din care material', v: oferta.total.material },
+                        { e: 'manoperă', v: oferta.total.manopera },
+                        ...(oferta.total.utilaj ? [{ e: 'utilaj', v: oferta.total.utilaj }] : []),
+                        ...(oferta.total.transport ? [{ e: 'transport', v: oferta.total.transport }] : []),
+                        ...(oferta.total.echipament ? [{ e: 'echipament', v: oferta.total.echipament }] : []),
+                        ...(data.parametri.cotaTva > 0 ? [
+                          { e: `TVA (${formatProcent(data.parametri.cotaTva)})`, v: oferta.total.total * data.parametri.cotaTva, linie: true },
+                          { e: 'TOTAL CU TVA', v: oferta.total.total * (1 + data.parametri.cotaTva), b: true, mare: true },
+                        ] : []),
+                      ].map((r, i) => (
+                        <tr key={`${i}-${r.e}`} style={{ borderTop: 'linie' in r && r.linie ? `1px solid ${token.colorBorder}` : undefined }}>
+                          <td style={{ padding: '3px 0', fontWeight: 'b' in r && r.b ? 600 : 400, fontSize: 'mare' in r && r.mare ? 16 : undefined,
+                            paddingInlineStart: r.e === 'manoperă' || r.e === 'utilaj' || r.e === 'transport' || r.e === 'echipament' ? 62 : 0 }}>{r.e}</td>
+                          <td className="numeric" style={{ padding: '3px 0', fontWeight: 'b' in r && r.b ? 600 : 400, fontSize: 'mare' in r && r.mare ? 16 : undefined }}>
+                            {formatOferta(r.v)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {!modOferta && rec && data && directe && (
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <tbody>
                       {[
@@ -737,7 +777,7 @@ export function DetaliiDeviz() {
             </Card>
         </Col>
         <Col xs={24} xl={10}>
-            <Card size="small" title="Structura costurilor directe">
+            <Card size="small" title={modOferta ? 'Structura ofertei pe componente' : 'Structura costurilor directe'}>
               {directe && directe.total > 0 && (
                 <Flex vertical gap={8}>
                   {[
