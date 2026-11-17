@@ -1,4 +1,4 @@
-﻿using ErpConstructii.SharedKernel.Import;
+using ErpConstructii.SharedKernel.Import;
 
 namespace ErpConstructii.Devize.Import;
 
@@ -16,7 +16,9 @@ public interface IImportatorDeviz : IImportator<DevizCanonic>;
 /// <summary>Alte fișiere ale aceluiași deviz, citite împreună cu fișierul principal (ex. lista F3 lângă devizul ISDP).</summary>
 /// <param name="Curs">Cursul ofertei (lei / unitate), dacă îl dă utilizatorul; altfel se deduce (ISDP: din F3).</param>
 /// <param name="Moneda">Moneda ofertei, când nu reiese din fișiere (ex. fără F3).</param>
-public sealed record OptiuniImportDeviz(IReadOnlyList<SursaImport> Anexe, decimal? Curs = null, string? Moneda = null);
+/// <param name="Componente">Alegerea utilizatorului pentru componentele de preț ale sursei (cheie → componenta devizului), D-58.</param>
+public sealed record OptiuniImportDeviz(IReadOnlyList<SursaImport> Anexe, decimal? Curs = null, string? Moneda = null,
+    IReadOnlyDictionary<string, Calcul.TipResursa>? Componente = null);
 
 /// <summary>Importator care primește și fișiere anexe (ISDP: devizul cu resurse + F3 opțional) și opțiunile ofertei.</summary>
 public interface IImportatorDevizCuAnexe : IImportatorDeviz

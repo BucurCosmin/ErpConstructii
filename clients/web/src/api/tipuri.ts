@@ -272,6 +272,43 @@ export interface PrevizualizareImport {
   resurse: ResursaImport[] | null
   reimport: ReimportDeviz | null
   fisierDejaImportat: string | null
+  /** Componentele de preț ale sursei și componenta devizului aleasă (null = de ales, D-58). */
+  componente: ComponentaPret[] | null
+  /** Secțiunile citite (BOQ: foile), cu totalurile lor. */
+  sectiuni: SectiuneImport[] | null
+  ignorate: { sursa: string; motiv: string }[] | null
+  /** Sursa e un obiect al unui deviz mai mare (BOQ): se adaugă / înlocuiește în devizul ales. */
+  peObiecte: boolean
+  tinta: TintaImport | null
+}
+
+export type TipResursa = 'Material' | 'Manopera' | 'Utilaj' | 'Transport' | 'Echipament'
+
+export interface ComponentaPret {
+  cheie: string
+  eticheta: string
+  tip: TipResursa | null
+  sigura: boolean
+}
+
+export interface SectiuneImport {
+  cod: string
+  denumire: string
+  sursa: string
+  articole: number
+  calculat: number
+  declarat: number | null
+  declaratRezumat: number | null
+}
+
+export interface TintaImport {
+  versiuneId: string
+  versiune: string
+  /** Ciorna de lucru care se modifică; null = se creează la confirmare. */
+  versiuneLucruId: string | null
+  obiecte: string[]
+  obiect: string
+  inlocuieste: boolean
 }
 
 /** Fișierele importului de deviz: principalul (ISDP: deviz cu resurse) și, opțional, lista F3, cursul și moneda ofertei. */
@@ -282,6 +319,10 @@ export interface FisiereImportDeviz {
   moneda?: string | null
   /** Denumirea versiunii (la confirmare); fără ea, titlul din fișier. */
   denumire?: string | null
+  /** Alegerea componentelor de preț neclare: cheia componentei → componenta devizului (D-58). */
+  componente?: Record<string, TipResursa> | null
+  /** Importul pe obiecte: devizul în care intră obiectul (null = deviz nou). */
+  versiuneTintaId?: string | null
 }
 
 // ---------------------------------------------------------------- Administrare

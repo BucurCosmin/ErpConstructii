@@ -22,15 +22,18 @@ public sealed record VersiuneNouaCerere(string? Denumire);
 public sealed record RezultatEditareDeviz(Guid VersiuneId, int Numar, bool VersiuneNoua, Guid? ArticolId = null);
 
 public sealed record ArticolComparatDto(
-    Guid ArticolId, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal Valoare, string Capitol);
+    Guid ArticolId, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, decimal PretUnitar, decimal Valoare, string Capitol,
+    decimal PretOferta = 0, decimal ValoareOferta = 0);
 
 public sealed record DiferentaVersiuneDto(
-    Guid CheieStabila, string Tip, ArticolComparatDto? Vechi, ArticolComparatDto? Nou, IReadOnlyList<string> Campuri, decimal DiferentaValoare);
+    Guid CheieStabila, string Tip, ArticolComparatDto? Vechi, ArticolComparatDto? Nou, IReadOnlyList<string> Campuri, decimal DiferentaValoare,
+    decimal DiferentaOferta = 0);
 
 /// <summary>Ce s-a schimbat față de versiunea din care a pornit (sau față de <c>?fata=</c>).</summary>
 public sealed record ComparatieVersiuniDto(
     Guid VersiuneVecheId, int NumarVechi, string StareVeche, IReadOnlyList<DiferentaVersiuneDto> Diferente,
-    decimal TotalFaraTvaVechi, decimal TotalFaraTvaNou, decimal TotalCuTvaVechi, decimal TotalCuTvaNou);
+    decimal TotalFaraTvaVechi, decimal TotalFaraTvaNou, decimal TotalCuTvaVechi, decimal TotalCuTvaNou, decimal OfertaVeche = 0, decimal OfertaNoua = 0,
+    string Moneda = "RON");
 
 /// <summary>
 /// Lucrul pe o versiune de deviz: redenumire și ștergere (ciornă), editarea articolelor, „Modifică” = ciornă nouă pornită
@@ -262,10 +265,12 @@ internal static class EndpointuriEditareDeviz
         var c = ComparareVersiuni.Compara(vechi, noua);
         static ArticolComparatDto? Dto(ArticolComparat? a) => a is null
             ? null
-            : new(a.ArticolId, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.PretUnitar.Total, a.Valoare, a.Capitol);
+            : new(a.ArticolId, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.PretUnitar.Total, a.Valoare, a.Capitol, a.PretOferta, a.ValoareOferta);
         return Results.Ok(new ComparatieVersiuniDto(vechi.Id, vechi.Numar, vechi.Stare.ToString(),
-            c.Diferente.Select(d => new DiferentaVersiuneDto(d.CheieStabila, d.Tip.ToString(), Dto(d.Vechi), Dto(d.Nou), d.Campuri, d.DiferentaValoare)).ToList(),
-            c.RecapitulatieVeche.TotalFaraTva, c.RecapitulatieNoua.TotalFaraTva, c.RecapitulatieVeche.TotalCuTva, c.RecapitulatieNoua.TotalCuTva));
+            c.Diferente.Select(d => new DiferentaVersiuneDto(d.CheieStabila, d.Tip.ToString(), Dto(d.Vechi), Dto(d.Nou), d.Campuri, d.DiferentaValoare,
+                d.DiferentaOferta)).ToList(),
+            c.RecapitulatieVeche.TotalFaraTva, c.RecapitulatieNoua.TotalFaraTva, c.RecapitulatieVeche.TotalCuTva, c.RecapitulatieNoua.TotalCuTva,
+            c.OfertaVeche, c.OfertaNoua, noua.Moneda));
     }
 
     private static async Task<IResult> Excel(Guid proiectId, Guid versiuneId, DevizeDbContext db, CancellationToken ct)

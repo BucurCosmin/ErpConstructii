@@ -74,6 +74,11 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("modificat_la");
 
+                    b.Property<string>("Observatii")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("observatii");
+
                     b.Property<int>("Ordine")
                         .HasColumnType("integer")
                         .HasColumnName("ordine");
@@ -139,6 +144,11 @@ namespace ErpConstructii.Devize.Infrastructure.Migrari
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)")
                         .HasColumnName("simbol_baza");
+
+                    b.Property<string>("Specificatie")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("specificatie");
 
                     b.Property<string>("TipArticol")
                         .IsRequired()

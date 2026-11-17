@@ -10,8 +10,10 @@ public enum TipDiferentaVersiune
 }
 
 /// <summary>Datele unui articol într-una din cele două versiuni comparate (valoarea = cost direct, cu rotunjirea versiunii).</summary>
+/// <param name="PretOferta">Prețul de ofertă unitar total, în moneda versiunii (0 = fără ofertă).</param>
 public sealed record ArticolComparat(
-    Guid ArticolId, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, ValoriResurse PretUnitar, decimal Valoare, string Capitol);
+    Guid ArticolId, string Simbol, string Denumire, string UnitateMasura, decimal Cantitate, ValoriResurse PretUnitar, decimal Valoare, string Capitol,
+    decimal PretOferta = 0, decimal ValoareOferta = 0);
 
 /// <param name="Campuri">Ce s-a schimbat la un articol modificat: „simbol”, „denumire”, „um”, „cantitate”, „pret”.</param>
 public sealed record DiferentaVersiune(
@@ -19,10 +21,15 @@ public sealed record DiferentaVersiune(
 {
     /// <summary>Cu cât s-a schimbat costul direct al articolului (nou − vechi).</summary>
     public decimal DiferentaValoare => (Nou?.Valoare ?? 0) - (Vechi?.Valoare ?? 0);
+
+    /// <summary>Cu cât s-a schimbat valoarea de ofertă a articolului (nou − vechi), în moneda versiunii.</summary>
+    public decimal DiferentaOferta => (Nou?.ValoareOferta ?? 0) - (Vechi?.ValoareOferta ?? 0);
 }
 
+/// <param name="OfertaVeche">Valoarea de ofertă totală a versiunii vechi (devizele de ofertă fără cost direct, D-58).</param>
 public sealed record ComparatieVersiuni(
-    IReadOnlyList<DiferentaVersiune> Diferente, RecapitulatieDeviz RecapitulatieVeche, RecapitulatieDeviz RecapitulatieNoua);
+    IReadOnlyList<DiferentaVersiune> Diferente, RecapitulatieDeviz RecapitulatieVeche, RecapitulatieDeviz RecapitulatieNoua,
+    decimal OfertaVeche = 0, decimal OfertaNoua = 0);
 
 /// <summary>
 /// Ce s-a schimbat între două versiuni ale aceluiași deviz (REQ-DEV-03): articolele se potrivesc după cheia stabilă
@@ -56,6 +63,8 @@ public static class ComparareVersiuni
                 campuri.Add("cantitate");
             if (v.PretUnitar != n.PretUnitar)
                 campuri.Add("pret");
+            if (v.PretOferta != n.PretOferta)
+                campuri.Add("oferta");
             if (campuri.Count > 0)
                 diferente.Add(new DiferentaVersiune(cheie, TipDiferentaVersiune.Modificat, v, n, campuri));
         }
@@ -63,7 +72,8 @@ public static class ComparareVersiuni
         diferente.AddRange(dinVechi.Where(x => !dinNoua.ContainsKey(x.Key))
             .Select(x => new DiferentaVersiune(x.Key, TipDiferentaVersiune.Sters, x.Value, null, [])));
 
-        return new ComparatieVersiuni(diferente, vechi.Recapitulatie(), noua.Recapitulatie());
+        return new ComparatieVersiuni(diferente, vechi.Recapitulatie(), noua.Recapitulatie(),
+            vechi.Articole().Sum(a => a.ValoareOferta.Total), noua.Articole().Sum(a => a.ValoareOferta.Total));
     }
 
     /// <summary>Textul fără diferențele de spații (salvarea curăță spațiile de la capete; importul le poate păstra).</summary>
@@ -79,7 +89,7 @@ public static class ComparareVersiuni
             foreach (var a in c.Articole.OrderBy(x => x.Ordine))
             {
                 rezultat.TryAdd(a.CheieStabila, new ArticolComparat(a.Id, a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.PretUnitar,
-                    CalculatorDeviz.ValoareLinie(a.CaLinie(), p.RotunjireLinie).Total, capitol));
+                    CalculatorDeviz.ValoareLinie(a.CaLinie(), p.RotunjireLinie).Total, capitol, a.PretOfertaUnitar.Total, a.ValoareOferta.Total));
             }
         }
 

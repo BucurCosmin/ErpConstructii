@@ -33,6 +33,9 @@ export interface ArticolComparat {
   pretUnitar: number
   valoare: number
   capitol: string
+  /** Prețul / valoarea de ofertă, în moneda devizului (0 = fără ofertă). */
+  pretOferta: number
+  valoareOferta: number
 }
 
 export interface DiferentaVersiune {
@@ -43,6 +46,7 @@ export interface DiferentaVersiune {
   /** La „Modificat”: simbol, denumire, um, cantitate, pret. */
   campuri: string[]
   diferentaValoare: number
+  diferentaOferta: number
 }
 
 export interface ComparatieVersiuni {
@@ -54,6 +58,10 @@ export interface ComparatieVersiuni {
   totalFaraTvaNou: number
   totalCuTvaVechi: number
   totalCuTvaNou: number
+  /** Valoarea de ofertă totală (devizele de ofertă fără cost direct, D-58). */
+  ofertaVeche: number
+  ofertaNoua: number
+  moneda: string
 }
 
 const baza = (proiectId: string) => `/api/proiecte/${proiectId}/devize`

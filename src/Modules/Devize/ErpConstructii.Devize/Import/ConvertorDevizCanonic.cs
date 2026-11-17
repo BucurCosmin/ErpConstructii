@@ -1,4 +1,4 @@
-﻿namespace ErpConstructii.Devize.Import;
+namespace ErpConstructii.Devize.Import;
 
 /// <summary>
 /// Transformă un <see cref="DevizCanonic"/> validat într-o <see cref="VersiuneDeviz"/> nouă (ciornă)
@@ -36,13 +36,17 @@ public static class ConvertorDevizCanonic
         return versiune;
     }
 
-    private static void AdaugaCapitol(VersiuneDeviz versiune, CapitolCanonic c, CapitolDeviz? parinte)
+    /// <summary>Adaugă capitolul canonic (cu tot ce e sub el) în versiune, pe primul nivel; întoarce capitolul creat.</summary>
+    public static CapitolDeviz AdaugaCapitol(VersiuneDeviz versiune, CapitolCanonic c) => AdaugaCapitol(versiune, c, null);
+
+    private static CapitolDeviz AdaugaCapitol(VersiuneDeviz versiune, CapitolCanonic c, CapitolDeviz? parinte)
     {
         var capitol = versiune.AdaugaCapitol(c.Cod, c.Denumire, c.Tip, parinte, c.CodWbs, c.Subcontractat);
         foreach (var a in c.Articole)
         {
             var articol = capitol.AdaugaArticol(a.Simbol, a.Denumire, a.UnitateMasura, a.Cantitate, a.PretUnitar);
             articol.SeteazaSursa(a.Tip, a.SimbolBaza, a.CodWbs);
+            articol.SeteazaDetalii(a.Specificatie, a.Observatii);
             if (a.PretOfertaUnitar is { } pu)
             {
                 articol.SeteazaPretOferta(pu, a.ValoareOferta ?? pu * a.Cantitate);
@@ -58,5 +62,7 @@ public static class ConvertorDevizCanonic
         {
             AdaugaCapitol(versiune, s, capitol);
         }
+
+        return capitol;
     }
 }

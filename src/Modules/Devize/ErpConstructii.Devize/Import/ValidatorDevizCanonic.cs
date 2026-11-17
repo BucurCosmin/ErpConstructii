@@ -1,4 +1,4 @@
-﻿using ErpConstructii.Devize.Calcul;
+using ErpConstructii.Devize.Calcul;
 using ErpConstructii.SharedKernel;
 using ErpConstructii.SharedKernel.Import;
 
@@ -13,9 +13,17 @@ public static class ValidatorDevizCanonic
     /// <summary>Diferența maximă acceptată între totalul recalculat și cel declarat.</summary>
     public const decimal TolerantaLei = 0.05m;
 
+    private const string MesajFaraPret = "Articol fără preț.";
+
     public static IReadOnlyList<ProblemaImport> Valideaza(DevizCanonic deviz)
     {
         var probleme = new List<ProblemaImport>();
+        foreach (var c in deviz.Componente ?? [])
+        {
+            if (c.Tip is null)
+                probleme.Add(new(Severitate.Eroare, "componente", $"Alege pe ce componentă a devizului merge „{c.Eticheta}”."));
+        }
+
 
         if (!deviz.Articole().Any())
         {
@@ -44,6 +52,15 @@ public static class ValidatorDevizCanonic
                 "Fișierul nu conține cotele recapitulației; se vor folosi setările firmei."));
         }
 
+        // Multe articole fără preț (ex. materialele de detaliu incluse în articolul de deasupra, BOQ): un singur mesaj.
+        var faraPret = probleme.Where(p => p.Mesaj == MesajFaraPret).ToList();
+        if (faraPret.Count > 5)
+        {
+            probleme.RemoveAll(p => p.Mesaj == MesajFaraPret);
+            probleme.Add(new(Severitate.Avertisment, "articole",
+                $"{faraPret.Count} articole fără preț (ex. {string.Join("; ", faraPret.Take(3).Select(p => p.Locatie))})."));
+        }
+
         return probleme;
     }
 
@@ -59,9 +76,10 @@ public static class ValidatorDevizCanonic
             probleme.Add(new(Severitate.Eroare, loc, $"Cantitate invalidă: {a.Cantitate}."));
         }
 
-        if (a.PretUnitar.Total == 0)
+        // Devizul de ofertă (BOQ) are doar prețul de ofertă: costul direct rămâne gol (D-58).
+        if (a.PretUnitar.Total == 0 && (a.PretOfertaUnitar?.Total ?? 0) == 0 && (a.ValoareOferta?.Total ?? 0) == 0)
         {
-            probleme.Add(new(Severitate.Avertisment, loc, "Articol fără preț."));
+            probleme.Add(new(Severitate.Avertisment, loc, MesajFaraPret));
         }
 
         if (!simboluri.Add(a.Simbol))

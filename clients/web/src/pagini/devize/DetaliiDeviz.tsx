@@ -16,7 +16,7 @@ import {
   useStergeDeviz,
   useVersiuneNouaDeviz,
 } from '../../api/devize'
-import type { ArticolCerere, DiferentaVersiune, RezultatEditareDeviz } from '../../api/devize'
+import type { ArticolCerere, ArticolComparat, DiferentaVersiune, RezultatEditareDeviz } from '../../api/devize'
 import { useDeviz, useDevize, usePermisiuni, useProiect } from '../../api/interogari'
 import type { ArticolDeviz, CapitolDeviz, ValoriResurse } from '../../api/tipuri'
 import { NumarRo } from '../../componente/NumarRo'
@@ -93,7 +93,19 @@ interface ValoriArticol {
   echipament?: number
 }
 
-function randArticol(a: ArticolDeviz, adancime: number, capitolId: string, resurse: ConsumArticol[] = []): Rand {
+const zeroValori: ValoriResurse = { material: 0, manopera: 0, utilaj: 0, transport: 0, echipament: 0, total: 0 }
+
+/**
+ * @param oferta Devizul de ofertă fără cost direct (BOQ, D-58): componentele și valorile rândului sunt cele de ofertă, în moneda
+ * versiunii, nu costul direct (gol).
+ */
+function randArticol(a: ArticolDeviz, adancime: number, capitolId: string, resurse: ConsumArticol[] = [], oferta = false): Rand {
+  if (oferta)
+    return {
+      cheie: a.id, nivel: 'articol', adancime, cod: a.simbol, denumire: a.denumire, um: a.unitateMasura, cantitate: a.cantitate,
+      pretUnitar: a.pretOfertaUnitar ?? zeroValori, valoare: a.valoareOferta ?? zeroValori, total: a.valoareOferta?.total ?? 0,
+      articol: a, capitolId,
+    }
   return {
     cheie: a.id,
     nivel: 'articol',
@@ -122,16 +134,22 @@ const normalizeaza = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').t
  * Arborele, păstrând doar ce se potrivește cu căutarea (și capitolele care conțin potriviri); fără căutare, tot.
  * `pastreaza` (ex. „doar modificările”) restrânge în plus articolele; capitolele rămase goale dispar.
  */
+/** Valoarea de ofertă a capitolului (cu subcapitolele), în moneda versiunii. */
+function ofertaCapitol(c: CapitolDeviz): number {
+  return c.articole.reduce((s, a) => s + (a.valoareOferta?.total ?? 0), 0) + c.subcapitole.reduce((s, x) => s + ofertaCapitol(x), 0)
+}
+
 function randCapitol(
   c: CapitolDeviz, adancime: number, cauta: string, pastreaza?: (a: ArticolDeviz) => boolean, resurse?: Map<string, ConsumArticol[]>,
+  oferta = false,
 ): Rand | null {
   const potriveste = (t?: string | null) => !!t && normalizeaza(t).includes(cauta)
   const capitolPotrivit = !cauta || potriveste(c.denumire) || potriveste(c.codWbs) || potriveste(c.cod)
   const articole = c.articole
     .filter((a) => capitolPotrivit || potriveste(a.simbol) || potriveste(a.denumire) || potriveste(a.codWbs))
     .filter((a) => !pastreaza || pastreaza(a))
-    .map((a) => randArticol(a, adancime + 1, c.id, resurse?.get(a.id)))
-  const sub = c.subcapitole.map((s) => randCapitol(s, adancime + 1, capitolPotrivit ? '' : cauta, pastreaza, resurse)).filter((x): x is Rand => x !== null)
+    .map((a) => randArticol(a, adancime + 1, c.id, resurse?.get(a.id), oferta))
+  const sub = c.subcapitole.map((s) => randCapitol(s, adancime + 1, capitolPotrivit ? '' : cauta, pastreaza, resurse, oferta)).filter((x): x is Rand => x !== null)
   const copii = [...articole, ...sub]
   if (copii.length === 0 && ((cauta && !capitolPotrivit) || pastreaza)) return null
   return {
@@ -140,7 +158,7 @@ function randCapitol(
     adancime,
     cod: c.codWbs ?? c.cod,
     denumire: c.denumire,
-    total: c.total,
+    total: oferta ? ofertaCapitol(c) : c.total,
     subcontractata: c.subcontractat,
     capitolId: c.id,
     children: copii.length ? copii : undefined,
@@ -187,6 +205,8 @@ export function DetaliiDeviz() {
   const ciornaExistenta = toate.data?.find((v) => v.versiuneAnterioaraId === versiuneId && v.stare === 'Ciorna')
   const anterioara = toate.data?.find((v) => v.id === data?.versiune.versiuneAnterioaraId)
   const diferente = useDiferenteDeviz(proiectId, versiuneId, !!data?.versiune.versiuneAnterioaraId)
+  const doarOferta = !!diferente.data && diferente.data.totalFaraTvaVechi === 0 && diferente.data.totalFaraTvaNou === 0
+    && (diferente.data.ofertaVeche !== 0 || diferente.data.ofertaNoua !== 0)
   const dupaCheie = useMemo(() => new Map((diferente.data?.diferente ?? []).map((d) => [d.cheieStabila, d])), [diferente.data])
   const [doarModificari, setDoarModificari] = useState(false)
 
@@ -199,13 +219,16 @@ export function DetaliiDeviz() {
   }, [resurseArticole.data])
 
   const textCautat = normalizeaza(cauta.trim())
+  // Devizul de ofertă fără cost direct (BOQ pe obiecte, D-58): tabelul și totalurile arată oferta, în moneda versiunii.
+  const modOferta = useMemo(() => !!data && data.recapitulatie.totalFaraTva === 0
+    && capitoleToate(data.capitole).some((c) => c.articole.some((a) => (a.valoareOferta?.total ?? 0) !== 0)), [data])
   const arbore = useMemo(
     () => (data
       ? data.capitole
-        .map((c) => randCapitol(c, 0, textCautat, doarModificari ? (a) => dupaCheie.has(a.cheieStabila) : undefined, resurse))
+        .map((c) => randCapitol(c, 0, textCautat, doarModificari ? (a) => dupaCheie.has(a.cheieStabila) : undefined, resurse, modOferta))
         .filter((x): x is Rand => x !== null)
       : []),
-    [data, textCautat, doarModificari, dupaCheie, resurse],
+    [data, textCautat, doarModificari, dupaCheie, resurse, modOferta],
   )
   const capitole = useMemo(() => (data ? capitoleToate(data.capitole) : []), [data])
   const chei = useMemo(() => capitole.map((c) => c.id), [capitole])
@@ -310,7 +333,7 @@ export function DetaliiDeviz() {
     {
       title: 'Cod / simbol',
       dataIndex: 'cod',
-      width: 175,
+      width: modOferta ? 210 : 175,
       fixed: 'left',
       render: (v, r) => r.nivel === 'articol'
         ? <Typography.Text code>{v}</Typography.Text>
@@ -364,7 +387,7 @@ export function DetaliiDeviz() {
     resursa('Utilaj', 'utilaj'),
     resursa('Transport', 'transport'),
     ...(areEchipament ? [resursa('Echipament', 'echipament')] : []),
-    ...(areOferta ? [{
+    ...(areOferta && !modOferta ? [{
       title: vedere === 'valori' ? `Valoare ofertă (${moneda})` : `Preț ofertă (${moneda})`,
       width: 130,
       className: 'numeric',
@@ -374,8 +397,8 @@ export function DetaliiDeviz() {
       },
     }] : []),
     {
-      title: vedere === 'valori' ? 'Valoare' : 'Preț unitar',
-      width: 120,
+      title: modOferta ? (vedere === 'valori' ? `Valoare ofertă (${moneda})` : `Preț ofertă (${moneda})`) : vedere === 'valori' ? 'Valoare' : 'Preț unitar',
+      width: modOferta ? 140 : 120,
       fixed: 'right',
       className: 'numeric',
       render: (_, r) => {
@@ -511,14 +534,17 @@ export function DetaliiDeviz() {
           title={`Modificări față de nr. ${diferente.data.numarVechi}: ${diferente.data.diferente.length === 0 ? 'niciuna încă' : [
             ['Modificat', 'modificate'], ['Adaugat', 'adăugate'], ['Sters', 'scoase'],
           ].map(([t, e]) => `${diferente.data!.diferente.filter((d) => d.tip === t).length} ${e}`).join(', ')}`}
-          extra={
-            <Space>
-              <span>Total fără TVA: {formatLei(diferente.data.totalFaraTvaVechi)} → <b>{formatLei(diferente.data.totalFaraTvaNou)}</b></span>
-              <Tag color={diferente.data.totalFaraTvaNou >= diferente.data.totalFaraTvaVechi ? 'red' : 'green'}>
-                {diferente.data.totalFaraTvaNou >= diferente.data.totalFaraTvaVechi ? '+' : ''}{formatLei(diferente.data.totalFaraTvaNou - diferente.data.totalFaraTvaVechi)}
-              </Tag>
-            </Space>
-          }
+          extra={(() => {
+            // Devizul de ofertă fără cost direct (BOQ, D-58): diferențele se arată pe valoarea de ofertă.
+            const d = diferente.data
+            const [vechi, nou, um] = doarOferta ? [d.ofertaVeche, d.ofertaNoua, d.moneda] : [d.totalFaraTvaVechi, d.totalFaraTvaNou, 'lei']
+            return (
+              <Space>
+                <span>{doarOferta ? 'Valoare ofertă' : 'Total fără TVA'}: {formatLei(vechi)} → <b>{formatLei(nou)}</b> {um}</span>
+                <Tag color={nou >= vechi ? 'red' : 'green'}>{nou >= vechi ? '+' : ''}{formatLei(nou - vechi)}</Tag>
+              </Space>
+            )
+          })()}
           styles={{ body: { padding: diferente.data.diferente.length ? 0 : undefined } }}
         >
           {diferente.data.diferente.length > 0 && (
@@ -549,14 +575,20 @@ export function DetaliiDeviz() {
                     : formatCantitate((d.nou ?? d.vechi)!.cantitate),
                 },
                 {
-                  title: 'Preț unitar', width: 190, className: 'numeric',
-                  render: (_, d) => d.vechi && d.nou && d.vechi.pretUnitar !== d.nou.pretUnitar
-                    ? <>{formatLei(d.vechi.pretUnitar)} → <b>{formatLei(d.nou.pretUnitar)}</b></>
-                    : formatLei((d.nou ?? d.vechi)!.pretUnitar),
+                  title: doarOferta ? `Preț ofertă (${diferente.data.moneda})` : 'Preț unitar', width: 190, className: 'numeric',
+                  render: (_, d) => {
+                    const pret = (a: ArticolComparat) => (doarOferta ? a.pretOferta : a.pretUnitar)
+                    return d.vechi && d.nou && pret(d.vechi) !== pret(d.nou)
+                      ? <>{formatLei(pret(d.vechi))} → <b>{formatLei(pret(d.nou))}</b></>
+                      : formatLei(pret((d.nou ?? d.vechi)!))
+                  },
                 },
                 {
-                  title: 'Diferență valoare', dataIndex: 'diferentaValoare', width: 150, className: 'numeric',
-                  render: (v: number) => <Typography.Text type={v > 0 ? 'danger' : v < 0 ? 'success' : undefined}>{v > 0 ? '+' : ''}{formatLei(v)}</Typography.Text>,
+                  title: doarOferta ? 'Diferență ofertă' : 'Diferență valoare', key: 'dif', width: 150, className: 'numeric',
+                  render: (_, d) => {
+                    const v = doarOferta ? d.diferentaOferta : d.diferentaValoare
+                    return <Typography.Text type={v > 0 ? 'danger' : v < 0 ? 'success' : undefined}>{v > 0 ? '+' : ''}{formatLei(v)}</Typography.Text>
+                  },
                 },
               ]}
             />
@@ -565,6 +597,24 @@ export function DetaliiDeviz() {
       )}
 
       <Row gutter={[12, 12]}>
+        {modOferta ? (() => {
+          const t = articole.reduce((s, a) => ({
+            total: s.total + (a.valoareOferta?.total ?? 0), material: s.material + (a.valoareOferta?.material ?? 0),
+            manopera: s.manopera + (a.valoareOferta?.manopera ?? 0),
+          }), { total: 0, material: 0, manopera: 0 })
+          return (
+            <>
+              <Col xs={24} sm={12} xl={6}>
+                <Card size="small"><Statistic title="Valoare ofertă" value={t.total} precision={2} suffix={moneda} formatter={(v) => formatLei(Number(v))} /></Card>
+              </Col>
+              <Col xs={24} sm={12} xl={6}>
+                <Card size="small">
+                  <Statistic title="din care material / manoperă" value={formatLei(t.material)} suffix={<Typography.Text type="secondary" style={{ fontSize: 14 }}>/ {formatLei(t.manopera)} {moneda}</Typography.Text>} />
+                </Card>
+              </Col>
+            </>
+          )
+        })() : <>
         <Col xs={24} sm={12} xl={6}>
           <Card size="small">
             <Statistic title="Total fără TVA" value={rec?.totalFaraTva ?? 0} precision={2} suffix="lei" loading={isLoading} formatter={(v) => formatLei(Number(v))} />
@@ -575,6 +625,7 @@ export function DetaliiDeviz() {
             <Statistic title="Total cu TVA" value={rec?.totalCuTva ?? 0} precision={2} suffix="lei" loading={isLoading} formatter={(v) => formatLei(Number(v))} />
           </Card>
         </Col>
+        </>}
         <Col xs={24} sm={12} xl={6}>
           <Card size="small">
             <Statistic title="Articole de deviz" value={nrArticole} loading={isLoading} suffix={data ? `în ${capitole.length} capitole` : ''} />
@@ -582,7 +633,9 @@ export function DetaliiDeviz() {
         </Col>
         <Col xs={24} sm={12} xl={6}>
           <Card size="small">
-            <Statistic title="Profit" value={rec?.profit ?? 0} precision={2} suffix="lei" loading={isLoading} formatter={(v) => formatLei(Number(v))} />
+            {modOferta
+              ? <Statistic title="Obiecte" value={data?.capitole.length ?? 0} suffix={<Typography.Text type="secondary" style={{ fontSize: 13 }}>{data?.capitole.map((c) => c.cod).join(', ')}</Typography.Text>} />
+              : <Statistic title="Profit" value={rec?.profit ?? 0} precision={2} suffix="lei" loading={isLoading} formatter={(v) => formatLei(Number(v))} />}
           </Card>
         </Col>
 

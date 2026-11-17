@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\Modules\Devize\ErpConstructii.Devize\ErpConstructii.Devize.csproj" />
     <!-- Testul de acceptanță al adaptorului Excel (fișierele originale, dacă există local). -->
     <ProjectReference Include="..\..\src\Modules\Devize\ErpConstructii.Devize.Import.Isdp.Excel\ErpConstructii.Devize.Import.Isdp.Excel.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Devize\ErpConstructii.Devize.Import.Boq\ErpConstructii.Devize.Import.Boq.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\samples\isdp\*.json" Link="samples\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

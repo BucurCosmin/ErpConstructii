@@ -57,6 +57,8 @@ function formularImport(f: FisiereImportDeviz) {
   if (f.curs) date.append('curs', String(f.curs))
   if (f.moneda) date.append('moneda', f.moneda)
   if (f.denumire?.trim()) date.append('denumire', f.denumire.trim())
+  if (f.componente && Object.keys(f.componente).length > 0) date.append('componente', JSON.stringify(f.componente))
+  if (f.versiuneTintaId) date.append('versiuneTintaId', f.versiuneTintaId)
   return date
 }
 
@@ -70,7 +72,8 @@ export const useConfirmaImport = (proiectId: string) => {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ tip, ...f }: FisiereImportDeviz & { tip: TipVersiuneDeviz }) =>
-      api.postFormular<{ id: string; numar: number }>(`/api/proiecte/${proiectId}/devize/import?tip=${tip}`, formularImport(f)),
+      api.postFormular<{ id: string; numar: number; obiect?: string; inlocuit?: boolean; ciornaNoua?: boolean }>(
+        `/api/proiecte/${proiectId}/devize/import?tip=${tip}`, formularImport(f)),
     onSuccess: () => qc.invalidateQueries({ queryKey: chei.devize(proiectId) }),
   })
 }

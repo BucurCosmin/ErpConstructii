@@ -3,7 +3,7 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using ErpConstructii.SharedKernel;
 
-namespace ErpConstructii.Infrastructure.Import;
+namespace ErpConstructii.Import.Xlsx;
 
 /// <summary>
 /// Toate foile unui fișier .xlsx, cu numele lor, ca grile de texte (<see cref="FoaieTabel"/>): rândurile și coloanele

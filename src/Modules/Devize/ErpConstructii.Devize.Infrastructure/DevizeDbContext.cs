@@ -1,4 +1,4 @@
-﻿using ErpConstructii.Infrastructure.Persistenta;
+using ErpConstructii.Infrastructure.Persistenta;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -120,6 +120,8 @@ internal sealed class ConfigurareArticol : IEntityTypeConfiguration<ArticolDeviz
             .HasDefaultValue(TipArticol.Normat).HasSentinel((TipArticol)(-1));
         b.Property(x => x.CodWbsSursa).HasMaxLength(100);
         b.Property(x => x.Denumire).HasMaxLength(1000);
+        b.Property(x => x.Specificatie).HasMaxLength(4000);
+        b.Property(x => x.Observatii).HasMaxLength(2000);
         b.Property(x => x.UnitateMasura).HasMaxLength(20);
         b.Property(x => x.Cantitate).Suma();
         b.Property(x => x.PretMaterial).Suma();

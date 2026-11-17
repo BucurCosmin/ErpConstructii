@@ -45,7 +45,19 @@ public sealed record PrevizualizareImportDto(
     IReadOnlyList<ArticolImportDto>? ArticoleLista = null,
     IReadOnlyList<ResursaImportDto>? Resurse = null,
     ReimportDto? Reimport = null,
-    string? FisierDejaImportat = null);
+    string? FisierDejaImportat = null,
+    IReadOnlyList<ComponentaPret>? Componente = null,
+    IReadOnlyList<SectiuneImport>? Sectiuni = null,
+    IReadOnlyList<ParteIgnorata>? Ignorate = null,
+    bool PeObiecte = false,
+    TintaImportDto? Tinta = null);
+
+/// <summary>
+/// Importul pe obiecte (D-58): devizul în care intră obiectul. <paramref name="VersiuneLucruId"/> = ciorna de lucru care se
+/// modifică (null = se creează la confirmare, din versiunea aleasă); <paramref name="Inlocuieste"/> = obiectul cu același cod
+/// există deja și se înlocuiește (articolele potrivite își păstrează cheile).
+/// </summary>
+public sealed record TintaImportDto(Guid VersiuneId, string Versiune, Guid? VersiuneLucruId, IReadOnlyList<string> Obiecte, string Obiect, bool Inlocuieste);
 
 public sealed record FisierSursaDto(Guid Id, string NumeFisier, long Marime, bool Principal, string Amprenta);
 
@@ -83,23 +95,28 @@ internal static class EndpointuriImportDeviz
         IImportatorDeviz Importator, SursaImport Principal, IReadOnlyList<SursaImport> Anexe, DevizCanonic? Canonic, VersiuneDeviz? Versiune,
         PrevizualizareImportDto Previzualizare, VersiuneDeviz? Existenta);
 
+    /// <param name="componente">Alegerea componentelor de preț neclare, JSON {"C":"Utilaj"} (D-58).</param>
+    /// <param name="versiuneTintaId">Importul pe obiecte: devizul în care se adaugă / înlocuiește obiectul.</param>
     private static async Task<IResult> Previzualizeaza(
-        Guid proiectId, IFormFile fisier, IFormFile? f3, [FromForm] decimal? curs, [FromForm] string? moneda, RegistruImportatori registru,
-        DevizeDbContext db, CancellationToken ct)
+        Guid proiectId, IFormFile fisier, IFormFile? f3, [FromForm] decimal? curs, [FromForm] string? moneda, [FromForm] string? componente,
+        [FromForm] Guid? versiuneTintaId, RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
     {
-        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, registru, db, ct);
+        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, componente, versiuneTintaId, registru, db, ct);
         return eroare ?? Results.Ok(p!.Previzualizare);
     }
 
     private static async Task<IResult> Confirma(
         Guid proiectId, IFormFile fisier, IFormFile? f3, [FromForm] decimal? curs, [FromForm] string? moneda, [FromForm] string? denumire,
-        TipVersiuneDeviz tip, RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
+        [FromForm] string? componente, [FromForm] Guid? versiuneTintaId, TipVersiuneDeviz tip, RegistruImportatori registru, DevizeDbContext db,
+        CancellationToken ct)
     {
-        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, registru, db, ct);
+        var (p, eroare) = await PregatesteAsync(proiectId, fisier, f3, curs, moneda, componente, versiuneTintaId, registru, db, ct);
         if (eroare is not null)
             return eroare;
         if (!p!.Previzualizare.PoateFiConfirmat || p.Versiune is null || p.Canonic is null)
             return Results.UnprocessableEntity(p.Previzualizare);
+        if (p.Canonic.PeObiecte && versiuneTintaId is { } tinta)
+            return await AdaugaObiectAsync(proiectId, tinta, p, db, ct);
 
         // Versiunea nouă: număr pe tip, cheile stabile ale articolelor potrivite cu versiunea anterioară din aceeași sursă.
         var numar = await db.Versiuni.Where(v => v.ProiectId == proiectId && v.Tip == tip).MaxAsync(v => (int?)v.Numar, ct) + 1 ?? 1;
@@ -119,8 +136,82 @@ internal static class EndpointuriImportDeviz
         return Results.Created($"/api/proiecte/{proiectId}/devize/{versiune.Id}", new { versiune.Id, numar });
     }
 
+    /// <summary>
+    /// Obiectul importat intră în devizul ales (D-58), în ciorna lui de lucru (creată acum dacă nu există, ca la editare: versiunea
+    /// aleasă rămâne neschimbată). Obiectul cu același cod se înlocuiește: articolele potrivite (cod, simbol) își păstrează cheile,
+    /// iar noul obiect ia locul celui vechi. Fișierul se arhivează pe ciornă.
+    /// </summary>
+    private static async Task<IResult> AdaugaObiectAsync(Guid proiectId, Guid tintaId, Pregatire p, DevizeDbContext db, CancellationToken ct)
+    {
+        await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
+        var lucru = await EndpointuriEditareDeviz.CiornaDeLucruAsync(db, proiectId, tintaId, ct);
+        if (lucru.Esec)
+            return EndpointuriEditareDeviz.Refuz(lucru.Eroare);
+        var ciorna = lucru.Valoare.Ciorna;
+        if (!string.Equals(ciorna.Moneda, p.Versiune!.Moneda, StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { mesaj = $"Devizul ales e în {ciorna.Moneda}, fișierul în {p.Versiune.Moneda}." });
+
+        var obiectNou = p.Versiune.Radacini.First();
+        var vechi = ciorna.Radacini.FirstOrDefault(c => c.Tip == TipCapitol.Obiect && string.Equals(c.Cod, obiectNou.Cod, StringComparison.OrdinalIgnoreCase));
+        var pozitie = vechi?.Ordine ?? int.MaxValue;
+        if (vechi is not null)
+        {
+            var subVechi = ciorna.Subarbore(vechi);
+            PotrivireReimport.Potriveste([.. p.Versiune.Subarbore(obiectNou).SelectMany(c => c.Articole)], [.. subVechi.SelectMany(c => c.Articole)]);
+            // Întâi din model (structura se citește după părinți), apoi din bază, de la frunze spre rădăcină: ștergerea unui
+            // capitol urmărit golește imediat părintele copiilor lui, care ar părea altfel capitole de primul nivel.
+            ciorna.ScoateCapitol(vechi);
+            foreach (var c in subVechi.Reverse())
+            {
+                db.Articole.RemoveRange(c.Articole);
+                db.Capitole.Remove(c);
+            }
+        }
+
+        var create = ciorna.CopiazaCapitolDin(p.Versiune, obiectNou);
+        // Id-urile sunt generate în aplicație: EF trebuie anunțat că sunt noi (altfel le-ar căuta în bază).
+        db.Capitole.AddRange(create);
+        ciorna.MutaCapitol(create[0], pozitie);
+        db.Fisiere.Add(new FisierSursaDeviz(ciorna.Id, p.Principal.NumeFisier, TipContinut(p.Principal.Extensie), p.Principal.Continut, false));
+        await db.SaveChangesAsync(ct);
+        await tranzactie.CommitAsync(ct);
+        return Results.Created($"/api/proiecte/{proiectId}/devize/{ciorna.Id}",
+            new { ciorna.Id, numar = ciorna.Numar, obiect = obiectNou.Cod, inlocuit = vechi is not null, ciornaNoua = lucru.Valoare.Noua });
+    }
+
+    /// <summary>Versiunea în care ar intra obiectul: ciorna de lucru a celei alese (dacă există), altfel cea aleasă. Fără urmărire.</summary>
+    private static async Task<(VersiuneDeviz? Aleasa, VersiuneDeviz? Lucru)> TintaAsync(DevizeDbContext db, Guid proiectId, Guid tintaId, CancellationToken ct)
+    {
+        var aleasa = await ModulDevize.IncarcaAsync(db, tintaId, ct);
+        if (aleasa is null || aleasa.ProiectId != proiectId)
+            return (null, null);
+        if (aleasa.EsteCiornaDeLucru)
+            return (aleasa, aleasa);
+        var idLucru = await db.Versiuni.AsNoTracking()
+            .Where(x => x.ProiectId == proiectId && x.VersiuneAnterioaraId == aleasa.Id && x.Stare == StareVersiuneDeviz.Ciorna)
+            .OrderByDescending(x => x.Numar).Select(x => (Guid?)x.Id).FirstOrDefaultAsync(ct);
+        return (aleasa, idLucru is { } id ? await ModulDevize.IncarcaAsync(db, id, ct) : null);
+    }
+
+    private static IReadOnlyDictionary<string, Calcul.TipResursa>? Componente(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        try
+        {
+            var d = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
+            return d.Where(x => Enum.TryParse<Calcul.TipResursa>(x.Value, true, out _))
+                .ToDictionary(x => x.Key, x => Enum.Parse<Calcul.TipResursa>(x.Value, true));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
     private static async Task<(Pregatire? Pregatire, IResult? Eroare)> PregatesteAsync(
-        Guid proiectId, IFormFile? fisier, IFormFile? f3, decimal? curs, string? moneda, RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
+        Guid proiectId, IFormFile? fisier, IFormFile? f3, decimal? curs, string? moneda, string? componente, Guid? versiuneTintaId,
+        RegistruImportatori registru, DevizeDbContext db, CancellationToken ct)
     {
         if (fisier is null || fisier.Length == 0)
             return (null, Results.BadRequest(new { mesaj = "Alege fișierul devizului." }));
@@ -138,7 +229,7 @@ internal static class EndpointuriImportDeviz
             return (null, Results.BadRequest(new { mesaj = $"Importatorul {importator.Denumire} nu primește un al doilea fișier." }));
 
         var rezultat = importator is IImportatorDevizCuAnexe cuAnexe
-            ? await cuAnexe.CitesteAsync(principal, new OptiuniImportDeviz(anexe, curs, moneda), ct)
+            ? await cuAnexe.CitesteAsync(principal, new OptiuniImportDeviz(anexe, curs, moneda, Componente(componente)), ct)
             : await importator.CitesteAsync(principal, ct);
 
         var probleme = rezultat.Probleme.ToList();
@@ -149,6 +240,7 @@ internal static class EndpointuriImportDeviz
         List<ArticolImportDto>? articole = null;
         List<ResursaImportDto>? resurse = null;
         ReimportDto? reimport = null;
+        TintaImportDto? tinta = null;
         if (deviz is not null)
         {
             probleme.AddRange(ValidatorDevizCanonic.Valideaza(deviz));
@@ -161,12 +253,39 @@ internal static class EndpointuriImportDeviz
                 articole = Articole(versiune);
                 resurse = await ResurseAsync(db, importator.FormatId, versiune, ct);
 
+                // Importul pe obiecte (D-58): comparația e cu obiectul cu același cod din devizul ales (dacă există).
+                if (deviz.PeObiecte)
+                {
+                    if (versiuneTintaId is { } tid)
+                    {
+                        var (aleasa, lucru) = await TintaAsync(db, proiectId, tid, ct);
+                        if (aleasa is null)
+                            return (null, Results.NotFound(new { mesaj = "Devizul ales nu există în proiect." }));
+                        if (aleasa.Stare == StareVersiuneDeviz.Inlocuita)
+                            probleme.Add(new ProblemaImport(Severitate.Eroare, "deviz", "Devizul ales a fost înlocuit de unul mai nou: alege versiunea în vigoare."));
+                        var tintaV = lucru ?? aleasa;
+                        if (!string.Equals(tintaV.Moneda, versiune.Moneda, StringComparison.OrdinalIgnoreCase))
+                            probleme.Add(new ProblemaImport(Severitate.Eroare, "deviz", $"Devizul ales e în {tintaV.Moneda}, fișierul în {versiune.Moneda}."));
+                        var obiectNou = versiune.Radacini.First();
+                        var vechi = tintaV.Radacini.FirstOrDefault(c => c.Tip == TipCapitol.Obiect && string.Equals(c.Cod, obiectNou.Cod, StringComparison.OrdinalIgnoreCase));
+                        tinta = new TintaImportDto(aleasa.Id, $"{aleasa.Tip} nr. {aleasa.Numar} — {aleasa.Denumire}", lucru?.Id,
+                            tintaV.Radacini.Select(c => $"{c.Cod} — {c.Denumire}").ToList(), $"{obiectNou.Cod} — {obiectNou.Denumire}", vechi is not null);
+                        if (vechi is not null)
+                        {
+                            existenta = tintaV;
+                            var comparatie = PotrivireReimport.Potriveste([.. versiune.Subarbore(obiectNou).SelectMany(c => c.Articole)],
+                                [.. tintaV.Subarbore(vechi).SelectMany(c => c.Articole)]);
+                            reimport = new ReimportDto(tintaV.Id, $"obiectul {vechi.Cod} din {tintaV.Tip} nr. {tintaV.Numar}", comparatie.Chei, comparatie.Noi,
+                                comparatie.Eliminate, comparatie.Modificate,
+                                comparatie.Diferente.Where(d => d.Stare != StareArticolReimport.Neschimbat || d.ResurseSchimbate).ToList());
+                        }
+                    }
+                }
                 // Reimport: versiunea anterioară a proiectului din aceeași sursă (cea mai recentă).
-                var sursa = $"import:{importator.FormatId}";
-                var idExistenta = await db.Versiuni.AsNoTracking()
-                    .Where(v => v.ProiectId == proiectId && v.Sursa == sursa && v.Stare != StareVersiuneDeviz.Inlocuita)
-                    .OrderByDescending(v => v.CreatLa).Select(v => (Guid?)v.Id).FirstOrDefaultAsync(ct);
-                if (idExistenta is { } ide && await ModulDevize.IncarcaAsync(db, ide, ct) is { } ex)
+                else if (await db.Versiuni.AsNoTracking()
+                    .Where(v => v.ProiectId == proiectId && v.Sursa == $"import:{importator.FormatId}" && v.Stare != StareVersiuneDeviz.Inlocuita)
+                    .OrderByDescending(v => v.CreatLa).Select(v => (Guid?)v.Id).FirstOrDefaultAsync(ct) is { } ide
+                    && await ModulDevize.IncarcaAsync(db, ide, ct) is { } ex)
                 {
                     existenta = ex;
                     var comparatie = PotrivireReimport.Potriveste([.. versiune.Articole()], [.. ex.Articole()]);
@@ -199,7 +318,12 @@ internal static class EndpointuriImportDeviz
             articole,
             resurse,
             reimport,
-            dejaImportat);
+            dejaImportat,
+            deviz?.Componente,
+            deviz?.Sectiuni,
+            deviz?.Ignorate,
+            deviz?.PeObiecte ?? false,
+            tinta);
         return (new Pregatire(importator, principal, anexe, deviz, versiune, previzualizare, existenta), null);
     }
 

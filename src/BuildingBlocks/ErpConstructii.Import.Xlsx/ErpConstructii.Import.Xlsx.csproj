@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Citirea foilor .xlsx ca grile de texte (CititorFoiXlsx → FoaieTabel), pentru interpretori și plugin-uri de import
+    (fișa contractului, BOQ-urile de ofertă). Fără EF și fără ASP.NET: un importator îl poate referi fără infrastructură.
+  -->
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ErpConstructii.SharedKernel\ErpConstructii.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

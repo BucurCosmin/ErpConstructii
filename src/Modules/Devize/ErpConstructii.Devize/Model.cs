@@ -1,4 +1,4 @@
-﻿using ErpConstructii.Devize.Calcul;
+using ErpConstructii.Devize.Calcul;
 using ErpConstructii.SharedKernel;
 
 namespace ErpConstructii.Devize;
@@ -171,6 +171,75 @@ public sealed class VersiuneDeviz : EntitateFirma, IDocumentCuStare
         var capitol = new CapitolDeviz(Id, parinte?.Id, cod, denumire, tip, codWbs, subcontractat, ordine);
         _capitole.Add(capitol);
         return capitol;
+    }
+
+    /// <summary>
+    /// Scoate capitolul cu tot ce e sub el (subcapitole, articole, resurse), din ciornă; frații de după el urcă o poziție.
+    /// Folosit la înlocuirea unui obiect reimportat (BOQ pe obiecte, D-58).
+    /// </summary>
+    public void ScoateCapitol(CapitolDeviz capitol)
+    {
+        AsiguraEditabil();
+        if (!_capitole.Contains(capitol))
+            throw new InvalidOperationException("Capitolul nu e în această versiune.");
+        var sub = new HashSet<Guid> { capitol.Id };
+        for (var schimbat = true; schimbat;)
+        {
+            schimbat = false;
+            foreach (var c in _capitole.Where(c => c.ParinteId is { } p && sub.Contains(p) && !sub.Contains(c.Id)).ToList())
+                schimbat |= sub.Add(c.Id);
+        }
+
+        _capitole.RemoveAll(c => sub.Contains(c.Id));
+        foreach (var frate in _capitole.Where(c => c.ParinteId == capitol.ParinteId && c.Ordine > capitol.Ordine))
+            frate.SeteazaOrdine(frate.Ordine - 1);
+    }
+
+    /// <summary>
+    /// Copiază în această versiune (pe primul nivel) capitolul <paramref name="capitol"/> al altei versiuni, cu tot ce e sub el;
+    /// articolele își păstrează cheile stabile (ex. potrivite la reimport). Întoarce capitolele create (primul = rădăcina).
+    /// </summary>
+    public IReadOnlyList<CapitolDeviz> CopiazaCapitolDin(VersiuneDeviz sursa, CapitolDeviz capitol)
+    {
+        AsiguraEditabil();
+        var create = new List<CapitolDeviz>();
+        void Copiaza(CapitolDeviz c, CapitolDeviz? parinteNou)
+        {
+            var nou = AdaugaCapitol(c.Cod, c.Denumire, c.Tip, parinteNou, c.CodWbs, c.Subcontractat);
+            create.Add(nou);
+            foreach (var a in c.Articole.OrderBy(x => x.Ordine))
+                a.CopiazaIn(nou);
+            foreach (var s in sursa.Copii(c.Id))
+                Copiaza(s, nou);
+        }
+
+        Copiaza(capitol, null);
+        return create;
+    }
+
+    /// <summary>Capitolul și toți descendenții lui (subcapitolele), în ordinea arborelui.</summary>
+    public IReadOnlyList<CapitolDeviz> Subarbore(CapitolDeviz capitol)
+    {
+        var rezultat = new List<CapitolDeviz>();
+        void Adauga(CapitolDeviz c)
+        {
+            rezultat.Add(c);
+            foreach (var s in Copii(c.Id))
+                Adauga(s);
+        }
+
+        Adauga(capitol);
+        return rezultat;
+    }
+
+    /// <summary>Mută capitolul pe poziția dată între frații lui (0 = primul).</summary>
+    public void MutaCapitol(CapitolDeviz capitol, int pozitie)
+    {
+        AsiguraEditabil();
+        var frati = Copii(capitol.ParinteId).Where(c => c.Id != capitol.Id).ToList();
+        frati.Insert(Math.Clamp(pozitie, 0, frati.Count), capitol);
+        for (var i = 0; i < frati.Count; i++)
+            frati[i].SeteazaOrdine(i);
     }
 
     /// <summary>Obiectul (capitol de primul nivel), ca în devizele fără WBS.</summary>
@@ -395,6 +464,8 @@ public sealed class CapitolDeviz : EntitateFirma
 
     internal void ScoateArticol(Guid articolId) => _articole.RemoveAll(a => a.Id == articolId);
 
+    internal void SeteazaOrdine(int ordine) => Ordine = ordine;
+
     /// <summary>Adaugă un articol (costul direct în lei, pe resurse), la sfârșitul capitolului.</summary>
     public ArticolDeviz AdaugaArticol(string simbol, string denumire, string um, decimal cantitate, ValoriResurse pretUnitar)
     {
@@ -455,6 +526,12 @@ public sealed class ArticolDeviz : EntitateFirma
     /// <summary>Codul WBS din sursă (ISDP: „0002.1.1.1.1”), pentru potrivirea la reimport și cu lista F3.</summary>
     public string? CodWbsSursa { get; private set; }
     public string Denumire { get; private set; } = string.Empty;
+
+    /// <summary>Specificația tehnică din sursă (BOQ: „Specification”), separată de denumire.</summary>
+    public string? Specificatie { get; private set; }
+
+    /// <summary>Observațiile din sursă (BOQ: „Remarks”).</summary>
+    public string? Observatii { get; private set; }
     public string UnitateMasura { get; private set; } = string.Empty;
     public decimal Cantitate { get; private set; }
 
@@ -494,6 +571,12 @@ public sealed class ArticolDeviz : EntitateFirma
     public LinieDeviz CaLinie() => new(Cantitate, PretUnitar);
 
     /// <summary>Proveniența din sursă: tipul articolului, simbolul de bază, codul WBS.</summary>
+    public void SeteazaDetalii(string? specificatie, string? observatii)
+    {
+        Specificatie = string.IsNullOrWhiteSpace(specificatie) ? null : specificatie.Trim() is var s && s.Length > 4000 ? s[..4000] : s;
+        Observatii = string.IsNullOrWhiteSpace(observatii) ? null : observatii.Trim() is var o && o.Length > 2000 ? o[..2000] : o;
+    }
+
     public void SeteazaSursa(TipArticol tip, string? simbolBaza, string? codWbs)
     {
         TipArticol = tip;
@@ -624,9 +707,18 @@ public sealed class ArticolDeviz : EntitateFirma
 
     internal void RecalculeazaPretOferta(ParametriRecapitulatie p, decimal curs)
     {
+        decimal R(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
+        // Devizul de ofertă fără cost direct (BOQ, D-58): prețul de ofertă e sursa; la o cantitate nouă se recalculează doar valoarea.
+        if (PretUnitar.Total == 0 && PretOfertaUnitar.Total != 0)
+        {
+            var o = PretOfertaUnitar;
+            SeteazaPretOferta(o, new ValoriResurse(R(o.Material * Cantitate), R(o.Manopera * Cantitate), R(o.Utilaj * Cantitate),
+                R(o.Transport * Cantitate), R(o.Echipament * Cantitate)));
+            return;
+        }
+
         var f = (1 + p.CotaCheltuieliIndirecte) * (1 + p.CotaProfit);
         var fm = f * (1 + p.CotaContributiiManopera);
-        decimal R(decimal v) => Math.Round(v, 2, MidpointRounding.AwayFromZero);
         var pu = PretUnitar;
         SeteazaPretOferta(
             new ValoriResurse(R(pu.Material * f / curs), R(pu.Manopera * fm / curs), R(pu.Utilaj * f / curs), R(pu.Transport * f / curs), R(pu.Echipament * f / curs)),
@@ -641,6 +733,7 @@ public sealed class ArticolDeviz : EntitateFirma
         a.PastreazaCheia(CheieStabila);
         a.SeteazaSursa(TipArticol, SimbolBaza, CodWbsSursa);
         a.SeteazaPretOferta(PretOfertaUnitar, ValoareOferta);
+        a.SeteazaDetalii(Specificatie, Observatii);
         foreach (var c in _consumuri.OrderBy(x => x.Ordine))
             a.AdaugaConsum(c.CodResursa, c.Denumire, c.Tip, c.UnitateMasura, c.ConsumUnitar, c.PretUnitar, c.CantitateTotala, c.TipDedus)
                 .MapeazaLa(c.ResursaCatalogId);

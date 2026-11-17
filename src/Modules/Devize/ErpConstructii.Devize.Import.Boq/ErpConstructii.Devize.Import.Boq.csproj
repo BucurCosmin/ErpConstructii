@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Importatorul devizelor de ofertă BOQ (Bill of Quantities) pe obiecte, D-58: foaia de rezumat + câte o foaie pe secțiune,
+    articolele cu preț pe componente (ex. Material / Labour / Expense). Citirea e condusă de un profil de format (ProfilBoq):
+    un format nou de BOQ = un profil nou, nu cod nou. Produce doar modelul canonic al modulului Devize (regula 7).
+  -->
+  <ItemGroup>
+    <!-- Înregistrarea în DI (AdaugaImportatorBoq), ca la ceilalți importatori. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ErpConstructii.Devize\ErpConstructii.Devize.csproj" />
+    <ProjectReference Include="..\..\..\BuildingBlocks\ErpConstructii.Import.Xlsx\ErpConstructii.Import.Xlsx.csproj" />
+  </ItemGroup>
+</Project>

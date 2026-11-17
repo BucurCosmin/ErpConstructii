@@ -1,6 +1,6 @@
 using ErpConstructii.Contracte;
 using ErpConstructii.Contracte.Import;
-using ErpConstructii.Infrastructure.Import;
+using ErpConstructii.Import.Xlsx;
 using ErpConstructii.SharedKernel;
 using Xunit;
 using Xunit.Abstractions;

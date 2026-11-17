@@ -1,4 +1,4 @@
-﻿using System.Text.Json.Serialization;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 using ErpConstructii.Api.Autentificare;
 using ErpConstructii.Api.Dezvoltare;
@@ -8,6 +8,7 @@ using ErpConstructii.Contracte.Infrastructure;
 using ErpConstructii.Grafic.Import.Primavera;
 using ErpConstructii.Grafic.Infrastructure;
 using ErpConstructii.Devize.Import.Isdp.Excel;
+using ErpConstructii.Devize.Import.Boq;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Facturi.Infrastructure;
 using ErpConstructii.Stocuri.Infrastructure;
@@ -61,6 +62,7 @@ foreach (var modul in module)
 
 // Importatori de devize (module de import, REQ-IMP-01). Un format nou = un pachet nou + o linie aici.
 builder.Services.AdaugaImportatorIsdp(); // D-50: devizele vin din ISDP (Intersoft)
+builder.Services.AdaugaImportatorBoq(); // D-58: ofertele BOQ pe obiecte (Material / Labour / Expense), din Excel
 builder.Services.AdaugaImportatorPrimavera(); // D-57: graficele de execuție din Primavera P6 (XER)
 
 // ---------------------------------------------------------------------------

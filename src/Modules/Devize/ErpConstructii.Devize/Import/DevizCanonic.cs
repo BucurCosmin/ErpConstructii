@@ -1,4 +1,4 @@
-﻿using ErpConstructii.Devize.Calcul;
+using ErpConstructii.Devize.Calcul;
 
 namespace ErpConstructii.Devize.Import;
 
@@ -26,6 +26,24 @@ public sealed record DevizCanonic(
 
     /// <summary>Totalurile declarate de fișier, așa cum sunt (JSON), pentru audit.</summary>
     public string? TotaluriDeclarateJson { get; init; }
+
+    /// <summary>
+    /// Componentele de preț ale sursei și componenta devizului pe care merge fiecare (BOQ: Material / Labour / Expense).
+    /// O componentă nesigură (<see cref="ComponentaPret.Sigura"/> = false) trebuie aleasă de utilizator la import.
+    /// </summary>
+    public IReadOnlyList<ComponentaPret>? Componente { get; init; }
+
+    /// <summary>Secțiunile citite, cu totalurile lor (BOQ: foile pe secțiuni, verificate cu rezumatul).</summary>
+    public IReadOnlyList<SectiuneImport>? Sectiuni { get; init; }
+
+    /// <summary>Părți ale fișierului lăsate deoparte (foi neincluse în rezumat, în altă limbă, goale), cu motivul.</summary>
+    public IReadOnlyList<ParteIgnorata>? Ignorate { get; init; }
+
+    /// <summary>
+    /// Sursa e un singur obiect (capitolul de primul nivel) al unui deviz mai mare: se importă pe rând, fiecare obiect adăugat
+    /// (sau înlocuit, după cod) în devizul ales (BOQ pe obiecte, D-58).
+    /// </summary>
+    public bool PeObiecte { get; init; }
 
     /// <summary>Toate articolele, în ordinea arborelui.</summary>
     public IEnumerable<ArticolCanonic> Articole() => Capitole.SelectMany(c => c.ArticoleToate());
@@ -75,7 +93,9 @@ public sealed record ArticolCanonic(
     string? SimbolBaza = null,
     string? CodWbs = null,
     ValoriResurse? PretOfertaUnitar = null,
-    ValoriResurse? ValoareOferta = null);
+    ValoriResurse? ValoareOferta = null,
+    string? Specificatie = null,
+    string? Observatii = null);
 
 /// <param name="CantitateTotala">Cantitatea pe tot articolul, din sursă (ISDP); null = consum unitar × cantitatea articolului.</param>
 /// <param name="TipDedus">Tipul nu reiese din prețuri și a fost dedus (de confirmat la maparea în nomenclator).</param>
@@ -97,3 +117,17 @@ public sealed record TotaluriDeclarate(
     ValoriResurse? CheltuieliDirecteResurse,
     decimal? TotalFaraTva,
     decimal? TotalCuTva);
+
+/// <param name="Cheie">Identificatorul componentei în sursă (ex. „A”, „Expense”).</param>
+/// <param name="Eticheta">Antetul din fișier (ex. „Expense (C)”).</param>
+/// <param name="Tip">Componenta devizului aleasă / propusă; null = încă nealeasă.</param>
+/// <param name="Sigura">Recunoscută fără dubiu (Material, Labour); altfel utilizatorul confirmă alegerea.</param>
+public sealed record ComponentaPret(string Cheie, string Eticheta, TipResursa? Tip, bool Sigura);
+
+/// <param name="Sursa">De unde vine (ex. foaia Excel).</param>
+/// <param name="Calculat">Suma valorilor articolelor citite.</param>
+/// <param name="Declarat">Totalul scris în sursă (rândul TOTAL al foii).</param>
+/// <param name="DeclaratRezumat">Totalul din rezumat (foaia BOQ).</param>
+public sealed record SectiuneImport(string Cod, string Denumire, string Sursa, int Articole, decimal Calculat, decimal? Declarat, decimal? DeclaratRezumat);
+
+public sealed record ParteIgnorata(string Sursa, string Motiv);

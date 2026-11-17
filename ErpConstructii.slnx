@@ -13,6 +13,7 @@
   <Folder Name="/BuildingBlocks/">
     <Project Path="src/BuildingBlocks/ErpConstructii.SharedKernel/ErpConstructii.SharedKernel.csproj" />
     <Project Path="src/BuildingBlocks/ErpConstructii.Infrastructure/ErpConstructii.Infrastructure.csproj" />
+    <Project Path="src/BuildingBlocks/ErpConstructii.Import.Xlsx/ErpConstructii.Import.Xlsx.csproj" />
   </Folder>
   <Folder Name="/Host/">
     <Project Path="src/Host/ErpConstructii.Api/ErpConstructii.Api.csproj" />
@@ -39,6 +40,7 @@
     <Project Path="src/Modules/Devize/ErpConstructii.Devize.Infrastructure/ErpConstructii.Devize.Infrastructure.csproj" />
     <Project Path="src/Modules/Devize/ErpConstructii.Devize.Import.Isdp/ErpConstructii.Devize.Import.Isdp.csproj" />
     <Project Path="src/Modules/Devize/ErpConstructii.Devize.Import.Isdp.Excel/ErpConstructii.Devize.Import.Isdp.Excel.csproj" />
+    <Project Path="src/Modules/Devize/ErpConstructii.Devize.Import.Boq/ErpConstructii.Devize.Import.Boq.csproj" />
   </Folder>
   <Folder Name="/Modules/Contracte/">
     <Project Path="src/Modules/Contracte/ErpConstructii.Contracte/ErpConstructii.Contracte.csproj" />
