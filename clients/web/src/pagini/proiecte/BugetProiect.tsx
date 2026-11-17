@@ -22,13 +22,13 @@ const naturi: Record<CostDocument['natura'], string> = { Consum: 'consum', Achiz
 function DocumenteCost({ proiectId, articol }: { proiectId: string; articol: string }) {
   const { data, isLoading } = useCosturiBuget(proiectId, articol)
   return (
-    <Table<CostDocument> className="tabel-compact" size="small" loading={isLoading} dataSource={data} pagination={data && data.length > 20 ? { pageSize: 20, size: 'small' } : false}
+    <Table<CostDocument> className="tabel-compact tabel-text-complet" size="small" loading={isLoading} dataSource={data} pagination={data && data.length > 20 ? { pageSize: 20, size: 'small' } : false}
       rowKey={(c, i) => `${c.documentId}-${i}`} locale={{ emptyText: 'Niciun document' }}
       columns={[
         { title: 'Data', dataIndex: 'data', width: 95, render: formatData },
-        { title: 'Document', dataIndex: 'document', width: 260, ellipsis: true },
+        { title: 'Document', dataIndex: 'document', width: 260 },
         { title: 'Natura', dataIndex: 'natura', width: 140, render: (n: CostDocument['natura']) => naturi[n] },
-        { title: 'Detalii', dataIndex: 'descriere', ellipsis: true },
+        { title: 'Detalii', dataIndex: 'descriere' },
         { title: 'Valoare (lei)', dataIndex: 'valoare', width: 120, className: 'numeric', render: (v: number) => formatLei(v) },
       ]} />
   )
@@ -97,7 +97,7 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
       render: (_, x) => x.capitol ? <Typography.Text strong>{x.capitol}</Typography.Text> : <Typography.Text code>{x.rand!.simbol}</Typography.Text>,
       onCell: (x) => (x.capitol ? { colSpan: 2 } : {}),
     },
-    { title: 'Denumire', ellipsis: true, render: (_, x) => x.rand?.denumire, onCell: (x) => (x.capitol ? { colSpan: 0 } : {}) },
+    { title: 'Denumire', render: (_, x) => x.rand?.denumire, onCell: (x) => (x.capitol ? { colSpan: 0 } : {}) },
     { title: 'UM', width: 55, render: (_, x) => x.rand?.unitateMasura },
     { title: 'Cantitate', width: 95, className: 'numeric', render: (_, x) => (x.rand?.inDeviz ? formatCantitate(x.rand.cantitate) : '') },
     {
@@ -114,7 +114,7 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
       render: (_, x) => <Typography.Text strong={!!x.capitol}>{x.consumat ? formatLei(x.consumat) : ''}</Typography.Text>,
     },
     {
-      title: 'Consumat din bugetul de material', width: 190,
+      title: 'Consumat din bugetul de material', width: 150,
       render: (_, x) => <Consum buget={x.bugetMaterial} consumat={x.consumat} />,
     },
     {
@@ -127,7 +127,7 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
       },
     },
     {
-      title: 'Manoperă / utilaj / transport (buget)', width: 200, className: 'numeric',
+      title: 'Manoperă / utilaj / transport (buget)', width: 170, className: 'numeric',
       render: (_, x) => x.rand && x.rand.inDeviz
         ? <Typography.Text type="secondary">{[x.rand.buget.manopera, x.rand.buget.utilaj, x.rand.buget.transport].map((n) => (n ? formatLei(n) : '—')).join(' / ')}</Typography.Text>
         : '',
@@ -223,8 +223,8 @@ export function BugetProiect({ proiectId }: { proiectId: string }) {
             </Space>
           }
           extra={<Typography.Text type="secondary">material consumat {formatLei(r.realizatPeResurse.material)} din {formatLei(r.bugetPeResurse.material)} ({r.bugetPeResurse.material > 0 ? formatProcent(r.realizatPeResurse.material / r.bugetPeResurse.material) : '—'})</Typography.Text>}>
-          <Table<RandTabel> className="tabel-compact" rowKey="cheie" size="small" dataSource={arbore} columns={coloane} pagination={false} sticky
-            scroll={{ x: 1350 }}
+          <Table<RandTabel> className="tabel-compact tabel-text-complet" rowKey="cheie" size="small" dataSource={arbore} columns={coloane} pagination={false} sticky
+            scroll={{ x: 1450 }}
             expandable={{
               expandedRowRender: (x) => <DocumenteCost proiectId={proiectId} articol={x.rand?.cheie ?? 'generale'} />,
               rowExpandable: (x) => !!x.rand && x.rand.documente > 0,

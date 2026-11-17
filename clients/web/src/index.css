@@ -43,3 +43,18 @@ body,
 .tabel-compact .ant-table-thead > tr > th {
   white-space: nowrap;
 }
+
+/* Tabele în care textul se vede complet (bugetul): antetele și denumirile se rup pe mai multe rânduri, fără „…”. */
+.tabel-compact.tabel-text-complet .ant-table-thead > tr > th {
+  white-space: normal;
+  vertical-align: bottom;
+}
+.tabel-text-complet .ant-table-tbody > tr > td {
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+.tabel-text-complet .ant-table-tbody > tr > td.numeric {
+  white-space: nowrap;
+}
