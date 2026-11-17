@@ -1,7 +1,9 @@
 import { CheckCircleTwoTone, ClockCircleOutlined } from '@ant-design/icons'
 import { Descriptions, Drawer, Empty, Progress, Skeleton, Space, Table, Tabs, Tag, Typography } from 'antd'
 import { stadii, tipuriActivitate, useDetaliuActivitate } from '../../api/grafic'
-import type { LegaturaActivitate, ResursaActivitate } from '../../api/grafic'
+import { surseDocument } from '../../api/grafic'
+import type { CostAlocat, LegaturaActivitate, ResursaActivitate } from '../../api/grafic'
+import { Link } from 'react-router'
 import { formatCantitate, formatData, formatLei } from '../../util/format'
 
 const tipuriResursa: Record<ResursaActivitate['tip'], string> = { Manopera: 'manoperă', Material: 'material', Utilaj: 'utilaj', Cheltuiala: 'cheltuială' }
@@ -9,12 +11,14 @@ const tipuriResursa: Record<ResursaActivitate['tip'], string> = { Manopera: 'man
 const zileText = (z: number | null | undefined) => (z === null || z === undefined ? '—' : `${z.toLocaleString('ro-RO')} zile`)
 
 /** Fișa unei activități: datele, legăturile, resursele cu costurile, pașii și evoluția ei în actualizările graficului. */
-export function DetaliuActivitate({ proiectId, graficId, versiuneId, cod, moneda, laInchidere, laAlegere }: {
+export function DetaliuActivitate({ proiectId, graficId, versiuneId, cod, moneda, costuriErp, laInchidere, laAlegere }: {
   proiectId: string
   graficId: string
   versiuneId: string
   cod: string | undefined
   moneda: string
+  /** Costurile ERP alocate direct pe activitate (fără drept de costuri: lipsă). */
+  costuriErp?: CostAlocat[]
   laInchidere: () => void
   /** Deschide altă activitate (predecesor / succesor). */
   laAlegere: (cod: string) => void
@@ -94,6 +98,37 @@ export function DetaliuActivitate({ proiectId, graficId, versiuneId, cod, moneda
                     ]} />
                 ),
               },
+              ...(costuriErp
+                ? [{
+                    key: 'erp',
+                    label: `Costuri ERP (${costuriErp.length})`,
+                    children: costuriErp.length === 0 ? <Empty description="Niciun document alocat pe activitate (Grafic → Alocare costuri)." /> : (
+                      <Table<CostAlocat> className="tabel-compact" size="small" pagination={false} rowKey={(x) => `${x.documentId}-${x.linieIndex}`}
+                        dataSource={costuriErp}
+                        summary={(r) => (
+                          <Table.Summary.Row>
+                            <Table.Summary.Cell index={0} colSpan={4}><b>Total</b></Table.Summary.Cell>
+                            <Table.Summary.Cell index={4} align="right"><b>{formatLei(r.reduce((s, x) => s + x.lei, 0))}</b></Table.Summary.Cell>
+                            <Table.Summary.Cell index={5} align="right"><b>{formatLei(r.reduce((s, x) => s + (x.monedaGrafic ?? 0), 0))}</b></Table.Summary.Cell>
+                          </Table.Summary.Row>
+                        )}
+                        columns={[
+                          {
+                            title: 'Document', width: 170,
+                            render: (_, x) => <>{surseDocument[x.sursa]} {x.sursa === 'Factura' ? <Link to={`/facturi?factura=${x.documentId}`}>{x.documentNumar}</Link> : x.documentNumar}</>,
+                          },
+                          { title: 'Data', dataIndex: 'data', width: 95, render: formatData },
+                          { title: 'Linia', dataIndex: 'linie', ellipsis: true },
+                          { title: '%', dataIndex: 'procent', width: 60, className: 'numeric', render: (v: number) => v.toLocaleString('ro-RO') },
+                          { title: 'Lei', dataIndex: 'lei', width: 110, className: 'numeric', render: formatLei },
+                          {
+                            title: moneda, dataIndex: 'monedaGrafic', width: 110, className: 'numeric',
+                            render: (v: number | null, x) => <span title={x.cursGrafic ? `curs BNR ${x.cursGrafic} din ${formatData(x.dataCurs)}` : undefined}>{v === null ? '—' : formatLei(v)}</span>,
+                          },
+                        ]} />
+                    ),
+                  }]
+                : []),
               {
                 key: 'pasi',
                 label: `Pași (${data.pasi.length})`,

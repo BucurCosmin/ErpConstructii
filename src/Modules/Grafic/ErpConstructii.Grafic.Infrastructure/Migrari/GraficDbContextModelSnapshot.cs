@@ -194,6 +194,105 @@ namespace ErpConstructii.Grafic.Infrastructure.Migrari
                     b.ToTable("activitati", "grafic");
                 });
 
+            modelBuilder.Entity("ErpConstructii.Grafic.AlocareCost", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Cheie")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cheie");
+
+                    b.Property<Guid?>("CreatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("creat_de");
+
+                    b.Property<string>("CreatDeNume")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("creat_de_nume");
+
+                    b.Property<DateTimeOffset>("CreatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("creat_la");
+
+                    b.Property<string>("DenumireTinta")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("denumire_tinta");
+
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("document_id");
+
+                    b.Property<string>("DocumentNumar")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("document_numar");
+
+                    b.Property<Guid>("FirmaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("firma_id");
+
+                    b.Property<Guid>("GraficId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("grafic_id");
+
+                    b.Property<string>("LinieDenumire")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("linie_denumire");
+
+                    b.Property<int>("LinieIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("linie_index");
+
+                    b.Property<Guid?>("ModificatDe")
+                        .HasColumnType("uuid")
+                        .HasColumnName("modificat_de");
+
+                    b.Property<DateTimeOffset?>("ModificatLa")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("modificat_la");
+
+                    b.Property<decimal>("Procent")
+                        .HasPrecision(9, 4)
+                        .HasColumnType("numeric(9,4)")
+                        .HasColumnName("procent");
+
+                    b.Property<string>("Sursa")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("sursa");
+
+                    b.Property<string>("TipTinta")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tip_tinta");
+
+                    b.HasKey("Id")
+                        .HasName("pk_alocari_cost");
+
+                    b.HasIndex("GraficId", "Sursa", "DocumentId")
+                        .HasDatabaseName("ix_alocari_cost_grafic_id_sursa_document_id");
+
+                    b.HasIndex("GraficId", "Sursa", "DocumentId", "LinieIndex", "TipTinta", "Cheie")
+                        .IsUnique()
+                        .HasDatabaseName("ix_alocari_cost_grafic_id_sursa_document_id_linie_index_tip_ti");
+
+                    b.ToTable("alocari_cost", "grafic");
+                });
+
             modelBuilder.Entity("ErpConstructii.Grafic.FisierVersiuneGrafic", b =>
                 {
                     b.Property<Guid>("Id")

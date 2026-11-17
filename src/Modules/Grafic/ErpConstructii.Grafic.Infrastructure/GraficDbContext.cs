@@ -15,6 +15,28 @@ public sealed class GraficDbContext(DbContextOptions<GraficDbContext> optiuni) :
     public DbSet<FisierVersiuneGrafic> Fisiere => Set<FisierVersiuneGrafic>();
     public DbSet<NodWbsGrafic> Noduri => Set<NodWbsGrafic>();
     public DbSet<ActivitateGrafic> Activitati => Set<ActivitateGrafic>();
+
+    // Alocarea documentelor de cost pe activități / noduri WBS (D-57, etapa 2).
+    public DbSet<AlocareCost> Alocari => Set<AlocareCost>();
+}
+
+internal sealed class ConfigurareAlocare : IEntityTypeConfiguration<AlocareCost>
+{
+    public void Configure(EntityTypeBuilder<AlocareCost> b)
+    {
+        b.ToTable("alocari_cost");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Sursa).HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.DocumentNumar).HasMaxLength(100).IsRequired();
+        b.Property(x => x.LinieDenumire).HasMaxLength(500).IsRequired();
+        b.Property(x => x.TipTinta).HasConversion<string>().HasMaxLength(20).IsRequired();
+        b.Property(x => x.Cheie).HasMaxLength(500).IsRequired();
+        b.Property(x => x.DenumireTinta).HasMaxLength(500).IsRequired();
+        b.Property(x => x.Procent).HasPrecision(9, 4);
+        b.Property(x => x.CreatDeNume).HasMaxLength(200).IsRequired();
+        b.HasIndex(x => new { x.GraficId, x.Sursa, x.DocumentId });
+        b.HasIndex(x => new { x.GraficId, x.Sursa, x.DocumentId, x.LinieIndex, x.TipTinta, x.Cheie }).IsUnique();
+    }
 }
 
 internal sealed class ConfigurareGrafic : IEntityTypeConfiguration<GraficExecutie>

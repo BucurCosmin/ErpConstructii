@@ -33,20 +33,31 @@ Exportul nu conține linii de bază (doar datele planificate curente).
 - Ecranul: fișa proiectului → Grafic (arbore WBS + activități, bare Gantt planificat / actual cu data actualizării, filtre după stadiu
   și coduri de activitate, fișa activității, „Ce s-a schimbat”).
 
-## Etapa 2 — legăturile cu documentele (următoarea)
+## Etapa 2 — alocarea costurilor pe grafic (făcută)
 
-- Ținta legăturii: `(GraficId, cheie)` — codul activității sau cheia nodului WBS, stabile la reimport (nu Id-ul rândului, care e pe versiune).
-- **Bonul de consum:** linia primește activitatea / nodul (opțional, alături de articolul de deviz); propus din articol după ce există
-  legarea articol ↔ activitate (etapa 4).
-- **Factura:** alocarea stă în modulul Grafic (`AlocareCost`: factura, linia sau procentul, ținta), modificabilă oricând, fără
-  corectură pe factura blocată. Facturile legate de un contract pot moșteni nodul WBS al contractului.
-- Grafic citește documentele prin contracte publice (ca `ISursaCosturi`), fără să depindă de infrastructura Facturi / Stocuri.
-- Cursul BNR din data documentului: sursa de curs se stabilește atunci (cursul din factură, altfel serviciul de curs BNR).
+- **Documentele** vin prin contractul `ISursaDocumenteCost` (definit în Grafic, citit la cerere): Facturi (`SursaDocumenteFacturi`:
+  facturile neanulate ale proiectului; liniile „intră în stoc” nu se alocă — materialele devin cost la consum, altfel s-ar număra de două
+  ori) și Stocuri (`SursaDocumenteConsum`: bonurile de consum, la CMP). Grafic nu cunoaște tabelele lor.
+- **Alocarea** (`AlocareCost`, tabelul `grafic.alocari_cost`, jurnalizat): linia documentului × procent → activitate (cod) sau nod WBS
+  (cheie), ținte stabile la reimport. Documentele nu se modifică (factura blocată nu cere corectură). Pe linie, cel mult 100%.
+  „Tot documentul pe o țintă” completează doar restul nealocat (`CompleteazaPe`), și pentru mai multe documente odată.
+- **Valorile:** în lei (documentul în altă monedă × cursul BNR al monedei) și în moneda graficului (aceeași monedă = neschimbat, altfel
+  lei / cursul BNR al monedei graficului), la cursul BNR din data documentului: ultimul curs publicat în acea zi sau înainte
+  (`ICursValutar` în SharedKernel, `CursBnr` în BuildingBlocks: fișierele anuale `https://curs.bnr.ro/files/xml/years/nbrfxratesAAAA.xml`,
+  `CursBnr:Adresa`, cache în memorie; BNR indisponibil = suma în moneda graficului lipsește, semnalată).
+- **Totalizarea** (`CalculCosturiGrafic`, pur): activitatea → nodul ei → strămoșii; alocarea pe nod → nodul și strămoșii. Ținta care nu mai
+  e în actualizarea curentă: doar în total („fără țintă”), semnalată. Linia schimbată după alocare (factură corectată): semnalată.
+- **Propuneri:** linia nealocată cu aceeași grupare ca o linie alocată (bonul: articolul de deviz; factura: contractul, altfel furnizorul)
+  primește aceleași ținte.
+- Endpointurile: `GET …/grafice/{id}/costuri`, `PUT …/costuri/alocari`, `POST …/costuri/alocare-in-masa` (`EndpointuriCosturi`);
+  drepturi `buget.vizualizare` / `buget.editare` + `date.preturi_cost`. Graficul cu alocări nu se mai poate șterge întreg.
+- Ecranul: Grafic → „Alocare costuri” (documentele cu starea alocării, alocarea pe linii, selecția în masă) și coloanele „Cost ERP (lei / moneda
+  graficului)” în arbore; fișa activității → „Costuri ERP”.
 
 ## Etapa 3 — costurile pe WBS / activitate
 
-Buget din grafic vs realizat (facturi + consumuri, în lei și în moneda graficului), totalizat pe arbore, abaterea, procentul fizic;
-rapoarte PDF / Excel.
+Buget din grafic vs costurile ERP alocate (coloanele există din etapa 2), abaterea, procentul fizic față de procentul consumat;
+rapoarte PDF / Excel. Facturile legate de un contract pot moșteni nodul WBS al contractului (legarea contract ↔ WBS).
 
 ## Etapa 4 — articole de deviz și progres
 

@@ -302,3 +302,152 @@ export const useRedenumesteGrafic = (proiectId: string) => {
 
 export const fisierGrafic = (proiectId: string, graficId: string, versiuneId: string) =>
   api.getBinar(`${baza(proiectId)}/${graficId}/versiuni/${versiuneId}/fisier`)
+
+// ---------------------------------------------------------------- costurile ERP pe grafic (D-57, etapa 2)
+
+export type SursaDocumentCost = 'Factura' | 'BonConsum'
+export type TipTinta = 'Activitate' | 'Wbs'
+export type StareAlocare = 'Nealocat' | 'Partial' | 'Alocat' | 'FaraCost'
+
+export interface CostTinta {
+  lei: number
+  /** Null dacă lipsește cursul BNR pentru vreun document. */
+  monedaGrafic: number | null
+  documente: number
+  faraCurs: number
+}
+
+export interface LinieDocumentCost {
+  index: number
+  denumire: string
+  unitateMasura: string | null
+  cantitate: number
+  /** Fără TVA, în moneda documentului. */
+  valoare: number
+  alocabila: boolean
+  nota: string | null
+  grupare: string | null
+}
+
+export interface DocumentCost {
+  sursa: SursaDocumentCost
+  id: string
+  numar: string
+  data: string
+  partener: string | null
+  moneda: string
+  linii: LinieDocumentCost[]
+  detalii: string | null
+}
+
+export interface AlocareLinie {
+  sursa: SursaDocumentCost
+  documentId: string
+  linieIndex: number
+  tip: TipTinta
+  cheie: string
+  procent: number
+  linieDenumire: string | null
+}
+
+export interface PropunereAlocare {
+  linieIndex: number
+  tip: TipTinta
+  cheie: string
+  procent: number
+  motiv: string
+}
+
+export interface StareDocumentCost {
+  document: DocumentCost
+  valoareLei: number
+  alocatLei: number
+  alocatMonedaGrafic: number | null
+  procentAlocat: number
+  stare: StareAlocare
+  cursDocument: number | null
+  cursGrafic: number | null
+  dataCurs: string | null
+  alocari: AlocareLinie[]
+  propuneri: PropunereAlocare[]
+  probleme: string[]
+}
+
+export interface CostAlocat {
+  sursa: SursaDocumentCost
+  documentId: string
+  documentNumar: string
+  data: string
+  partener: string | null
+  linieIndex: number
+  linie: string
+  tip: TipTinta
+  cheie: string
+  denumireTinta: string | null
+  procent: number
+  lei: number
+  monedaGrafic: number | null
+  cursDocument: number | null
+  cursGrafic: number | null
+  dataCurs: string | null
+}
+
+export interface CosturiGrafic {
+  moneda: string
+  versiuneId: string | null
+  total: CostTinta
+  faraTinta: CostTinta
+  peActivitate: Record<string, CostTinta>
+  peNod: Record<string, CostTinta>
+  documente: StareDocumentCost[]
+  alocari: CostAlocat[]
+  surse: SursaDocumentCost[]
+}
+
+export interface AlocareCeruta {
+  linieIndex: number
+  tip: TipTinta
+  cheie: string
+  procent: number
+}
+
+export const surseDocument: Record<SursaDocumentCost, string> = { Factura: 'factură', BonConsum: 'bon de consum' }
+
+export const stariAlocare: Record<StareAlocare, { eticheta: string; culoare: string }> = {
+  Nealocat: { eticheta: 'nealocat', culoare: 'default' },
+  Partial: { eticheta: 'parțial', culoare: 'gold' },
+  Alocat: { eticheta: 'alocat', culoare: 'green' },
+  FaraCost: { eticheta: 'fără cost direct', culoare: 'default' },
+}
+
+export const useCosturiGrafic = (proiectId: string, graficId: string | undefined, activ: boolean) =>
+  useQuery({
+    queryKey: [...cheie(proiectId), graficId, 'costuri'],
+    queryFn: () => api.get<CosturiGrafic>(`${baza(proiectId)}/${graficId}/costuri`),
+    enabled: !!graficId && activ,
+  })
+
+export const useAlocaDocument = (proiectId: string, graficId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (c: { sursa: SursaDocumentCost; documentId: string; alocari: AlocareCeruta[] }) =>
+      api.put<StareDocumentCost>(`${baza(proiectId)}/${graficId}/costuri/alocari`, c),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [...cheie(proiectId), graficId, 'costuri'] }),
+  })
+}
+
+export const useAlocaInMasa = (proiectId: string, graficId: string) => {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (c: { documente: { sursa: SursaDocumentCost; documentId: string }[]; tip: TipTinta; cheie: string }) =>
+      api.post<number>(`${baza(proiectId)}/${graficId}/costuri/alocare-in-masa`, c),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: [...cheie(proiectId), graficId, 'costuri'] }),
+  })
+}
+
+/** Valoarea selectorului de țintă: „Activitate\u0001cod” / „Wbs\u0001cheie”. */
+export const valoareTinta = (tip: TipTinta, cheie: string) => `${tip}\u0001${cheie}`
+export const dinValoareTinta = (v: string): { tip: TipTinta; cheie: string } => {
+  const [tip, ...rest] = v.split('\u0001')
+  return { tip: tip as TipTinta, cheie: rest.join('\u0001') }
+}

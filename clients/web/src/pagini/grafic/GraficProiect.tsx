@@ -4,10 +4,11 @@ import type { TableColumnsType } from 'antd'
 import dayjs from 'dayjs'
 import { useEffect, useMemo, useState } from 'react'
 import { usePermisiuni } from '../../api/interogari'
-import { fisierGrafic, useContinutGrafic, useGrafice, useStergeVersiuneGrafic } from '../../api/grafic'
-import type { ActivitateGrafic, ContinutGrafic, NodWbs } from '../../api/grafic'
+import { fisierGrafic, useContinutGrafic, useCosturiGrafic, useGrafice, useStergeVersiuneGrafic } from '../../api/grafic'
+import type { ActivitateGrafic, ContinutGrafic, CostTinta, NodWbs } from '../../api/grafic'
 import { formatData, formatLei } from '../../util/format'
 import { descarcaFisier } from '../../util/pdf'
+import { AlocareCosturi } from './AlocareCosturi'
 import { ComparatieGrafic } from './ComparatieGrafic'
 import { DetaliuActivitate } from './DetaliuActivitate'
 import { ImportGrafic, zile } from './ImportGrafic'
@@ -89,6 +90,10 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
   const grafice = useGrafice(proiectId)
   const permisiuni = usePermisiuni()
   const poateEdita = permisiuni.data?.includes('proiecte.editare') ?? false
+  // Costurile ERP alocate pe grafic: ca la buget (D-57, etapa 2).
+  const vedeCosturi = (permisiuni.data?.includes('buget.vizualizare') && permisiuni.data.includes('date.preturi_cost')) ?? false
+  const poateAloca = vedeCosturi && (permisiuni.data?.includes('buget.editare') ?? false)
+  const [vedere, setVedere] = useState<'grafic' | 'costuri'>('grafic')
   const sterge = useStergeVersiuneGrafic(proiectId)
 
   const [graficId, setGraficId] = useState<string>()
@@ -109,6 +114,10 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
     if (grafic && grafic.id !== graficId) setGraficId(grafic.id)
   }, [grafic, graficId])
   const continut = useContinutGrafic(proiectId, grafic?.id, versiune?.id)
+  // Țintele alocării vin din actualizarea curentă (aceeași cerere când e și cea afișată).
+  const continutCurent = useContinutGrafic(proiectId, grafic?.id, grafic?.versiuneCurentaId ?? undefined)
+  const costuri = useCosturiGrafic(proiectId, grafic?.id, vedeCosturi)
+  const k = costuri.data
   const c = continut.data
   const interval = useInterval(c)
   const moneda = grafic?.moneda ?? ''
@@ -171,6 +180,9 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
     }
   }
 
+  const costErp = (r: Rand): CostTinta | undefined => (r.nod ? k?.peNod[r.nod.cheie] : k?.peActivitate[r.activitate!.cod])
+  const deAlocat = k?.documente.filter((s) => s.stare === 'Nealocat' || s.stare === 'Partial').length ?? 0
+
   const culoare = (a: ActivitateGrafic) =>
     a.stadiu === 'Finalizata' ? token.colorSuccess : a.critica ? token.colorError : intarziata(a) ? token.colorWarning : token.colorPrimary
 
@@ -227,6 +239,24 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
       title: `Realizat (${moneda})`, key: 'realizat', width: 125, className: 'numeric',
       render: (_, r) => { const v = r.nod ? r.nod.total.costRealizat : r.activitate!.costRealizat; return v ? formatLei(v) : '' },
     },
+    ...(vedeCosturi
+      ? [
+          {
+            title: <Tooltip title="Facturile și bonurile de consum alocate pe activitate / nod (cu tot ce e dedesubt), în lei">Cost ERP (lei)</Tooltip>,
+            key: 'erp-lei', width: 120, className: 'numeric',
+            render: (_: unknown, r: Rand) => { const x = costErp(r); return x ? formatLei(x.lei) : '' },
+          },
+          {
+            title: <Tooltip title="Același cost, la cursul BNR din data fiecărui document">{`Cost ERP (${moneda})`}</Tooltip>,
+            key: 'erp-grafic', width: 120, className: 'numeric',
+            render: (_: unknown, r: Rand) => {
+              const x = costErp(r)
+              if (!x) return ''
+              return x.monedaGrafic === null ? <Tooltip title={`${x.faraCurs} alocări fără curs BNR`}>—</Tooltip> : formatLei(x.monedaGrafic)
+            },
+          },
+        ]
+      : []),
     {
       key: 'gantt', width: 480,
       title: interval ? (
@@ -318,6 +348,22 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
           action={<Button size="small" onClick={() => setComparatie(true)}>Detalii</Button>} />
       )}
 
+      {vedeCosturi && (
+        <Space wrap>
+          <Segmented value={vedere} onChange={(v) => setVedere(v as 'grafic' | 'costuri')}
+            options={[{ value: 'grafic', label: 'Grafic' }, { value: 'costuri', label: `Alocare costuri${deAlocat ? ` (${deAlocat} de alocat)` : ''}` }]} />
+          {k && (
+            <Typography.Text type="secondary">
+              Costuri ERP alocate: <b>{formatLei(k.total.lei)} lei</b>
+              {k.total.monedaGrafic !== null && <> = <b>{formatLei(k.total.monedaGrafic)} {moneda}</b></>}
+            </Typography.Text>
+          )}
+        </Space>
+      )}
+
+      {vedere === 'costuri' && vedeCosturi && grafic ? (
+        k ? <AlocareCosturi proiectId={proiectId} graficId={grafic.id} costuri={k} continutCurent={continutCurent.data} poateEdita={poateAloca} /> : <Skeleton active />
+      ) : (<>
       <Space wrap>
         <Input.Search allowClear placeholder="Caută cod sau denumire" style={{ width: 260 }} onChange={(e) => setCauta(e.target.value)} />
         <Segmented<Filtru> value={filtru} onChange={setFiltru}
@@ -344,7 +390,7 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
 
       {continut.isLoading || !c ? <Skeleton active /> : (
         <Table<Rand> className="tabel-compact" size="small" rowKey="cheie" dataSource={arbore} columns={coloane} pagination={false}
-          scroll={{ x: 1800, y: 'calc(100vh - 330px)' }} sticky
+          scroll={{ x: vedeCosturi ? 2040 : 1800, y: 'calc(100vh - 330px)' }} sticky
           expandable={{
             expandedRowKeys: randuriDeschise,
             onExpandedRowsChange: (k) => setDeschise(k as string[]),
@@ -355,10 +401,12 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
             style: { cursor: r.activitate ? 'pointer' : undefined, background: r.nod && r.adancime === 0 ? token.colorFillQuaternary : undefined },
           })} />
       )}
+      </>)}
 
       {grafic && versiune && (
         <>
           <DetaliuActivitate proiectId={proiectId} graficId={grafic.id} versiuneId={versiune.id} cod={activitate} moneda={moneda}
+            costuriErp={vedeCosturi ? (k?.alocari ?? []).filter((a) => a.tip === 'Activitate' && a.cheie === activitate) : undefined}
             laInchidere={() => setActivitate(undefined)} laAlegere={setActivitate} />
           <ComparatieGrafic proiectId={proiectId} graficId={grafic.id} versiuneId={comparatie ? versiune.id : undefined} numar={versiune.numar}
             laInchidere={() => setComparatie(false)} laAlegere={(x) => { setComparatie(false); setActivitate(x) }} />

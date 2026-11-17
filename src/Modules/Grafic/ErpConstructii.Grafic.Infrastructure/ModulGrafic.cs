@@ -107,6 +107,9 @@ public sealed class ModulGrafic : IModul
             .WithSummary("Șterge ultima actualizare (importată din greșeală); graficul cu o singură actualizare se șterge cu totul")
             .Produces(StatusCodes.Status204NoContent).Produces(StatusCodes.Status404NotFound).Produces(StatusCodes.Status409Conflict)
             .CerePermisiune(editare);
+
+        // Costurile ERP alocate pe activități / noduri WBS (D-57, etapa 2).
+        EndpointuriCosturi.Mapeaza(g);
     }
 
     // ---------------------------------------------------------------- lista
@@ -369,6 +372,9 @@ public sealed class ModulGrafic : IModul
             return Results.NotFound();
         if (await db.Versiuni.AnyAsync(x => x.GraficId == graficId && x.Numar > v.Numar, ct))
             return Results.Conflict(new { mesaj = "Se poate șterge doar ultima actualizare a graficului." });
+        // Graficul întreg (singura actualizare) nu se șterge cât are costuri alocate: alocările ar rămâne fără grafic.
+        if (v.Numar == 1 && await db.Alocari.AnyAsync(a => a.GraficId == graficId, ct))
+            return Results.Conflict(new { mesaj = "Graficul are costuri alocate: importă o actualizare corectă în locul lui sau șterge întâi alocările." });
 
         await using var tranzactie = await db.Database.BeginTransactionAsync(ct);
         await db.Activitati.Where(a => a.VersiuneId == versiuneId).ExecuteDeleteAsync(ct);

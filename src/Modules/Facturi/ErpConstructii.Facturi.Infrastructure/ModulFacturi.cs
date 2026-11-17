@@ -154,6 +154,8 @@ public sealed class ModulFacturi : IModul
         servicii.AddScoped<IInterogareFacturiContract, InterogareFacturiContract>();
         // Costurile proiectului pentru bugetul din Devize (D-55).
         servicii.AddScoped<ErpConstructii.Devize.ISursaCosturi, SursaCosturiFacturi>();
+        // Facturile proiectului pentru alocarea pe graficul de execuție (D-57).
+        servicii.AddScoped<ErpConstructii.Grafic.ISursaDocumenteCost, SursaDocumenteFacturi>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)

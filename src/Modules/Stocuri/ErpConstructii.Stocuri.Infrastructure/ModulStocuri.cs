@@ -112,6 +112,8 @@ public sealed class ModulStocuri : IModul
         // Prețurile din recepții și costurile din consum, pentru catalogul și bugetul din Devize (D-55).
         servicii.AddScoped<ErpConstructii.Devize.ISursaPreturi, SursaPreturiReceptii>();
         servicii.AddScoped<ErpConstructii.Devize.ISursaCosturi, SursaCosturiConsum>();
+        // Bonurile de consum pentru alocarea pe graficul de execuție (D-57).
+        servicii.AddScoped<ErpConstructii.Grafic.ISursaDocumenteCost, SursaDocumenteConsum>();
     }
 
     public void MapeazaEndpointuri(IEndpointRouteBuilder rute)

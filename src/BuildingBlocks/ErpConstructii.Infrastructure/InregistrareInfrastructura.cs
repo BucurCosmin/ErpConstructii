@@ -1,4 +1,5 @@
 using ErpConstructii.Infrastructure.Persistenta;
+using ErpConstructii.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,6 +42,8 @@ public static class InregistrareInfrastructura
     {
         servicii.AddScoped<InterceptorFirmaRls>();
         servicii.AddScoped<InterceptorAudit>();
+        // Cursurile BNR (conversia costurilor în moneda graficului / contractului).
+        servicii.AddHttpClient<ICursValutar, CursBnr>();
         return servicii;
     }
 }
