@@ -69,7 +69,7 @@ Legendă stare: ✅ implementat (cod + teste) · 🟡 schelet / parțial · ⬜ 
 
 | ID | Cerință | Faza | Stare |
 |---|---|---|---|
-| REQ-GRF-01 | Import grafic: **Primavera P6** (.xer, PMXML) și **Excel** cu șablon primele; MS Project la cerere. Model canonic `GraficCanonic`. | 1 | 🟡 |
+| REQ-GRF-01 | Import grafic: **Primavera P6** (.xer, PMXML) și **Excel** cu șablon primele; MS Project la cerere. Model canonic `GraficCanonic`. | 1 | 🟡 (XER ✅, D-57; PMXML / Excel ⬜) |
 | REQ-GRF-02 | Legarea activităților de articolele de deviz (N:M, cu cantități alocate); propunere automată după coduri, corecții memorate la reimport. | 1 | 🟡 |
 | REQ-GRF-03 | Actualizare la data de raportare: progres ponderat valoric din cantitățile raportate, date reale, prognoză (ritm sau plan) cu recalcul pe drumul critic, aprobare de managerul de proiect ca „Actualizarea nr. N”. | 2 | ✅ (calcul) |
 | REQ-GRF-04 | Linia de bază aprobată la contract rămâne înghețată; rebugetarea creează o linie nouă. | 1 | ⬜ |

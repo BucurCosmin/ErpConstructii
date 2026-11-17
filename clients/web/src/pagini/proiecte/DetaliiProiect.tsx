@@ -13,6 +13,7 @@ import { EditareProiect } from './EditareProiect'
 import { SantiereProiect } from './SantiereProiect'
 import { BugetProiect } from './BugetProiect'
 import { ListaContracte } from '../contracte/ListaContracte'
+import { GraficProiect } from '../grafic/GraficProiect'
 
 export function DetaliiProiect() {
   const { proiectId = '' } = useParams()
@@ -209,7 +210,8 @@ export function DetaliiProiect() {
             ...(permisiuni.data?.includes('buget.vizualizare') && permisiuni.data.includes('date.preturi_cost')
               ? [{ key: 'buget', label: 'Buget', children: <BugetProiect proiectId={proiectId} /> }]
               : []),
-            ...['Grafic', 'Situații', 'Documente'].map((t) => ({
+            { key: 'grafic', label: 'Grafic', children: <GraficProiect proiectId={proiectId} /> },
+            ...['Situații', 'Documente'].map((t) => ({
               key: t.toLowerCase(),
               label: t,
               children: <Empty description={`Modulul „${t}” va fi disponibil într-o fază ulterioară.`} />,

@@ -1,40 +1,26 @@
 using System.Text;
 using ErpConstructii.SharedKernel.Import;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace ErpConstructii.Grafic.Import.Primavera;
 
 /// <summary>
-/// Importator pentru graficele Primavera P6: XER (text, separat prin TAB) și PMXML.
-///
-/// STARE: detectarea este implementată; citirea este SCHELET.
-///
-/// Pași de implementare (pentru Claude Code):
-///  1. Adaugă MPXJ (net.sf.mpxj-for-csharp) și citește fișierul cu UniversalProjectReader
-///     (acoperă XER și PMXML). Alternativ, XER se poate parsa direct: tabelele TASK, TASKPRED,
-///     PROJWBS, CALENDAR, ACTVCODE / TASKACTV.
-///  2. Mapează: TASK → ActivitateCanonica (task_code, task_name, target_start/end, durata,
-///     task_type = TT_Mile/TT_FinMile → jalon), TASKPRED → Dependenta (PR_FS/SS/FF/SF, lag),
-///     PROJWBS → CodWbs, TASKACTV → CoduriActivitate.
-///  3. Linia de bază (baseline) din P6 → DataReferinta / start-sfârșit planificat.
-///  4. Exportul actualizat înapoi (REQ-GRF-05): MPXJ scrie XER și PMXML.
-///  5. Teste cu fișiere .xer reale de la pilot (tests/samples-private/primavera/).
+/// Importator pentru graficele Primavera P6 exportate ca XER (text separat prin TAB, <see cref="FisierXer"/>), convertite în
+/// modelul canonic de <see cref="ConversieXer"/>. PMXML e recunoscut, dar nu încă citit: utilizatorul e rugat să exporte XER.
 /// </summary>
 public sealed class ImportatorPrimavera : IImportatorGrafic
 {
     public string FormatId => "primavera";
 
-    public string Denumire => "Primavera P6 (XER / PMXML)";
+    public string Denumire => "Primavera P6 (XER)";
 
     public RezultatDetectare PoateCiti(SursaImport sursa)
     {
         // XER începe cu linia „ERMHDR” (antetul exportului P6).
+        if (FisierXer.EsteXer(sursa.Continut))
+            return new RezultatDetectare(0.95, "Antet XER Primavera.");
         if (sursa.Extensie == ".xer")
-        {
-            var antet = Encoding.UTF8.GetString(sursa.Continut, 0, Math.Min(sursa.Continut.Length, 16));
-            return antet.StartsWith("ERMHDR", StringComparison.Ordinal)
-                ? new RezultatDetectare(0.95, "Antet XER Primavera.")
-                : new RezultatDetectare(0.3, "Extensie .xer fără antetul ERMHDR.");
-        }
+            return new RezultatDetectare(0.3, "Extensie .xer fără antetul ERMHDR.");
 
         if (sursa.Extensie == ".xml")
         {
@@ -47,7 +33,19 @@ public sealed class ImportatorPrimavera : IImportatorGrafic
         return RezultatDetectare.Nu("Nu este un fișier Primavera.");
     }
 
-    public Task<RezultatImport<GraficCanonic>> CitesteAsync(SursaImport sursa, CancellationToken ct = default) =>
-        Task.FromResult(RezultatImport<GraficCanonic>.Esuat(
-            "Citirea Primavera nu este încă implementată (vezi pașii din comentariul clasei)."));
+    public Task<RezultatImport<GraficCanonic>> CitesteAsync(SursaImport sursa, CancellationToken ct = default)
+    {
+        if (FisierXer.Citeste(sursa.Continut) is { } xer)
+            return Task.FromResult(ConversieXer.Converteste(xer));
+        return Task.FromResult(RezultatImport<GraficCanonic>.Esuat(sursa.Extensie == ".xml"
+            ? "Fișierele PMXML nu sunt încă citite: exportă graficul din Primavera ca XER (File → Export → Primavera PM – (XER))."
+            : "Fișierul nu este un export Primavera XER (lipsește antetul ERMHDR)."));
+    }
+}
+
+public static class ExtensiiImportatorPrimavera
+{
+    /// <summary>Înregistrează importatorul Primavera (REQ-GRF-01), ca la ceilalți importatori.</summary>
+    public static IServiceCollection AdaugaImportatorPrimavera(this IServiceCollection servicii) =>
+        servicii.AddSingleton<IImportatorGrafic, ImportatorPrimavera>();
 }

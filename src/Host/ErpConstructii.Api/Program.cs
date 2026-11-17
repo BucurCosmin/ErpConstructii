@@ -5,6 +5,8 @@ using ErpConstructii.Api.Dezvoltare;
 using ErpConstructii.Aprovizionare.Infrastructure;
 using ErpConstructii.Audit.Infrastructure;
 using ErpConstructii.Contracte.Infrastructure;
+using ErpConstructii.Grafic.Import.Primavera;
+using ErpConstructii.Grafic.Infrastructure;
 using ErpConstructii.Devize.Import.Isdp.Excel;
 using ErpConstructii.Devize.Infrastructure;
 using ErpConstructii.Facturi.Infrastructure;
@@ -41,6 +43,7 @@ IModul[] module =
     new ModulFacturi(),
     new ModulStocuri(),
     new ModulContracte(),
+    new ModulGrafic(),
     new ModulAudit(),
 ];
 
@@ -58,6 +61,7 @@ foreach (var modul in module)
 
 // Importatori de devize (module de import, REQ-IMP-01). Un format nou = un pachet nou + o linie aici.
 builder.Services.AdaugaImportatorIsdp(); // D-50: devizele vin din ISDP (Intersoft)
+builder.Services.AdaugaImportatorPrimavera(); // D-57: graficele de execuție din Primavera P6 (XER)
 
 // ---------------------------------------------------------------------------
 // Autentificare (D-07, REQ-UTL-02).
