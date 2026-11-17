@@ -105,7 +105,9 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
   const [cauta, setCauta] = useState('')
   const [filtru, setFiltru] = useState<Filtru>('toate')
   const [cod, setCod] = useState<string>()
-  const [deschise, setDeschise] = useState<string[]>()
+  // Nodurile deschise, ținute pe combinația de filtre: fiecare filtru pornește cu tot arborele deschis (fără filtru: două niveluri),
+  // iar +/− lucrează și cu filtrul activ.
+  const [deschiseStare, setDeschiseStare] = useState<{ filtru: string; chei: string[] }>()
 
   const lista = grafice.data ?? []
   // Graficul ales (după un import nou: cel care conține versiunea importată), altfel primul.
@@ -124,6 +126,14 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
   const moneda = grafic?.moneda ?? ''
 
   const filtrat = !!cauta.trim() || filtru !== 'toate' || !!cod
+
+  // Tabelul virtual cere o înălțime în pixeli: fereastra minus antetul paginii.
+  const [inaltimeTabel, setInaltimeTabel] = useState(() => Math.max(400, window.innerHeight - 330))
+  useEffect(() => {
+    const laRedimensionare = () => setInaltimeTabel(Math.max(400, window.innerHeight - 330))
+    window.addEventListener('resize', laRedimensionare)
+    return () => window.removeEventListener('resize', laRedimensionare)
+  }, [])
 
   const { arbore, cheiNiveluri, numarActivitati } = useMemo(() => {
     if (!c) return { arbore: [] as Rand[], cheiNiveluri: [] as string[][], numarActivitati: 0 }
@@ -155,11 +165,13 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
       return [...noduri, ...acts]
     }
     return { arbore: construieste(null, 0), cheiNiveluri: niveluri, numarActivitati: activitati.length }
-  }, [c, cauta, filtru, cod, filtrat])
+    // k / token: rândurile se refac când sosesc costurile sau se schimbă tema (celulele se redesenează doar pentru rânduri noi).
+  }, [c, cauta, filtru, cod, filtrat, k, token])
 
-  // Implicit: primele două niveluri deschise; cu filtru, tot.
+  const cheieFiltru = `${grafic?.id}|${versiune?.id}|${cauta.trim()}|${filtru}|${cod ?? ''}`
   const nivelDeschis = (n: number) => cheiNiveluri.slice(0, n).flat()
-  const randuriDeschise = filtrat ? cheiNiveluri.flat() : (deschise ?? nivelDeschis(2))
+  const randuriDeschise = deschiseStare?.filtru === cheieFiltru ? deschiseStare.chei : filtrat ? cheiNiveluri.flat() : nivelDeschis(2)
+  const setDeschise = (chei: string[]) => setDeschiseStare({ filtru: cheieFiltru, chei })
 
   const descarca = async () => {
     if (!grafic || !versiune) return
@@ -187,7 +199,7 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
   const culoare = (a: ActivitateGrafic) =>
     a.stadiu === 'Finalizata' ? token.colorSuccess : a.critica ? token.colorError : intarziata(a) ? token.colorWarning : token.colorPrimary
 
-  const coloane: TableColumnsType<Rand> = [
+  const coloaneBaza: TableColumnsType<Rand> = [
     {
       title: 'Cod / WBS', key: 'cod', width: 250, fixed: 'left',
       render: (_, r) => (r.nod ? <b>{r.nod.cod}</b> : <Typography.Link onClick={() => setActivitate(r.activitate!.cod)}>{r.activitate!.cod}</Typography.Link>),
@@ -279,7 +291,9 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
           culoare={culoare(a)} jalon={a.tip === 'JalonInceput' || a.tip === 'JalonSfarsit'} dataActualizare={c.versiune.dataActualizare} />
       },
     },
-  ]
+  ]  // Celula se redesenează doar când rândul e altul (rândurile se refac la schimbarea datelor): +/− nu mai redesenează tot arborele.
+  const coloane = coloaneBaza.map((col) => ({ ...col, shouldCellUpdate: (r: Rand, anterior: Rand) => r !== anterior }))
+
 
   if (grafice.isLoading) return <Skeleton active />
   if (lista.length === 0)
@@ -303,7 +317,7 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
     <Space orientation="vertical" size={12} style={{ width: '100%' }}>
       <Space wrap>
         {lista.length > 1 && (
-          <Select style={{ minWidth: 260 }} value={grafic?.id} onChange={(id) => { setGraficId(id); setVersiuneId(undefined); setDeschise(undefined) }}
+          <Select style={{ minWidth: 260 }} value={grafic?.id} onChange={(id) => { setGraficId(id); setVersiuneId(undefined) }}
             options={lista.map((g) => ({ value: g.id, label: g.denumire }))} />
         )}
         <Select style={{ minWidth: 260 }} value={versiune?.id} onChange={(id) => setVersiuneId(id)}
@@ -381,7 +395,7 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
           <Select allowClear showSearch={{ optionFilterProp: 'label' }} placeholder="Cod de activitate (zonă, subantreprenor, …)" style={{ width: 340 }}
             value={cod} onChange={setCod} options={optiuniCod} />
         )}
-        {!filtrat && (
+        {(
           <Space.Compact>
             {[1, 2, 3].map((n) => <Button key={n} size="small" onClick={() => setDeschise(nivelDeschis(n))}>Nivel {n}</Button>)}
             <Button size="small" onClick={() => setDeschise(cheiNiveluri.flat())}>Tot</Button>
@@ -393,7 +407,8 @@ export function GraficProiect({ proiectId }: { proiectId: string }) {
 
       {continut.isLoading || !c ? <Skeleton active /> : (
         <Table<Rand> className="tabel-compact" size="small" rowKey="cheie" dataSource={arbore} columns={coloane} pagination={false}
-          scroll={{ x: vedeCosturi ? 2040 : 1800, y: 'calc(100vh - 330px)' }} sticky
+          // Virtual: se desenează doar rândurile vizibile (graficele au mii de rânduri cu tot arborele deschis).
+          virtual scroll={{ x: vedeCosturi ? 2040 : 1800, y: inaltimeTabel }}
           expandable={{
             expandedRowKeys: randuriDeschise,
             onExpandedRowsChange: (k) => setDeschise(k as string[]),
